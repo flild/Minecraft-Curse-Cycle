@@ -12,6 +12,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ChallengeManager {
+    private com.example.hardcorechallenges.api.challenge.GameMode gameMode = com.example.hardcorechallenges.api.challenge.GameMode.CLASSIC;
+
+    public com.example.hardcorechallenges.api.challenge.GameMode getGameMode() { return gameMode; }
+    public void setGameMode(com.example.hardcorechallenges.api.challenge.GameMode mode) { this.gameMode = mode; }
+
+    public void handleViolation(com.example.hardcorechallenges.api.violation.ChallengeViolation violation, com.example.hardcorechallenges.api.violation.ChallengePenalty penalty) {
+        if (penalty != null) {
+            penalty.apply(violation, this);
+        }
+    }
+
     private static final ChallengeManager INSTANCE = new ChallengeManager();
 
     private final List<Challenge> activeChallenges = new ArrayList<>();

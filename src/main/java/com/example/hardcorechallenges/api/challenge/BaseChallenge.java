@@ -1,6 +1,8 @@
 package com.example.hardcorechallenges.api.challenge;
 
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.network.ServerPlayerEntity;
+import com.example.hardcorechallenges.api.violation.ChallengeViolation;
 
 public abstract class BaseChallenge implements Challenge {
     private final ChallengeDefinition definition;
@@ -37,6 +39,12 @@ public abstract class BaseChallenge implements Challenge {
     @Override
     public void setState(ChallengeState state) {
         this.state = state;
+    }
+
+    protected void triggerViolation(ServerPlayerEntity player, String reason) {
+        if (state == ChallengeState.ACTIVE) {
+            onViolation(new ChallengeViolation(definition.id(), player, reason));
+        }
     }
 
     @Override

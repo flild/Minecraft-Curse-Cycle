@@ -3,7 +3,9 @@ package com.example.hardcorechallenges.command;
 import com.example.hardcorechallenges.api.challenge.Challenge;
 import com.example.hardcorechallenges.api.registry.ChallengeRegistry;
 import com.example.hardcorechallenges.manager.ChallengeManager;
+import com.example.hardcorechallenges.selection.ChallengeSelector;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandRegistryAccess;
@@ -14,6 +16,7 @@ import net.minecraft.util.Identifier;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ChallengeCommand {
     public static void register() {
@@ -44,7 +47,7 @@ public class ChallengeCommand {
                     .executes(context -> {
                         String idStr = StringArgumentType.getString(context, "id");
                         Identifier id = Identifier.of(idStr);
-                        if (ChallengeRegistry.createChallenge(id) == null) {
+                        if (ChallengeRegistry.getSupplier(id) == null) {
                             context.getSource().sendError(Text.literal("Challenge not found: " + id));
                             return 0;
                         }
@@ -53,6 +56,34 @@ public class ChallengeCommand {
                         return 1;
                     })
                 )
+            )
+            .then(CommandManager.literal("start-random")
+                .executes(context -> {
+                    return startRandom(context.getSource(), 1);
+                })
+                .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 10))
+                    .executes(context -> {
+                        int count = IntegerArgumentType.getInteger(context, "count");
+                        return startRandom(context.getSource(), count);
+                    })
+                )
+            )
+            .then(CommandManager.literal("roulette")
+                .executes(context -> {
+                    ChallengeSelector selector = new ChallengeSelector();
+                    List<Identifier> available = selector.selectRandomChallenges(3); // Предлагаем 3 случайных
+
+                    if (available.isEmpty()) {
+                        context.getSource().sendMessage(Text.literal("No challenges available for roulette."));
+                        return 0;
+                    }
+
+                    context.getSource().sendMessage(Text.literal("Roulette Results:"));
+                    for (Identifier id : available) {
+                        context.getSource().sendMessage(Text.literal("- " + id));
+                    }
+                    return 1;
+                })
             )
             .then(CommandManager.literal("stop")
                 .then(CommandManager.argument("id", StringArgumentType.string())
@@ -72,7 +103,6 @@ public class ChallengeCommand {
             )
             .then(CommandManager.literal("next")
                 .executes(context -> {
-                    // Базовая логика для перехода к следующему испытанию
                     ChallengeManager manager = ChallengeManager.getInstance();
                     manager.stopAll(context.getSource().getServer());
 
@@ -97,12 +127,25 @@ public class ChallengeCommand {
                     return 1;
                 })
             )
-            .then(CommandManager.literal("reload")
-                .executes(context -> {
-                    context.getSource().sendMessage(Text.literal("Reload not fully implemented. Architecture ready."));
-                    return 1;
-                })
-            )
         );
+    }
+
+    private static int startRandom(ServerCommandSource source, int count) {
+        ChallengeSelector selector = new ChallengeSelector();
+        List<Identifier> selected = selector.selectRandomChallenges(count);
+
+        if (selected.isEmpty()) {
+            source.sendMessage(Text.literal("No challenges available to start."));
+            return 0;
+        }
+
+        for (Identifier id : selected) {
+            ChallengeManager.getInstance().startChallenge(id, source.getServer());
+        }
+
+        String joined = selected.stream().map(Identifier::toString).collect(Collectors.joining(", "));
+        source.sendMessage(Text.literal("Started random challenges: " + joined));
+
+        return selected.size();
     }
 }

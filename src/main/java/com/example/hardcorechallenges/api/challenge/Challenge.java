@@ -1,5 +1,7 @@
 package com.example.hardcorechallenges.api.challenge;
 
+import com.example.hardcorechallenges.api.violation.ChallengePenalty;
+import com.example.hardcorechallenges.api.violation.ChallengeViolation;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.entity.damage.DamageSource;
@@ -18,6 +20,17 @@ public interface Challenge {
     default void onJump(ServerPlayerEntity player) {}
     default void onSprintStart(ServerPlayerEntity player) {}
     default void onSprintStop(ServerPlayerEntity player) {}
+
+    default void onViolation(ChallengeViolation violation) {
+        // Дефолтная реализация может просто получать менеджер и применять наказание,
+        // но здесь нам нужен доступ к менеджеру, поэтому мы оставим метод для переопределения
+        // или вызовем глобальный менеджер.
+        com.example.hardcorechallenges.manager.ChallengeManager.getInstance().handleViolation(violation, getPenalty(violation));
+    }
+
+    default ChallengePenalty getPenalty(ChallengeViolation violation) {
+        return new com.example.hardcorechallenges.api.violation.WarningPenalty();
+    }
 
     ChallengeState getState();
     void setState(ChallengeState state);

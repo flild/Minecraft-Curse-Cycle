@@ -29,6 +29,7 @@ public class ChallengePersistentState extends PersistentState {
 
         nbt.putLong("TotalTicks", manager.getTotalTicks());
         nbt.putBoolean("Paused", manager.isPaused());
+        nbt.putString("GameMode", manager.getGameMode().name());
 
         NbtList challengesList = new NbtList();
         for (Challenge challenge : manager.getActiveChallenges()) {
@@ -49,6 +50,11 @@ public class ChallengePersistentState extends PersistentState {
         ChallengeManager manager = ChallengeManager.getInstance();
 
         manager.setTotalTicks(nbt.getLong("TotalTicks"));
+        if (nbt.contains("GameMode")) {
+            try {
+                manager.setGameMode(com.example.hardcorechallenges.api.challenge.GameMode.valueOf(nbt.getString("GameMode")));
+            } catch (Exception e) {}
+        }
         if (nbt.getBoolean("Paused")) {
             manager.pause();
         } else {

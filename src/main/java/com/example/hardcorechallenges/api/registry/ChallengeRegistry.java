@@ -29,6 +29,9 @@ public class ChallengeRegistry {
         return REGISTRY.keySet();
     }
 
+    public static Supplier<Challenge> getSupplier(Identifier id) {
+        return REGISTRY.get(id);
+    }
     public static Collection<Supplier<Challenge>> getAll() {
         return REGISTRY.values();
     }

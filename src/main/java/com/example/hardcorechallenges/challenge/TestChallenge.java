@@ -21,7 +21,7 @@ public class TestChallenge extends BaseChallenge {
                 "Test Challenge",
                 "A simple challenge for testing the architecture. You take double damage!",
                 "test",
-                1,
+                com.example.hardcorechallenges.api.challenge.ChallengeDifficulty.EASY,
                 6000, // 5 minutes (5 * 60 * 20 ticks)
                 ChallengeScope.GLOBAL
         ));

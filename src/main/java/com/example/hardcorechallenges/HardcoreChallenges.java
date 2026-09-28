@@ -1,7 +1,7 @@
 package com.example.hardcorechallenges;
 
 import com.example.hardcorechallenges.api.registry.ChallengeRegistry;
-import com.example.hardcorechallenges.challenge.TestChallenge;
+import com.example.hardcorechallenges.challenge.*;
 import com.example.hardcorechallenges.command.ChallengeCommand;
 import com.example.hardcorechallenges.state.ChallengePersistentState;
 import net.fabricmc.api.ModInitializer;
@@ -20,6 +20,9 @@ public class HardcoreChallenges implements ModInitializer {
 
 		// Регистрация испытаний
 		ChallengeRegistry.register(() -> new TestChallenge());
+		ChallengeRegistry.register(() -> new TestViolationChallenge());
+		ChallengeRegistry.register(() -> new TestMultiChallenge());
+		ChallengeRegistry.register(() -> new TestWorldEventChallenge());
 
 		// Регистрация сохранения состояния
 		ChallengePersistentState.registerLifecycle();
