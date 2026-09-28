@@ -1,38 +1,98 @@
 # Hardcore Challenges
 
 Мод для Minecraft Java Edition (на базе Fabric), реализующий хардкорные испытания.
-Проект предоставляет гибкую архитектуру для добавления новых испытаний с серверной обработкой логики и клиентской частью для UI.
+Проект предоставляет гибкую архитектуру для добавления новых испытаний с серверной обработкой логики и полноценным клиентским UI (HUD, меню, рулетка).
 
 ## Архитектура
 
-Архитектура мода спроектирована таким образом, чтобы каждое новое испытание было отдельным классом, не требующим изменений в ядре системы. Сервер является единым источником истины.
+Архитектура мода разделена на серверную логику (Source of Truth) и клиентское отображение. Сервер управляет всем состоянием, а клиент только отрисовывает UI, реагируя на кастомные пакеты.
 
 ### Основные компоненты
 
-*   `Challenge` / `BaseChallenge`: Базовые абстракции испытаний.
-*   `ChallengeDefinition`: Содержит метаданные испытания (ID, название, описание, сложность (`ChallengeDifficulty`), область действия, теги, конфликты, требования и флаг `allowMultiple`).
-*   `ChallengeManager`: Управляет жизненным циклом и текущим `GameMode` (CLASSIC, LIGHT, HARDCORE, CHAOS).
-*   `ChallengeRegistry`: Реестр испытаний.
-*   `ChallengeSelector`: Система рулетки/выбора. Умеет выбирать несколько испытаний одновременно, фильтруя их по конфликтам, требованиям и флагам повторения.
-*   `ChallengePersistentState`: Отвечает за сохранение и восстановление состояния (включая активные испытания, таймер и `GameMode`).
-*   `ChallengeEvents`: Централизованная маршрутизация событий через Mixin.
+*   `Challenge` / `BaseChallenge`: Базовые абстракции испытаний. Они определяют методы жизненного цикла (`onActivate`, `onDeactivate`, `tick`) и обработку событий.
+*   `ChallengeManager`: Управляет запуском/остановкой испытаний, таймерами, отслеживает активные испытания и ведет маршрутизацию глобальных событий (`ON_DAMAGE`, `ON_MOVE` и т.д.).
+*   `ChallengeSelector`: Механизм выбора (рулетка). Может выбирать сразу несколько неконфликтующих испытаний, учитывая их сложность, вес и требования.
+*   `ConfigManager`: Система конфигурации (GSON). Позволяет настраивать режимы, длительность, повторы и включение HUD'а (`hardcorechallenges.json`).
+*   `ChallengePersistentState` & `ChallengeStatistics`: Сохраняют активные испытания, время, глобальный GameMode и историю/статистику игрока в NBT (данные мира Overworld).
+*   **Сетевой слой (`CustomPayload`)**: Для обмена данными между сервером и клиентом зарегистрированы пакеты `SyncStatePayload` (периодическое обновление активных челленджей и времени), `RouletteStartPayload` (команда на анимацию рулетки) и `NotificationPayload` (предупреждения о нарушениях).
 
-### Система нарушений и наказаний (Violation & Penalty System)
+### Пользовательский интерфейс (Client UI)
 
-Вместо жестко закодированных последствий, испытания могут регистрировать нарушения:
-1.  Испытание отслеживает действие (например, прыжок или бег).
-2.  При обнаружении нарушения вызывается метод `triggerViolation(player, reason)`.
-3.  Система оборачивает это в `ChallengeViolation` и запрашивает у испытания `ChallengePenalty` (через метод `getPenalty()`).
-4.  Наказание применяется (например, `DeathPenalty` или `WarningPenalty`), учитывая глобальный `GameMode` (например, в режиме LIGHT смерть заменяется уроном).
+*   **HUD**: Минималистичный интерфейс, показывающий активный режим, текущий игровой день и список активных испытаний. Включается/выключается через конфиг.
+*   **Рулетка (`RouletteScreen`)**: Вызывается при старте случайного испытания (`/challenge start-random`). Показывает визуальную анимацию "колеса" и победителей.
+*   **Меню (`ChallengeMenuScreen`)**: Открывается по нажатию клавиши `H`. Отображает текущий режим и активные испытания (в будущем — историю и статистику).
+*   Уведомления: Выводятся в чат (или в будущем через Toast-уведомления) при нарушении условий испытания.
 
-## Примеры тестовых испытаний
+## Как добавить новое испытание
 
-Для проверки архитектуры реализованы следующие технические испытания:
+Добавление нового испытания сводится к созданию класса, наследующего `BaseChallenge`, и его регистрации.
 
-*   **TestChallenge**: Простое испытание, реагирующее на урон.
-*   **TestViolationChallenge**: Отслеживает бег (спринт). Если игрок бежит, регистрируется нарушение, которое по умолчанию карается смертью (`DeathPenalty`), но зависит от режима игры.
-*   **TestMultiChallenge**: Запрещает прыгать (выводит предупреждение). Демонстрирует возможность работы нескольких испытаний одновременно (например, вместе с испытанием на спринт).
-*   **TestWorldEventChallenge**: Глобальное испытание, которое изменяет погоду (включает дождь) на время своей активности и восстанавливает её при отключении.
+### 1. Создание класса испытания
+
+Создайте новый класс, который расширяет `BaseChallenge`.
+
+```java
+package com.example.hardcorechallenges.challenge;
+
+import com.example.hardcorechallenges.api.challenge.BaseChallenge;
+import com.example.hardcorechallenges.api.challenge.ChallengeDefinition;
+import com.example.hardcorechallenges.api.challenge.ChallengeDifficulty;
+import com.example.hardcorechallenges.api.challenge.ChallengeScope;
+import com.example.hardcorechallenges.api.violation.ChallengePenalty;
+import com.example.hardcorechallenges.api.violation.ChallengeViolation;
+import com.example.hardcorechallenges.api.violation.DeathPenalty;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.Identifier;
+import java.util.Collections;
+import java.util.List;
+
+public class NoSprintChallenge extends BaseChallenge {
+
+    public static final Identifier ID = Identifier.of("hardcorechallenges", "no_sprint");
+
+    public NoSprintChallenge() {
+        super(new ChallengeDefinition(
+                ID,
+                "No Sprinting",
+                "Do not sprint, or face the consequences!",
+                "movement",
+                ChallengeDifficulty.MEDIUM,
+                12000,
+                ChallengeScope.GLOBAL,
+                List.of("movement", "sprint"), // Tags
+                Collections.emptyList(), // Conflicts
+                Collections.emptyList(), // Requirements
+                false // Allow multiple
+        ));
+    }
+
+    @Override
+    public void onSprintStart(ServerPlayerEntity player) {
+        if (getState() == com.example.hardcorechallenges.api.challenge.ChallengeState.ACTIVE) {
+            triggerViolation(player, "Sprinting is not allowed!");
+        }
+    }
+
+    @Override
+    public ChallengePenalty getPenalty(ChallengeViolation violation) {
+        return new DeathPenalty(); // Наказание применяется с учетом текущего GameMode
+    }
+}
+```
+
+### 2. Регистрация испытания
+
+В главном классе мода (`HardcoreChallenges.java`) в методе `onInitialize` зарегистрируйте испытание через `ChallengeRegistry`.
+
+```java
+import com.example.hardcorechallenges.challenge.NoSprintChallenge;
+import com.example.hardcorechallenges.api.registry.ChallengeRegistry;
+
+// Внутри onInitialize():
+ChallengeRegistry.register(() -> new NoSprintChallenge());
+```
+
+Готово! Испытание теперь доступно в игре. Оно может быть выбрано случайным образом рулеткой или активировано командой `/challenge start hardcorechallenges:no_sprint`.
 
 ## Команды
 
@@ -40,9 +100,9 @@
 
 *   `/challenge current` - Показывает активные испытания.
 *   `/challenge start <id>` - Запускает испытание по его ID.
-*   `/challenge start-random [count]` - Случайным образом выбирает и запускает указанное количество испытаний с учетом совместимости.
+*   `/challenge start-random [count]` - Запускает рулетку и выбирает указанное количество испытаний.
 *   `/challenge roulette` - Выводит в чат несколько случайных совместимых испытаний (без запуска).
 *   `/challenge stop` - Останавливает все испытания.
 *   `/challenge stop <id>` - Останавливает конкретное испытание.
-*   `/challenge next` - Останавливает все и запускает следующее (базовая реализация).
+*   `/challenge next` - Останавливает все и запускает следующее (через рулетку).
 *   `/challenge list` - Список всех зарегистрированных испытаний.

@@ -17,6 +17,7 @@ public class HardcoreChallenges implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		LOGGER.info("Initializing HardcoreChallenges...");
+		com.example.hardcorechallenges.config.ConfigManager.load();
 
 		// Регистрация испытаний
 		ChallengeRegistry.register(() -> new TestChallenge());
@@ -26,6 +27,8 @@ public class HardcoreChallenges implements ModInitializer {
 
 		// Регистрация сохранения состояния
 		ChallengePersistentState.registerLifecycle();
+		com.example.hardcorechallenges.network.NetworkHandler.registerPackets();
+		com.example.hardcorechallenges.network.StateSyncTask.register();
 
 		// Регистрация команд
 		ChallengeCommand.register();

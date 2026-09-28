@@ -12,6 +12,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ChallengeManager {
+    private final com.example.hardcorechallenges.state.ChallengeStatistics statistics = new com.example.hardcorechallenges.state.ChallengeStatistics();
+
+    public com.example.hardcorechallenges.state.ChallengeStatistics getStatistics() { return statistics; }
+
     private com.example.hardcorechallenges.api.challenge.GameMode gameMode = com.example.hardcorechallenges.api.challenge.GameMode.CLASSIC;
 
     public com.example.hardcorechallenges.api.challenge.GameMode getGameMode() { return gameMode; }
@@ -20,6 +24,10 @@ public class ChallengeManager {
     public void handleViolation(com.example.hardcorechallenges.api.violation.ChallengeViolation violation, com.example.hardcorechallenges.api.violation.ChallengePenalty penalty) {
         if (penalty != null) {
             penalty.apply(violation, this);
+            if (violation.player() != null) {
+                com.example.hardcorechallenges.network.NetworkHandler.sendToPlayer(violation.player(), new com.example.hardcorechallenges.network.NotificationPayload("Challenge Violation", violation.reason(), 1));
+            }
+            statistics.recordViolation();
         }
     }
 
@@ -91,6 +99,7 @@ public class ChallengeManager {
             challenge.onActivate(context);
             challenge.setState(ChallengeState.ACTIVE);
             activeChallenges.add(challenge);
+            statistics.addHistory("Started: " + challenge.getDefinition().name());
         }
     }
 
@@ -99,6 +108,7 @@ public class ChallengeManager {
             if (challenge.getDefinition().id().equals(id)) {
                 challenge.onDeactivate(new ChallengeContext(server, null));
                 challenge.setState(ChallengeState.INACTIVE);
+            statistics.addHistory("Stopped: " + challenge.getDefinition().name());
                 return true;
             }
             return false;
@@ -110,6 +120,7 @@ public class ChallengeManager {
         for (Challenge challenge : activeChallenges) {
             challenge.onDeactivate(context);
             challenge.setState(ChallengeState.INACTIVE);
+            statistics.addHistory("Stopped: " + challenge.getDefinition().name());
         }
         activeChallenges.clear();
     }
@@ -153,6 +164,7 @@ public class ChallengeManager {
 
     public void restoreChallenge(Challenge challenge) {
         activeChallenges.add(challenge);
+            statistics.addHistory("Started: " + challenge.getDefinition().name());
     }
 
     public void clearChallenges() {

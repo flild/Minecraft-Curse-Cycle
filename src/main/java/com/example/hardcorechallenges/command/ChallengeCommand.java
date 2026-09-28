@@ -8,7 +8,6 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
@@ -27,7 +26,7 @@ public class ChallengeCommand {
 
     private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
         dispatcher.register(CommandManager.literal("challenge")
-            .requires(source -> source.hasPermissionLevel(2)) // Только операторы
+            .requires(source -> source.hasPermissionLevel(2))
             .then(CommandManager.literal("current")
                 .executes(context -> {
                     List<Challenge> active = ChallengeManager.getInstance().getActiveChallenges();
@@ -59,19 +58,19 @@ public class ChallengeCommand {
             )
             .then(CommandManager.literal("start-random")
                 .executes(context -> {
-                    return startRandom(context.getSource(), 1);
+                    return startRandomWithRoulette(context.getSource(), 1);
                 })
                 .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 10))
                     .executes(context -> {
                         int count = IntegerArgumentType.getInteger(context, "count");
-                        return startRandom(context.getSource(), count);
+                        return startRandomWithRoulette(context.getSource(), count);
                     })
                 )
             )
             .then(CommandManager.literal("roulette")
                 .executes(context -> {
                     ChallengeSelector selector = new ChallengeSelector();
-                    List<Identifier> available = selector.selectRandomChallenges(3); // Предлагаем 3 случайных
+                    List<Identifier> available = selector.selectRandomChallenges(3);
 
                     if (available.isEmpty()) {
                         context.getSource().sendMessage(Text.literal("No challenges available for roulette."));
@@ -108,7 +107,7 @@ public class ChallengeCommand {
 
                     Collection<Identifier> allIds = ChallengeRegistry.getRegisteredIds();
                     if (!allIds.isEmpty()) {
-                        Identifier nextId = allIds.iterator().next(); // Временно берем первое попавшееся
+                        Identifier nextId = allIds.iterator().next();
                         manager.startChallenge(nextId, context.getSource().getServer());
                         context.getSource().sendMessage(Text.literal("Started next challenge: " + nextId));
                     } else {
@@ -130,7 +129,7 @@ public class ChallengeCommand {
         );
     }
 
-    private static int startRandom(ServerCommandSource source, int count) {
+    private static int startRandomWithRoulette(ServerCommandSource source, int count) {
         ChallengeSelector selector = new ChallengeSelector();
         List<Identifier> selected = selector.selectRandomChallenges(count);
 
@@ -139,12 +138,27 @@ public class ChallengeCommand {
             return 0;
         }
 
+        List<Identifier> candidates = selector.selectRandomChallenges(com.example.hardcorechallenges.config.ConfigManager.getConfig().rouletteVariantsCount);
+        if (candidates.isEmpty()) candidates.addAll(selected);
+
+        List<String> selectedNames = selected.stream()
+                .map(id -> ChallengeRegistry.getSupplier(id).get().getDefinition().name())
+                .collect(Collectors.toList());
+        List<String> candidatesNames = candidates.stream()
+                .map(id -> ChallengeRegistry.getSupplier(id).get().getDefinition().name())
+                .collect(Collectors.toList());
+
+        com.example.hardcorechallenges.network.NetworkHandler.sendToAll(
+                source.getServer(),
+                new com.example.hardcorechallenges.network.RouletteStartPayload(selectedNames, candidatesNames)
+        );
+
         for (Identifier id : selected) {
             ChallengeManager.getInstance().startChallenge(id, source.getServer());
         }
 
         String joined = selected.stream().map(Identifier::toString).collect(Collectors.joining(", "));
-        source.sendMessage(Text.literal("Started random challenges: " + joined));
+        source.sendMessage(Text.literal("Started random challenges via roulette: " + joined));
 
         return selected.size();
     }
