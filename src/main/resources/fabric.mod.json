@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "hardcorechallenges",
+	"version": "${version}",
+	"name": "Hardcore Challenges",
+	"description": "Hardcore challenges mod for Minecraft.",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/hardcorechallenges/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.example.hardcorechallenges.HardcoreChallenges"
+		],
+		"client": [
+			"com.example.hardcorechallenges.client.HardcoreChallengesClient"
+		]
+	},
+	"mixins": [
+		"hardcorechallenges.mixins.json",
+		{
+			"config": "hardcorechallenges.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
