@@ -1,0 +1,20 @@
+{
+  "modmenu.name": "Curse-Cycle",
+  "modmenu.description": "Каждые 5 дней игрового времени активируется новое испытание!",
+  "key.cursecycle.category": "Curse-Cycle",
+  "key.cursecycle.open_menu": "Открыть меню Curse-Cycle",
+  "text.cursecycle.day": "День %d",
+  "text.cursecycle.time_to_next": "До след. испытания: %s",
+  "text.cursecycle.next_challenge": "Следующее испытание: %s",
+  "text.cursecycle.active_challenges": "Активные испытания",
+  "text.cursecycle.no_active": "Нет активных испытаний",
+  "text.cursecycle.difficulty.easy": "Лёгкий",
+  "text.cursecycle.difficulty.medium": "Средний",
+  "text.cursecycle.difficulty.hard": "Сложный",
+  "text.cursecycle.menu.title": "Curse-Cycle — Меню",
+  "text.cursecycle.menu.tab.active": "Активные",
+  "text.cursecycle.menu.tab.next": "Следующее",
+  "text.cursecycle.menu.tab.history": "История",
+  "text.cursecycle.menu.tab.settings": "Настройки",
+  "text.cursecycle.wheel.title": "Колесо Фортуны Curse-Cycle!"
+}
