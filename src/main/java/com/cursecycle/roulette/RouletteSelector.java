@@ -72,7 +72,23 @@ public class RouletteSelector {
         state.setLastDrawnChallengeId(winner.getId());
         state.markDirty();
 
-        return new WheelResult(selectedForWheel, winner);
+        List<Challenge> subChallenges = new ArrayList<>();
+        if ("double_challenge".equals(winner.getId())) {
+            List<Challenge> availableReg = ChallengeRegistry.getAll().stream()
+                    .filter(Challenge::isEnabled)
+                    .filter(c -> !"double_challenge".equals(c.getId()))
+                    .toList();
+            List<Challenge> copy = new ArrayList<>(availableReg);
+            Collections.shuffle(copy);
+            if (copy.size() >= 2) {
+                subChallenges.add(copy.get(0));
+                subChallenges.add(copy.get(1));
+            } else {
+                subChallenges.addAll(copy);
+            }
+        }
+
+        return new WheelResult(selectedForWheel, winner, subChallenges);
     }
 
     private static void refillPool(List<String> pool, List<Challenge> easy, List<Challenge> medium, List<Challenge> hard, String lastDrawnId) {
@@ -118,10 +134,24 @@ public class RouletteSelector {
     public static class WheelResult {
         public final List<Challenge> wheelItems;
         public final Challenge winner;
+        public final List<Challenge> subChallenges;
 
-        public WheelResult(List<Challenge> wheelItems, Challenge winner) {
+        public WheelResult(List<Challenge> wheelItems, Challenge winner, List<Challenge> subChallenges) {
             this.wheelItems = wheelItems;
             this.winner = winner;
+            this.subChallenges = subChallenges != null ? subChallenges : Collections.emptyList();
+        }
+
+        public String getEncodedWinnerId() {
+            if ("double_challenge".equals(winner.getId()) && !subChallenges.isEmpty()) {
+                StringBuilder sb = new StringBuilder("double_challenge:");
+                for (int i = 0; i < subChallenges.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(subChallenges.get(i).getId());
+                }
+                return sb.toString();
+            }
+            return winner.getId();
         }
     }
 }

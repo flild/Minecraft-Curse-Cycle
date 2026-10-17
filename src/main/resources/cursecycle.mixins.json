@@ -2,7 +2,9 @@
   "required": true,
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "mixins": [
+    "PlayerEntityMixin"
+  ],
   "client": [],
   "injectors": {
     "defaultRequire": 1

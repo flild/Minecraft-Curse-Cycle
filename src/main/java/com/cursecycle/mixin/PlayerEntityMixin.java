@@ -1,0 +1,27 @@
+package com.cursecycle.mixin;
+
+import com.cursecycle.event.ChallengeEventManager;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.server.network.ServerPlayerEntity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(PlayerEntity.class)
+public abstract class PlayerEntityMixin {
+
+    @Inject(method = "jump", at = @At("HEAD"))
+    private void onPlayerJump(CallbackInfo ci) {
+        PlayerEntity self = (PlayerEntity) (Object) this;
+        if (self instanceof ServerPlayerEntity serverPlayer) {
+            if (serverPlayer.getServer() != null) {
+                ChallengeEventManager.dispatchToActive(
+                    serverPlayer.getServer(),
+                    serverPlayer,
+                    c -> c.onPlayerJump(serverPlayer.getServer(), serverPlayer)
+                );
+            }
+        }
+    }
+}
