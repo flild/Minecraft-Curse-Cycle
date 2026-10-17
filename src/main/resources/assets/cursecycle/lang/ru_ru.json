@@ -16,5 +16,7 @@
   "text.cursecycle.menu.tab.next": "Следующее",
   "text.cursecycle.menu.tab.history": "История",
   "text.cursecycle.menu.tab.settings": "Настройки",
-  "text.cursecycle.wheel.title": "Колесо Фортуны Curse-Cycle!"
+  "text.cursecycle.wheel.title": "Колесо Фортуны Curse-Cycle!",
+  "challenge.cursecycle.no_sprint.name": "Без бега",
+  "challenge.cursecycle.no_sprint.desc": "Запрещает бегать на спринте"
 }
