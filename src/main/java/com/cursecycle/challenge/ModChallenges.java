@@ -1,10 +1,12 @@
 package com.cursecycle.challenge;
 
+import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.challenge.special.DoubleChallenge;
 import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new NoSprintChallenge());
         ChallengeRegistry.register(new TestEasyChallenge());
         ChallengeRegistry.register(new TestEasyChallenge2());
         ChallengeRegistry.register(new TestEasyChallenge3());

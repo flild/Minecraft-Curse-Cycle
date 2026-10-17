@@ -3,7 +3,8 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "PlayerEntityMixin"
+    "PlayerEntityMixin",
+    "EntitySprintingMixin"
   ],
   "client": [],
   "injectors": {
