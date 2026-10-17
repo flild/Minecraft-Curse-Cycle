@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "cursecycle",
+  "version": "${version}",
+  "name": "Curse-Cycle",
+  "description": "A Minecraft mod where every 5 in-game days a new challenge alters gameplay.",
+  "authors": [
+    "Jules"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/cursecycle/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.cursecycle.CurseCycleMod"
+    ],
+    "client": [
+      "com.cursecycle.CurseCycleClient"
+    ]
+  },
+  "mixins": [
+    "cursecycle.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
