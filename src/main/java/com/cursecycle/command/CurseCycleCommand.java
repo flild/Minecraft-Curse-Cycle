@@ -77,6 +77,16 @@ public class CurseCycleCommand {
 
         if (nextId == null || nextId.isEmpty()) {
             source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание еще не выбрано.").formatted(Formatting.GRAY), false);
+        } else if (nextId.startsWith("double_challenge:")) {
+            String[] subs = nextId.substring("double_challenge:".length()).split(",");
+            StringBuilder names = new StringBuilder("2х (");
+            for (int i = 0; i < subs.length; i++) {
+                Challenge sc = ChallengeRegistry.get(subs[i]);
+                if (i > 0) names.append(" & ");
+                names.append(sc != null ? sc.getName() : subs[i]);
+            }
+            names.append(")");
+            source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание: " + names).formatted(Formatting.AQUA), false);
         } else {
             Challenge c = ChallengeRegistry.get(nextId);
             String name = c != null ? c.getName() : nextId;
@@ -95,44 +105,27 @@ public class CurseCycleCommand {
             return 0;
         }
 
-        state.setNextChallengeId(result.winner.getId());
+        String encodedWinner = result.getEncodedWinnerId();
+        state.setNextChallengeId(encodedWinner);
         state.setSpinTriggeredForCurrentCycle(true);
 
         List<String> candidateIds = result.wheelItems.stream().map(Challenge::getId).toList();
-        NetworkHandler.triggerWheelForAll(source.getServer(), candidateIds, result.winner.getId());
+        NetworkHandler.triggerWheelForAll(source.getServer(), candidateIds, encodedWinner);
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Принудительно запущено колесо фортуны! Победитель: " + result.winner.getName()).formatted(Formatting.GREEN), true);
         return 1;
     }
 
     private static int activateChallenge(ServerCommandSource source, String id) {
-        Challenge c = ChallengeRegistry.get(id);
-        if (c == null) {
-            source.sendError(Text.literal("[Curse-Cycle] Ошибка: испытание с ID '" + id + "' не найдено!"));
+        if (id == null || id.isEmpty()) {
+            source.sendError(Text.literal("[Curse-Cycle] Укажите ID испытания!"));
             return 0;
         }
 
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
+        CurseCycleMod.activateChallenge(source.getServer(), state, id);
 
-        // Stop active challenges if max limit reached
-        while (state.getActiveChallengeIds().size() >= CurseCycleMod.getConfig().maxActiveChallenges && !state.getActiveChallengeIds().isEmpty()) {
-            String oldId = state.getActiveChallengeIds().remove(0);
-            Challenge oldC = ChallengeRegistry.get(oldId);
-            if (oldC != null) {
-                for (ServerPlayerEntity p : source.getServer().getPlayerManager().getPlayerList()) {
-                    oldC.onStop(source.getServer(), p);
-                }
-            }
-        }
-
-        state.getActiveChallengeIds().add(c.getId());
-        state.addHistory(c.getId(), state.getCurrentDay());
-
-        for (ServerPlayerEntity p : source.getServer().getPlayerManager().getPlayerList()) {
-            c.onStart(source.getServer(), p);
-        }
-
-        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Активировано испытание: " + c.getName()).formatted(Formatting.GREEN), true);
+        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Команда активации выполнена для ID: " + id).formatted(Formatting.GREEN), true);
         return 1;
     }
 
@@ -165,9 +158,12 @@ public class CurseCycleCommand {
 
     private static int setDay(ServerCommandSource source, long day) {
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
-        long intervalTicks = CurseCycleMod.getConfig().challengeIntervalDays * 24000L;
+        long newTimeOfDay = (day - 1) * 24000L;
+        if (source.getServer().getOverworld() != null) {
+            source.getServer().getOverworld().setTimeOfDay(newTimeOfDay);
+        }
         state.setCurrentDay(day);
-        state.setTotalInGameTicks((day - 1) * 24000L);
+        state.setTotalInGameTicks(newTimeOfDay);
         state.setSpinTriggeredForCurrentCycle(false);
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Игровой день успешно изменен на День " + day).formatted(Formatting.GREEN), true);

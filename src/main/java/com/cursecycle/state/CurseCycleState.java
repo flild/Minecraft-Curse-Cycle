@@ -23,6 +23,9 @@ public class CurseCycleState extends PersistentState {
     private final List<String> activeChallengeIds = new ArrayList<>();
     private String nextChallengeId = null;
     private boolean spinTriggeredForCurrentCycle = false;
+    private long lastActivatedCycle = -1;
+    private long lastSpinCycle = -1;
+    private final Map<UUID, List<String>> personalActiveChallenges = new HashMap<>();
     private final List<HistoryEntry> history = new ArrayList<>();
     private final List<String> currentPool = new ArrayList<>();
     private String lastDrawnChallengeId = null;
@@ -89,6 +92,28 @@ public class CurseCycleState extends PersistentState {
         }
 
         state.spinTriggeredForCurrentCycle = tag.getBoolean("spinTriggeredForCurrentCycle");
+        if (tag.contains("lastActivatedCycle")) {
+            state.lastActivatedCycle = tag.getLong("lastActivatedCycle");
+        }
+        if (tag.contains("lastSpinCycle")) {
+            state.lastSpinCycle = tag.getLong("lastSpinCycle");
+        }
+
+        state.personalActiveChallenges.clear();
+        if (tag.contains("personalActiveChallenges")) {
+            NbtCompound personalTag = tag.getCompound("personalActiveChallenges");
+            for (String uuidStr : personalTag.getKeys()) {
+                try {
+                    UUID uuid = UUID.fromString(uuidStr);
+                    NbtList list = personalTag.getList(uuidStr, NbtElement.STRING_TYPE);
+                    List<String> pList = new ArrayList<>();
+                    for (int i = 0; i < list.size(); i++) {
+                        pList.add(list.getString(i));
+                    }
+                    state.personalActiveChallenges.put(uuid, pList);
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
 
         state.history.clear();
         NbtList historyList = tag.getList("history", NbtElement.COMPOUND_TYPE);
@@ -126,6 +151,18 @@ public class CurseCycleState extends PersistentState {
         }
 
         tag.putBoolean("spinTriggeredForCurrentCycle", spinTriggeredForCurrentCycle);
+        tag.putLong("lastActivatedCycle", lastActivatedCycle);
+        tag.putLong("lastSpinCycle", lastSpinCycle);
+
+        NbtCompound personalTag = new NbtCompound();
+        for (Map.Entry<UUID, List<String>> entry : personalActiveChallenges.entrySet()) {
+            NbtList list = new NbtList();
+            for (String id : entry.getValue()) {
+                list.add(NbtString.of(id));
+            }
+            personalTag.put(entry.getKey().toString(), list);
+        }
+        tag.put("personalActiveChallenges", personalTag);
 
         NbtList historyList = new NbtList();
         for (HistoryEntry entry : history) {
@@ -160,6 +197,18 @@ public class CurseCycleState extends PersistentState {
 
     public boolean isSpinTriggeredForCurrentCycle() { return spinTriggeredForCurrentCycle; }
     public void setSpinTriggeredForCurrentCycle(boolean spinTriggeredForCurrentCycle) { this.spinTriggeredForCurrentCycle = spinTriggeredForCurrentCycle; markDirty(); }
+
+    public long getLastActivatedCycle() { return lastActivatedCycle; }
+    public void setLastActivatedCycle(long lastActivatedCycle) { this.lastActivatedCycle = lastActivatedCycle; markDirty(); }
+
+    public long getLastSpinCycle() { return lastSpinCycle; }
+    public void setLastSpinCycle(long lastSpinCycle) { this.lastSpinCycle = lastSpinCycle; markDirty(); }
+
+    public Map<UUID, List<String>> getPersonalActiveChallenges() { return personalActiveChallenges; }
+
+    public List<String> getPersonalActiveChallengeIds(UUID uuid) {
+        return personalActiveChallenges.computeIfAbsent(uuid, k -> new ArrayList<>());
+    }
 
     public List<HistoryEntry> getHistory() { return history; }
     public void addHistory(String challengeId, long day) {

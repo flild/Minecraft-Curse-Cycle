@@ -1,5 +1,6 @@
 package com.cursecycle.challenge;
 
+import com.cursecycle.challenge.special.DoubleChallenge;
 import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
@@ -10,5 +11,6 @@ public class ModChallenges {
         ChallengeRegistry.register(new TestMediumChallenge());
         ChallengeRegistry.register(new TestMediumChallenge2());
         ChallengeRegistry.register(new TestHardChallenge());
+        ChallengeRegistry.register(new DoubleChallenge());
     }
 }

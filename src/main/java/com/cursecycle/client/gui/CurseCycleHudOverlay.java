@@ -51,7 +51,7 @@ public class CurseCycleHudOverlay {
         currentY += 5;
 
         // Active Challenges Section
-        context.drawTextWithShadow(textRenderer, Text.literal("Активные:"), x + padding, currentY, 0xFF8888AA);
+        context.drawTextWithShadow(textRenderer, Text.literal("Активные испытания:"), x + padding, currentY, 0xFF8888AA);
         currentY += 12;
 
         if (activeIds.isEmpty()) {
@@ -64,21 +64,42 @@ public class CurseCycleHudOverlay {
                     String name = "⚡ " + challenge.getName();
                     int color = challenge.getDifficulty().getColor().getColorValue() != null ? challenge.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
                     context.drawTextWithShadow(textRenderer, Text.literal(name), x + padding, currentY, color);
+
+                    String diffText = "[" + challenge.getDifficulty().getDisplayName() + "]";
+                    int diffW = textRenderer.getWidth(diffText);
+                    context.drawTextWithShadow(textRenderer, Text.literal(diffText), x + width - padding - diffW, currentY, color);
+                    currentY += 11;
+
+                    String desc = challenge.getShortDescription();
+                    if (desc.length() > 28) desc = desc.substring(0, 26) + "..";
+                    context.drawTextWithShadow(textRenderer, Text.literal("   " + desc), x + padding, currentY, 0xAAAAAA);
+                    currentY += 13;
                 } else {
                     context.drawTextWithShadow(textRenderer, Text.literal("⚡ " + id), x + padding, currentY, 0xFFFFFFFF);
+                    currentY += 12;
                 }
-                currentY += 12;
             }
         }
 
         // Next challenge preview if selected
         if (nextId != null && !nextId.isEmpty()) {
-            Challenge nextChallenge = ChallengeRegistry.get(nextId);
-            String nextText = "След: " + (nextChallenge != null ? nextChallenge.getName() : nextId);
-            int nextColor = (nextChallenge != null && nextChallenge.getDifficulty().getColor().getColorValue() != null)
-                    ? nextChallenge.getDifficulty().getColor().getColorValue()
-                    : 0xFF55FF55;
-            context.drawTextWithShadow(textRenderer, Text.literal(nextText), x + padding, currentY, nextColor);
+            String nextText = "След: ";
+            if (nextId.startsWith("double_challenge:")) {
+                String subPart = nextId.substring("double_challenge:".length());
+                String[] subs = subPart.split(",");
+                StringBuilder names = new StringBuilder("2х (");
+                for (int i = 0; i < subs.length; i++) {
+                    Challenge sc = ChallengeRegistry.get(subs[i]);
+                    if (i > 0) names.append(" & ");
+                    names.append(sc != null ? sc.getName() : subs[i]);
+                }
+                names.append(")");
+                nextText += names.toString();
+            } else {
+                Challenge nextChallenge = ChallengeRegistry.get(nextId);
+                nextText += (nextChallenge != null ? nextChallenge.getName() : nextId);
+            }
+            context.drawTextWithShadow(textRenderer, Text.literal(nextText), x + padding, currentY, 0xFF55FF55);
         }
     }
 }

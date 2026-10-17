@@ -17,19 +17,34 @@ import java.util.List;
 public class WheelScreen extends Screen {
 
     private final List<Challenge> wheelItems = new ArrayList<>();
-    private final String winnerId;
+    private final String rawWinnerId;
+    private final String actualWinnerBaseId;
+    private final List<Challenge> subChallenges = new ArrayList<>();
     private Challenge winningChallenge;
 
     private float currentAngle = 0;
-    private float spinSpeed = 25.0f;
     private int ticksElapsed = 0;
     private static final int TOTAL_SPIN_TICKS = 100; // ~5 seconds (20 ticks/sec * 5)
     private boolean isFinished = false;
     private int lastSoundSegment = -1;
+    private float targetAngle = 0;
+    private float totalSpinAngle = 0;
 
     public WheelScreen(List<String> candidateIds, String winnerId) {
         super(Text.translatable("text.cursecycle.wheel.title"));
-        this.winnerId = winnerId;
+        this.rawWinnerId = winnerId;
+
+        String baseId = winnerId;
+        if (winnerId != null && winnerId.contains(":")) {
+            String[] parts = winnerId.split(":", 2);
+            baseId = parts[0];
+            String[] subIds = parts[1].split(",");
+            for (String sub : subIds) {
+                Challenge c = ChallengeRegistry.get(sub);
+                if (c != null) subChallenges.add(c);
+            }
+        }
+        this.actualWinnerBaseId = baseId;
 
         for (String id : candidateIds) {
             Challenge c = ChallengeRegistry.get(id);
@@ -37,7 +52,24 @@ public class WheelScreen extends Screen {
                 wheelItems.add(c);
             }
         }
-        this.winningChallenge = ChallengeRegistry.get(winnerId);
+        this.winningChallenge = ChallengeRegistry.get(actualWinnerBaseId);
+
+        int winnerIndex = -1;
+        for (int i = 0; i < wheelItems.size(); i++) {
+            if (wheelItems.get(i).getId().equals(actualWinnerBaseId)) {
+                winnerIndex = i;
+                break;
+            }
+        }
+
+        if (winnerIndex != -1 && !wheelItems.isEmpty()) {
+            float segmentAngle = 360.0f / wheelItems.size();
+            float rawTarget = 270.0f - (winnerIndex * segmentAngle);
+            targetAngle = (rawTarget % 360.0f + 360.0f) % 360.0f;
+            totalSpinAngle = 1800.0f + targetAngle;
+        } else {
+            totalSpinAngle = 1800.0f;
+        }
     }
 
     @Override
@@ -51,12 +83,10 @@ public class WheelScreen extends Screen {
         ticksElapsed++;
 
         if (ticksElapsed <= TOTAL_SPIN_TICKS) {
-            // Decelerate smoothly
             float progress = (float) ticksElapsed / TOTAL_SPIN_TICKS;
-            spinSpeed = 25.0f * (1.0f - (progress * progress));
-            currentAngle = (currentAngle + spinSpeed) % 360.0f;
+            float easeOut = 1.0f - (float) Math.pow(1.0f - progress, 3);
+            currentAngle = (totalSpinAngle * easeOut) % 360.0f;
 
-            // Play sound tick on segment pass
             if (!wheelItems.isEmpty()) {
                 int segmentCount = wheelItems.size();
                 float segmentAngle = 360.0f / segmentCount;
@@ -70,6 +100,7 @@ public class WheelScreen extends Screen {
             }
         } else if (!isFinished) {
             isFinished = true;
+            currentAngle = targetAngle;
             MinecraftClient.getInstance().getSoundManager().play(
                 PositionedSoundInstance.master(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f)
             );
@@ -123,8 +154,8 @@ public class WheelScreen extends Screen {
 
         // Winner Announcement Card when finished
         if (isFinished) {
-            int cardW = 220;
-            int cardH = 70;
+            int cardW = 240;
+            int cardH = !subChallenges.isEmpty() ? 85 : 70;
             int cardX = centerX - (cardW / 2);
             int cardY = centerY - (cardH / 2);
 
@@ -135,13 +166,20 @@ public class WheelScreen extends Screen {
 
             if (winningChallenge != null) {
                 int diffColor = winningChallenge.getDifficulty().getColor().getColorValue() != null ? winningChallenge.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal(winningChallenge.getName()).formatted(Formatting.BOLD), centerX, cardY + 24, diffColor);
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, cardY + 38, diffColor);
+                context.drawCenteredTextWithShadow(textRenderer, Text.literal(winningChallenge.getName()).formatted(Formatting.BOLD), centerX, cardY + 22, diffColor);
+
+                if (!subChallenges.isEmpty()) {
+                    String subNames = subChallenges.stream().map(Challenge::getName).reduce((a, b) -> a + " & " + b).orElse("");
+                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("(" + subNames + ")").formatted(Formatting.AQUA), centerX, cardY + 36, 0x55FFFF);
+                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, cardY + 50, diffColor);
+                } else {
+                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, cardY + 38, diffColor);
+                }
             } else {
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal(winnerId), centerX, cardY + 26, 0xFFFFFF);
+                context.drawCenteredTextWithShadow(textRenderer, Text.literal(rawWinnerId), centerX, cardY + 26, 0xFFFFFF);
             }
 
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal("(Нажмите ЛКМ или ESC, чтобы закрыть)").formatted(Formatting.DARK_GRAY), centerX, cardY + 54, 0x888888);
+            context.drawCenteredTextWithShadow(textRenderer, Text.literal("(Нажмите ЛКМ или ESC, чтобы закрыть)").formatted(Formatting.DARK_GRAY), centerX, cardY + cardH - 14, 0x888888);
         }
 
         super.render(context, mouseX, mouseY, delta);

@@ -70,6 +70,28 @@ public abstract class Challenge {
     public void onTick(MinecraftServer server, ServerPlayerEntity player) {}
 
     /**
+     * Called when a player joins the server while this challenge is active.
+     */
+    public void onPlayerJoin(MinecraftServer server, ServerPlayerEntity player) {
+        onStart(server, player);
+    }
+
+    /**
+     * Called when a player leaves the server while this challenge is active.
+     */
+    public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) {
+        onStop(server, player);
+    }
+
+    /** Event Hooks for Challenge Mechanics **/
+    public void onPlayerJump(MinecraftServer server, ServerPlayerEntity player) {}
+    public void onPlayerDamage(MinecraftServer server, ServerPlayerEntity player, net.minecraft.entity.damage.DamageSource source, float amount) {}
+    public void onBlockBreak(MinecraftServer server, ServerPlayerEntity player, net.minecraft.util.math.BlockPos pos, net.minecraft.block.BlockState state) {}
+    public void onBlockPlace(MinecraftServer server, ServerPlayerEntity player, net.minecraft.util.math.BlockPos pos, net.minecraft.block.BlockState state) {}
+    public void onItemUse(MinecraftServer server, ServerPlayerEntity player, net.minecraft.item.ItemStack stack) {}
+    public void onEntityInteract(MinecraftServer server, ServerPlayerEntity player, net.minecraft.entity.Entity entity) {}
+
+    /**
      * Save custom state for this challenge.
      */
     public NbtCompound writeNbt(NbtCompound nbt) {
