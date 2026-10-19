@@ -3,12 +3,15 @@ package com.cursecycle.command;
 import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.challenge.ChallengeUtils;
 import com.cursecycle.network.NetworkHandler;
 import com.cursecycle.roulette.RouletteSelector;
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.state.CycleManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -21,23 +24,12 @@ import java.util.List;
 public class CurseCycleCommand {
 
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(CommandManager.literal("fdc")
-            .then(CommandManager.literal("active").executes(ctx -> showActive(ctx.getSource())))
-            .then(CommandManager.literal("next").executes(ctx -> showNext(ctx.getSource())))
-            .then(CommandManager.literal("trigger_spin").executes(ctx -> triggerSpin(ctx.getSource())))
-            .then(CommandManager.literal("activate")
-                .then(CommandManager.argument("id", StringArgumentType.string())
-                    .executes(ctx -> activateChallenge(ctx.getSource(), StringArgumentType.getString(ctx, "id")))))
-            .then(CommandManager.literal("list").executes(ctx -> listChallenges(ctx.getSource())))
-            .then(CommandManager.literal("history").executes(ctx -> showHistory(ctx.getSource())))
-            .then(CommandManager.literal("setday")
-                .then(CommandManager.argument("day", LongArgumentType.longArg(1))
-                    .executes(ctx -> setDay(ctx.getSource(), LongArgumentType.getLong(ctx, "day")))))
-            .then(CommandManager.literal("reset").executes(ctx -> resetState(ctx.getSource())))
-        );
+        dispatcher.register(buildCommands("fdc"));
+        dispatcher.register(buildCommands("cursecycle"));
+    }
 
-        // Alias for /cursecycle
-        dispatcher.register(CommandManager.literal("cursecycle")
+    private static LiteralArgumentBuilder<ServerCommandSource> buildCommands(String rootAlias) {
+        return CommandManager.literal(rootAlias)
             .then(CommandManager.literal("active").executes(ctx -> showActive(ctx.getSource())))
             .then(CommandManager.literal("next").executes(ctx -> showNext(ctx.getSource())))
             .then(CommandManager.literal("trigger_spin").executes(ctx -> triggerSpin(ctx.getSource())))
@@ -49,8 +41,7 @@ public class CurseCycleCommand {
             .then(CommandManager.literal("setday")
                 .then(CommandManager.argument("day", LongArgumentType.longArg(1))
                     .executes(ctx -> setDay(ctx.getSource(), LongArgumentType.getLong(ctx, "day")))))
-            .then(CommandManager.literal("reset").executes(ctx -> resetState(ctx.getSource())))
-        );
+            .then(CommandManager.literal("reset").executes(ctx -> resetState(ctx.getSource())));
     }
 
     private static int showActive(ServerCommandSource source) {
@@ -77,21 +68,9 @@ public class CurseCycleCommand {
 
         if (nextId == null || nextId.isEmpty()) {
             source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание еще не выбрано.").formatted(Formatting.GRAY), false);
-        } else if (nextId.startsWith("double_challenge:")) {
-            String[] subs = nextId.substring("double_challenge:".length()).split(",");
-            StringBuilder names = new StringBuilder("2х (");
-            for (int i = 0; i < subs.length; i++) {
-                Challenge sc = ChallengeRegistry.get(subs[i]);
-                if (i > 0) names.append(" & ");
-                names.append(sc != null ? sc.getName() : subs[i]);
-            }
-            names.append(")");
-            source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание: " + names).formatted(Formatting.AQUA), false);
         } else {
-            Challenge c = ChallengeRegistry.get(nextId);
-            String name = c != null ? c.getName() : nextId;
-            Formatting f = c != null ? c.getDifficulty().getColor() : Formatting.WHITE;
-            source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание: " + name + " (" + nextId + ")").formatted(f), false);
+            String displayName = ChallengeUtils.getFormattedDisplayName(nextId);
+            source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание: " + displayName).formatted(Formatting.AQUA), false);
         }
         return 1;
     }
@@ -123,7 +102,7 @@ public class CurseCycleCommand {
         }
 
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
-        CurseCycleMod.activateChallenge(source.getServer(), state, id);
+        CycleManager.activateChallenge(source.getServer(), state, id);
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Команда активации выполнена для ID: " + id).formatted(Formatting.GREEN), true);
         return 1;
@@ -148,9 +127,8 @@ public class CurseCycleCommand {
         } else {
             source.sendFeedback(() -> Text.literal("[Curse-Cycle] История испытаний:").formatted(Formatting.GOLD), false);
             for (CurseCycleState.HistoryEntry entry : history) {
-                Challenge c = ChallengeRegistry.get(entry.challengeId);
-                String name = c != null ? c.getName() : entry.challengeId;
-                source.sendFeedback(() -> Text.literal(" - День " + entry.day + ": " + name), false);
+                String displayName = ChallengeUtils.getFormattedDisplayName(entry.challengeId);
+                source.sendFeedback(() -> Text.literal(" - День " + entry.day + ": " + displayName), false);
             }
         }
         return 1;
@@ -173,7 +151,6 @@ public class CurseCycleCommand {
     private static int resetState(ServerCommandSource source) {
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
 
-        // Stop current active challenges
         for (String id : new ArrayList<>(state.getActiveChallengeIds())) {
             Challenge c = ChallengeRegistry.get(id);
             if (c != null) {

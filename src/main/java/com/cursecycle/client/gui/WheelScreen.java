@@ -2,6 +2,7 @@ package com.cursecycle.client.gui;
 
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.challenge.ChallengeUtils;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -33,18 +34,13 @@ public class WheelScreen extends Screen {
     public WheelScreen(List<String> candidateIds, String winnerId) {
         super(Text.translatable("text.cursecycle.wheel.title"));
         this.rawWinnerId = winnerId;
+        this.actualWinnerBaseId = ChallengeUtils.getBaseChallengeId(winnerId);
 
-        String baseId = winnerId;
-        if (winnerId != null && winnerId.contains(":")) {
-            String[] parts = winnerId.split(":", 2);
-            baseId = parts[0];
-            String[] subIds = parts[1].split(",");
-            for (String sub : subIds) {
-                Challenge c = ChallengeRegistry.get(sub);
-                if (c != null) subChallenges.add(c);
-            }
+        List<String> subIds = ChallengeUtils.parseSubChallengeIds(winnerId);
+        for (String sub : subIds) {
+            Challenge c = ChallengeRegistry.get(sub);
+            if (c != null) subChallenges.add(c);
         }
-        this.actualWinnerBaseId = baseId;
 
         for (String id : candidateIds) {
             Challenge c = ChallengeRegistry.get(id);

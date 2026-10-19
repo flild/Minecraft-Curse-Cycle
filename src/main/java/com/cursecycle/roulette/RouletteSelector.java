@@ -3,6 +3,7 @@ package com.cursecycle.roulette;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.challenge.ChallengeUtils;
 import com.cursecycle.config.CurseCycleConfig;
 import com.cursecycle.state.CurseCycleState;
 
@@ -33,22 +34,18 @@ public class RouletteSelector {
         List<Challenge> availableMedium = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM);
         List<Challenge> availableHard = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD);
 
-        // Track pool in state if using pool-exhaustion tracking
         List<String> pool = state.getCurrentPool();
 
-        // Ensure pool has available options if empty or exhausted
         if (pool.isEmpty()) {
             refillPool(pool, availableEasy, availableMedium, availableHard, state.getLastDrawnChallengeId());
         }
 
-        // Gather candidates for each difficulty slot
         List<Challenge> selectedForWheel = new ArrayList<>();
         selectedForWheel.addAll(pickCandidates(availableEasy, targetEasyCount, pool));
         selectedForWheel.addAll(pickCandidates(availableMedium, targetMediumCount, pool));
         selectedForWheel.addAll(pickCandidates(availableHard, targetHardCount, pool));
 
         if (selectedForWheel.isEmpty()) {
-            // Fallback: pick any enabled challenge
             for (Challenge c : ChallengeRegistry.getAll()) {
                 if (c.isEnabled()) {
                     selectedForWheel.add(c);
@@ -57,34 +54,24 @@ public class RouletteSelector {
         }
 
         if (selectedForWheel.isEmpty()) {
-            return null; // No registered/enabled challenges
+            return null;
         }
 
-        // Shuffle wheel options for visual variety
         Collections.shuffle(selectedForWheel);
 
-        // Pick winning challenge randomly from the wheel candidates
         Random random = new Random();
         Challenge winner = selectedForWheel.get(random.nextInt(selectedForWheel.size()));
 
-        // Remove winner from pool and update last drawn
         pool.remove(winner.getId());
         state.setLastDrawnChallengeId(winner.getId());
         state.markDirty();
 
         List<Challenge> subChallenges = new ArrayList<>();
-        if ("double_challenge".equals(winner.getId())) {
-            List<Challenge> availableReg = ChallengeRegistry.getAll().stream()
-                    .filter(Challenge::isEnabled)
-                    .filter(c -> !"double_challenge".equals(c.getId()))
-                    .toList();
-            List<Challenge> copy = new ArrayList<>(availableReg);
-            Collections.shuffle(copy);
-            if (copy.size() >= 2) {
-                subChallenges.add(copy.get(0));
-                subChallenges.add(copy.get(1));
-            } else {
-                subChallenges.addAll(copy);
+        if (ChallengeUtils.isDoubleChallenge(winner.getId())) {
+            List<String> subIds = ChallengeUtils.resolveToActiveIds(winner.getId());
+            for (String subId : subIds) {
+                Challenge sc = ChallengeRegistry.get(subId);
+                if (sc != null) subChallenges.add(sc);
             }
         }
 
@@ -99,10 +86,9 @@ public class RouletteSelector {
         hard.forEach(c -> allIds.add(c.getId()));
 
         if (allIds.size() > 1 && lastDrawnId != null) {
-            // Prefer not repeating the last drawn challenge immediately if other options exist
             allIds.remove(lastDrawnId);
             pool.addAll(allIds);
-            pool.add(lastDrawnId); // append at end
+            pool.add(lastDrawnId);
         } else {
             pool.addAll(allIds);
         }
@@ -112,7 +98,6 @@ public class RouletteSelector {
         List<Challenge> result = new ArrayList<>();
         if (available.isEmpty()) return result;
 
-        // Prioritize challenges currently in pool
         List<Challenge> inPool = available.stream().filter(c -> pool.contains(c.getId())).toList();
         List<Challenge> sourceList = !inPool.isEmpty() ? inPool : available;
 
@@ -143,13 +128,9 @@ public class RouletteSelector {
         }
 
         public String getEncodedWinnerId() {
-            if ("double_challenge".equals(winner.getId()) && !subChallenges.isEmpty()) {
-                StringBuilder sb = new StringBuilder("double_challenge:");
-                for (int i = 0; i < subChallenges.size(); i++) {
-                    if (i > 0) sb.append(",");
-                    sb.append(subChallenges.get(i).getId());
-                }
-                return sb.toString();
+            if (ChallengeUtils.isDoubleChallenge(winner.getId()) && !subChallenges.isEmpty()) {
+                List<String> subIds = subChallenges.stream().map(Challenge::getId).toList();
+                return ChallengeUtils.encodeDoubleChallenge(subIds);
             }
             return winner.getId();
         }
