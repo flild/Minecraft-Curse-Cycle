@@ -37,12 +37,10 @@ public class NoSprintChallenge extends Challenge {
 
             CurseCycleState state = CurseCycleState.getServerState(server);
 
-            // Check if global active
             if (state.getActiveChallengeIds().contains(ID)) {
                 return true;
             }
 
-            // Check if personal active
             return state.getPersonalActiveChallengeIds(serverPlayer.getUuid()).contains(ID);
         }
         return false;
@@ -63,10 +61,6 @@ public class NoSprintChallenge extends Challenge {
     public void onTick(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null) {
             if (player.isSprinting()) player.setSprinting(false);
-        } else if (server != null) {
-            for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-                if (p.isSprinting()) p.setSprinting(false);
-            }
         }
     }
 
