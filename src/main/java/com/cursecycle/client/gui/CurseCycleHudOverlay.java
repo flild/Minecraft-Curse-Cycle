@@ -24,11 +24,21 @@ public class CurseCycleHudOverlay {
         int x = config.hudPositionX;
         int y = config.hudPositionY;
         int padding = 6;
-        int width = 180;
+        int width = 190;
 
         // Calculate card height dynamically
-        int activeCount = activeIds.isEmpty() ? 1 : activeIds.size();
-        int height = 28 + (activeCount * 14) + (nextId.isEmpty() ? 0 : 16);
+        int activeSectionHeight;
+        if (activeIds.isEmpty()) {
+            activeSectionHeight = 14;
+        } else {
+            int validCount = 0;
+            for (String id : activeIds) {
+                if (ChallengeRegistry.get(id) != null) validCount++;
+            }
+            activeSectionHeight = validCount > 0 ? (validCount * 25) : (activeIds.size() * 14);
+        }
+        int nextSectionHeight = (nextId != null && !nextId.isEmpty()) ? 16 : 0;
+        int height = padding + 12 + 1 + 5 + 12 + activeSectionHeight + nextSectionHeight + padding;
 
         // Draw translucent dark background card with accent border
         context.fill(x, y, x + width, y + height, 0xCC101018);
@@ -56,27 +66,37 @@ public class CurseCycleHudOverlay {
 
         if (activeIds.isEmpty()) {
             context.drawTextWithShadow(textRenderer, Text.literal("  - Нет активных"), x + padding, currentY, 0xFF888888);
-            currentY += 12;
+            currentY += 14;
         } else {
             for (String id : activeIds) {
                 Challenge challenge = ChallengeRegistry.get(id);
                 if (challenge != null) {
-                    String name = "⚡ " + challenge.getName();
-                    int color = challenge.getDifficulty().getColor().getColorValue() != null ? challenge.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
-                    context.drawTextWithShadow(textRenderer, Text.literal(name), x + padding, currentY, color);
-
                     String diffText = "[" + challenge.getDifficulty().getDisplayName() + "]";
                     int diffW = textRenderer.getWidth(diffText);
+                    int maxNameW = width - (padding * 2) - diffW - 6;
+
+                    String name = "⚡ " + challenge.getName();
+                    if (textRenderer.getWidth(name) > maxNameW) {
+                        name = textRenderer.trimToWidth(name, maxNameW - 6) + "…";
+                    }
+
+                    int color = challenge.getDifficulty().getColor().getColorValue() != null
+                            ? challenge.getDifficulty().getColor().getColorValue()
+                            : 0xFFFFFF;
+                    context.drawTextWithShadow(textRenderer, Text.literal(name), x + padding, currentY, color);
                     context.drawTextWithShadow(textRenderer, Text.literal(diffText), x + width - padding - diffW, currentY, color);
                     currentY += 11;
 
                     String desc = challenge.getShortDescription();
-                    if (desc.length() > 28) desc = desc.substring(0, 26) + "..";
+                    int maxDescW = width - (padding * 2) - 12;
+                    if (textRenderer.getWidth(desc) > maxDescW) {
+                        desc = textRenderer.trimToWidth(desc, maxDescW - 6) + "…";
+                    }
                     context.drawTextWithShadow(textRenderer, Text.literal("   " + desc), x + padding, currentY, 0xAAAAAA);
-                    currentY += 13;
+                    currentY += 14;
                 } else {
                     context.drawTextWithShadow(textRenderer, Text.literal("⚡ " + id), x + padding, currentY, 0xFFFFFFFF);
-                    currentY += 12;
+                    currentY += 14;
                 }
             }
         }
@@ -98,6 +118,11 @@ public class CurseCycleHudOverlay {
             } else {
                 Challenge nextChallenge = ChallengeRegistry.get(nextId);
                 nextText += (nextChallenge != null ? nextChallenge.getName() : nextId);
+            }
+
+            int maxNextW = width - (padding * 2);
+            if (textRenderer.getWidth(nextText) > maxNextW) {
+                nextText = textRenderer.trimToWidth(nextText, maxNextW - 6) + "…";
             }
             context.drawTextWithShadow(textRenderer, Text.literal(nextText), x + padding, currentY, 0xFF55FF55);
         }
