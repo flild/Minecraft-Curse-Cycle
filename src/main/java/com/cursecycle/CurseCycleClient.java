@@ -4,6 +4,7 @@ import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.gui.CurseCycleHudOverlay;
 import com.cursecycle.client.gui.MainMenuScreen;
 import com.cursecycle.client.gui.WheelScreen;
+import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.network.CurseCycleSyncPayload;
 import com.cursecycle.network.TriggerWheelPayload;
@@ -45,6 +46,12 @@ public class CurseCycleClient implements ClientModInitializer {
             if (client.player != null && NoSprintChallenge.isNoSprintActiveForPlayer(client.player)) {
                 if (client.player.isSprinting()) {
                     client.player.setSprinting(false);
+                }
+            }
+
+            if (client.player != null && NoJumpingChallenge.isNoJumpingActiveForPlayer(client.player)) {
+                if (client.player.input != null && client.player.input.jumping) {
+                    client.player.input.jumping = false;
                 }
             }
         });
