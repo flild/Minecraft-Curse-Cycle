@@ -104,9 +104,14 @@ public class WheelScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Render semi-transparent background overlay without applying post-processing blur
+        context.fill(0, 0, this.width, this.height, 0x88000000);
+    }
+
+    @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Semi-transparent overlay so player can still see surrounding world
-        context.fill(0, 0, width, height, 0x88000000);
+        renderBackground(context, mouseX, mouseY, delta);
 
         TextRenderer textRenderer = this.textRenderer;
         int centerX = width / 2;
@@ -139,7 +144,9 @@ public class WheelScreen extends Screen {
                 context.drawBorder(x - 28, y - 10, 56, 20, color | 0xFF000000);
 
                 String label = challenge.getName();
-                if (label.length() > 8) label = label.substring(0, 7) + "..";
+                if (textRenderer.getWidth(label) > 50) {
+                    label = textRenderer.trimToWidth(label, 44) + "…";
+                }
                 context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), x, y - 4, color);
             }
 
@@ -150,8 +157,21 @@ public class WheelScreen extends Screen {
 
         // Winner Announcement Card when finished
         if (isFinished) {
-            int cardW = 240;
-            int cardH = !subChallenges.isEmpty() ? 85 : 70;
+            int cardW = 260;
+            List<net.minecraft.text.OrderedText> titleLines = new ArrayList<>();
+            List<net.minecraft.text.OrderedText> subLines = new ArrayList<>();
+
+            if (winningChallenge != null) {
+                titleLines = textRenderer.wrapLines(Text.literal(winningChallenge.getName()).formatted(Formatting.BOLD), cardW - 20);
+                if (!subChallenges.isEmpty()) {
+                    String subNames = subChallenges.stream().map(Challenge::getName).reduce((a, b) -> a + " & " + b).orElse("");
+                    subLines = textRenderer.wrapLines(Text.literal("(" + subNames + ")").formatted(Formatting.AQUA), cardW - 20);
+                }
+            } else {
+                titleLines = textRenderer.wrapLines(Text.literal(rawWinnerId), cardW - 20);
+            }
+
+            int cardH = 26 + (titleLines.size() * 12) + (subLines.size() * 12) + 16 + 20;
             int cardX = centerX - (cardW / 2);
             int cardY = centerY - (cardH / 2);
 
@@ -160,19 +180,28 @@ public class WheelScreen extends Screen {
 
             context.drawCenteredTextWithShadow(textRenderer, Text.literal("ВЫБРАНО ИСПЫТАНИЕ!").formatted(Formatting.YELLOW, Formatting.BOLD), centerX, cardY + 8, 0xFFFFAA00);
 
+            int currentY = cardY + 22;
+
             if (winningChallenge != null) {
                 int diffColor = winningChallenge.getDifficulty().getColor().getColorValue() != null ? winningChallenge.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal(winningChallenge.getName()).formatted(Formatting.BOLD), centerX, cardY + 22, diffColor);
-
-                if (!subChallenges.isEmpty()) {
-                    String subNames = subChallenges.stream().map(Challenge::getName).reduce((a, b) -> a + " & " + b).orElse("");
-                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("(" + subNames + ")").formatted(Formatting.AQUA), centerX, cardY + 36, 0x55FFFF);
-                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, cardY + 50, diffColor);
-                } else {
-                    context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, cardY + 38, diffColor);
+                for (net.minecraft.text.OrderedText line : titleLines) {
+                    context.drawCenteredTextWithShadow(textRenderer, line, centerX, currentY, diffColor);
+                    currentY += 12;
                 }
+
+                if (!subLines.isEmpty()) {
+                    for (net.minecraft.text.OrderedText line : subLines) {
+                        context.drawCenteredTextWithShadow(textRenderer, line, centerX, currentY, 0x55FFFF);
+                        currentY += 12;
+                    }
+                }
+
+                context.drawCenteredTextWithShadow(textRenderer, Text.literal("[" + winningChallenge.getDifficulty().getDisplayName() + "]").formatted(winningChallenge.getDifficulty().getColor()), centerX, currentY + 2, diffColor);
             } else {
-                context.drawCenteredTextWithShadow(textRenderer, Text.literal(rawWinnerId), centerX, cardY + 26, 0xFFFFFF);
+                for (net.minecraft.text.OrderedText line : titleLines) {
+                    context.drawCenteredTextWithShadow(textRenderer, line, centerX, currentY, 0xFFFFFF);
+                    currentY += 12;
+                }
             }
 
             context.drawCenteredTextWithShadow(textRenderer, Text.literal("(Нажмите ЛКМ или ESC, чтобы закрыть)").formatted(Formatting.DARK_GRAY), centerX, cardY + cardH - 14, 0x888888);

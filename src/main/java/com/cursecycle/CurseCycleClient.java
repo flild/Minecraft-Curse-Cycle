@@ -4,6 +4,7 @@ import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.gui.CurseCycleHudOverlay;
 import com.cursecycle.client.gui.MainMenuScreen;
 import com.cursecycle.client.gui.WheelScreen;
+import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.network.CurseCycleSyncPayload;
 import com.cursecycle.network.TriggerWheelPayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -38,6 +39,12 @@ public class CurseCycleClient implements ClientModInitializer {
             while (openMenuKeyBinding.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new MainMenuScreen());
+                }
+            }
+
+            if (client.player != null && NoSprintChallenge.isNoSprintActiveForPlayer(client.player)) {
+                if (client.player.isSprinting()) {
+                    client.player.setSprinting(false);
                 }
             }
         });

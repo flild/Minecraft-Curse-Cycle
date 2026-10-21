@@ -49,6 +49,12 @@ public class MainMenuScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Render semi-transparent background overlay without applying post-processing blur
+        context.fill(0, 0, this.width, this.height, 0x88000000);
+    }
+
+    @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
 
@@ -97,7 +103,11 @@ public class MainMenuScreen extends Screen {
                 context.fill(px + 15, itemY, px + pw - 15, itemY + 22, isHovered ? 0xFF2A2A3D : 0xFF1E1E2A);
                 context.drawBorder(px + 15, itemY, pw - 30, 22, color | 0xFF000000);
 
-                context.drawTextWithShadow(tr, Text.literal("⚡ " + c.getName()), px + 22, itemY + 3, color);
+                String name = "⚡ " + c.getName();
+                if (tr.getWidth(name) > 150) {
+                    name = tr.trimToWidth(name, 144) + "…";
+                }
+                context.drawTextWithShadow(tr, Text.literal(name), px + 22, itemY + 3, color);
                 context.drawTextWithShadow(tr, Text.literal("[" + c.getDifficulty().getDisplayName() + "]"), px + 180, itemY + 3, color);
                 context.drawTextWithShadow(tr, Text.literal("🔍 Правила").formatted(Formatting.UNDERLINE, Formatting.GRAY), px + pw - 80, itemY + 3, 0xAAAAAA);
 
@@ -126,7 +136,12 @@ public class MainMenuScreen extends Screen {
                     int color = c.getDifficulty().getColor().getColorValue() != null ? c.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
                     context.fill(px + 15, itemY, px + pw - 15, itemY + 22, 0xFF1E1E2A);
                     context.drawBorder(px + 15, itemY, pw - 30, 22, color | 0xFF000000);
-                    context.drawTextWithShadow(tr, Text.literal(" • " + c.getName()), px + 22, itemY + 3, color);
+
+                    String name = " • " + c.getName();
+                    if (tr.getWidth(name) > 150) {
+                        name = tr.trimToWidth(name, 144) + "…";
+                    }
+                    context.drawTextWithShadow(tr, Text.literal(name), px + 22, itemY + 3, color);
                     context.drawTextWithShadow(tr, Text.literal("[" + c.getDifficulty().getDisplayName() + "]"), px + 180, itemY + 3, color);
                     itemY += 26;
                 }
@@ -138,16 +153,33 @@ public class MainMenuScreen extends Screen {
         if (c != null) {
             int color = c.getDifficulty().getColor().getColorValue() != null ? c.getDifficulty().getColor().getColorValue() : 0xFFFFFF;
 
-            context.fill(px + 15, py + 35, px + pw - 15, py + 120, 0xFF1E1E2A);
-            context.drawBorder(px + 15, py + 35, pw - 30, 85, color | 0xFF000000);
+            List<OrderedText> descLines = tr.wrapLines(Text.literal("Описание: " + c.getShortDescription()), pw - 50);
 
-            context.drawTextWithShadow(tr, Text.literal("🎯 " + c.getName()).formatted(Formatting.BOLD), px + 25, py + 45, color);
+            int startY = py + 35;
+            int descStartY = py + 75;
+            int descEndY = descStartY + (descLines.size() * 12);
+            int btnY = descEndY + 6;
+            int cardH = (btnY + 20) - startY;
+
+            context.fill(px + 15, startY, px + pw - 15, startY + cardH, 0xFF1E1E2A);
+            context.drawBorder(px + 15, startY, pw - 30, cardH, color | 0xFF000000);
+
+            String name = "🎯 " + c.getName();
+            if (tr.getWidth(name) > pw - 50) {
+                name = tr.trimToWidth(name, pw - 56) + "…";
+            }
+            context.drawTextWithShadow(tr, Text.literal(name).formatted(Formatting.BOLD), px + 25, py + 45, color);
             context.drawTextWithShadow(tr, Text.literal("Сложность: " + c.getDifficulty().getDisplayName()).formatted(c.getDifficulty().getColor()), px + 25, py + 60, color);
-            context.drawTextWithShadow(tr, Text.literal("Описание: " + c.getShortDescription()), px + 25, py + 75, 0xCCCCCC);
 
-            boolean isHovered = mouseX >= px + 25 && mouseX <= px + 150 && mouseY >= py + 95 && mouseY <= py + 112;
-            context.fill(px + 25, py + 95, px + 150, py + 112, isHovered ? 0xFF333355 : 0xFF222233);
-            context.drawTextWithShadow(tr, Text.literal("📖 Полные правила"), px + 35, py + 99, 0xFFFFAA00);
+            int lineY = descStartY;
+            for (OrderedText line : descLines) {
+                context.drawTextWithShadow(tr, line, px + 25, lineY, 0xCCCCCC);
+                lineY += 12;
+            }
+
+            boolean isHovered = mouseX >= px + 25 && mouseX <= px + 150 && mouseY >= btnY && mouseY <= btnY + 17;
+            context.fill(px + 25, btnY, px + 150, btnY + 17, isHovered ? 0xFF333355 : 0xFF222233);
+            context.drawTextWithShadow(tr, Text.literal("📖 Полные правила"), px + 35, btnY + 4, 0xFFFFAA00);
         }
     }
 
@@ -192,7 +224,13 @@ public class MainMenuScreen extends Screen {
                 }
             }
 
-            context.drawTextWithShadow(tr, Text.literal("• " + title), px + 20, itemY, color);
+            String fullItem = "• " + title;
+            int maxItemW = pw - 40;
+            if (tr.getWidth(fullItem) > maxItemW) {
+                fullItem = tr.trimToWidth(fullItem, maxItemW - 6) + "…";
+            }
+
+            context.drawTextWithShadow(tr, Text.literal(fullItem), px + 20, itemY, color);
             itemY += 16;
         }
 
@@ -253,7 +291,8 @@ public class MainMenuScreen extends Screen {
 
     private void renderChallengeModal(DrawContext context, TextRenderer tr, Challenge c) {
         int modalW = 280;
-        int modalH = 150;
+        List<OrderedText> wrappedLines = tr.wrapLines(Text.literal(c.getDetailedRules()), modalW - 30);
+        int modalH = Math.max(130, 48 + (wrappedLines.size() * 12) + 28);
         int modalX = (width - modalW) / 2;
         int modalY = (height - modalH) / 2;
 
@@ -267,13 +306,10 @@ public class MainMenuScreen extends Screen {
 
         context.fill(modalX + 15, modalY + 40, modalX + modalW - 15, modalY + 41, 0xFF555577);
 
-        // Word wrap detailed rules text correctly as OrderedText
-        List<OrderedText> wrappedLines = tr.wrapLines(Text.literal(c.getDetailedRules()), modalW - 30);
-
         int lineY = modalY + 48;
         for (OrderedText line : wrappedLines) {
             context.drawTextWithShadow(tr, line, modalX + 15, lineY, 0xDDDDDD);
-            lineY += 11;
+            lineY += 12;
         }
 
         context.drawCenteredTextWithShadow(tr, Text.literal("(Нажмите в любом месте, чтобы закрыть)").formatted(Formatting.DARK_GRAY), width / 2, modalY + modalH - 16, 0x888888);
@@ -308,9 +344,14 @@ public class MainMenuScreen extends Screen {
             if (nextId != null && !nextId.isEmpty()) {
                 if (!nextId.startsWith("double_challenge:")) {
                     Challenge c = ChallengeRegistry.get(nextId);
-                    if (c != null && mouseX >= panelX + 25 && mouseX <= panelX + 150 && mouseY >= panelY + 95 && mouseY <= panelY + 112) {
-                        selectedChallengeForModal = c;
-                        return true;
+                    if (c != null) {
+                        TextRenderer tr = this.textRenderer;
+                        List<OrderedText> descLines = tr.wrapLines(Text.literal("Описание: " + c.getShortDescription()), panelW - 50);
+                        int btnY = panelY + 75 + (descLines.size() * 12) + 6;
+                        if (mouseX >= panelX + 25 && mouseX <= panelX + 150 && mouseY >= btnY && mouseY <= btnY + 17) {
+                            selectedChallengeForModal = c;
+                            return true;
+                        }
                     }
                 }
             }

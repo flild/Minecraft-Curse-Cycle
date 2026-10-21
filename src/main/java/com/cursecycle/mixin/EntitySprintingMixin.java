@@ -13,11 +13,14 @@ public abstract class EntitySprintingMixin {
 
     @Inject(method = "setSprinting", at = @At("HEAD"), cancellable = true)
     private void onSetSprinting(boolean sprinting, CallbackInfo ci) {
-        if (sprinting) {
-            Entity self = (Entity) (Object) this;
-            if (self instanceof PlayerEntity player) {
-                if (NoSprintChallenge.isNoSprintActiveForPlayer(player)) {
-                    ci.cancel();
+        if (!sprinting) return;
+
+        Entity self = (Entity) (Object) this;
+        if (self instanceof PlayerEntity player) {
+            if (NoSprintChallenge.isNoSprintActiveForPlayer(player)) {
+                ci.cancel();
+                if (player.isSprinting()) {
+                    player.setSprinting(false);
                 }
             }
         }
