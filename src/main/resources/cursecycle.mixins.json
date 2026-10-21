@@ -4,7 +4,9 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "PlayerEntityMixin",
-    "EntitySprintingMixin"
+    "EntitySprintingMixin",
+    "LivingEntityMixin",
+    "AbstractHorseEntityMixin"
   ],
   "client": [],
   "injectors": {
