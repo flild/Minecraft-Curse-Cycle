@@ -28,6 +28,31 @@ test {
     useJUnitPlatform()
 }
 
+// Exercise gameplay hooks with Mixin applied, using the Fabric API already in the mod.
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+
+loom {
+    mods {
+        cursecycle { sourceSet sourceSets.main }
+        cursecycle_gametest { sourceSet sourceSets.gametest }
+    }
+    runs {
+        gametest {
+            server()
+            name 'Armor challenge game tests'
+            source sourceSets.gametest
+            runDir 'build/gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=../reports/gametest.xml'
+        }
+    }
+}
+
 processResources {
     inputs.property "version", project.version
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "cursecycle_gametest",
+  "version": "1.0.0",
+  "name": "Curse-Cycle gameplay tests",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-gametest": ["com.cursecycle.ArmorDisabledGameTest"]
+  },
+  "depends": { "cursecycle": "*" }
+}

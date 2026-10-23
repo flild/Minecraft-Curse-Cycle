@@ -3,6 +3,9 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ArmorDisabledLivingEntityMixin",
+    "ArmorDisabledPlayerEntityMixin",
+    "ArmorDisabledEnchantmentMixin",
     "PlayerEntityMixin",
     "EntitySprintingMixin",
     "LivingEntityMixin",
