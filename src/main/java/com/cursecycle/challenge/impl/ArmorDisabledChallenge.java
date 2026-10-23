@@ -23,7 +23,7 @@ public class ArmorDisabledChallenge extends Challenge {
         super(ID, "Голый король", "Броня и элитры полностью отключены",
                 "Все виды брони и элитр теряют свою защиту и полезные свойства. "
                         + "Броня не защищает от урона, а элитры не позволяют совершать полёт.",
-                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
     public static boolean isActiveForPlayer(PlayerEntity player) {
