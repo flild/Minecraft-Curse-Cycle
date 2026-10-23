@@ -3,16 +3,21 @@ package com.cursecycle.config;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.cursecycle.CurseCycleMod;
+import com.cursecycle.challenge.ChallengeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.util.Identifier;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class CurseCycleConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final File CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("cursecycle.json").toFile();
+    private static File configFile() {
+        return FabricLoader.getInstance().getConfigDir().resolve("cursecycle.json").toFile();
+    }
 
     public int challengeIntervalDays = 5;
     public int noticeLeadTimeDays = 1;
@@ -42,10 +47,12 @@ public class CurseCycleConfig {
     }
 
     public static CurseCycleConfig load() {
-        if (CONFIG_FILE.exists()) {
-            try (FileReader reader = new FileReader(CONFIG_FILE)) {
+        File file = configFile();
+        if (file.exists()) {
+            try (FileReader reader = new FileReader(file, StandardCharsets.UTF_8)) {
                 CurseCycleConfig config = GSON.fromJson(reader, CurseCycleConfig.class);
                 if (config != null) {
+                    config.validate();
                     return config;
                 }
             } catch (Exception e) {
@@ -59,10 +66,11 @@ public class CurseCycleConfig {
 
     public void save() {
         try {
-            if (!CONFIG_FILE.getParentFile().exists()) {
-                CONFIG_FILE.getParentFile().mkdirs();
+            File file = configFile();
+            if (!file.getParentFile().exists()) {
+                file.getParentFile().mkdirs();
             }
-            try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
+            try (FileWriter writer = new FileWriter(file, StandardCharsets.UTF_8)) {
                 GSON.toJson(this, writer);
             }
         } catch (Exception e) {
@@ -70,14 +78,54 @@ public class CurseCycleConfig {
         }
     }
 
+    public void validate() {
+        if (challengeIntervalDays < 1) challengeIntervalDays = 5;
+        noticeLeadTimeDays = Math.clamp(noticeLeadTimeDays, 0, challengeIntervalDays);
+        maxActiveChallenges = Math.max(1, maxActiveChallenges);
+        hudPositionX = Math.max(0, hudPositionX);
+        hudPositionY = Math.max(0, hudPositionY);
+        if (challengeToggles == null) challengeToggles = new HashMap<>();
+        Map<String, List<Integer>> validStages = new LinkedHashMap<>();
+        if (difficultyWeightsByDay != null) {
+            difficultyWeightsByDay.forEach((day, weights) -> {
+                try {
+                    if (Long.parseLong(day) >= 1 && validWeights(weights)) {
+                        validStages.put(day, List.copyOf(weights));
+                    }
+                } catch (NumberFormatException ignored) {}
+            });
+        }
+        difficultyWeightsByDay = validStages.isEmpty()
+                ? new CurseCycleConfig().difficultyWeightsByDay : validStages;
+        if (wheelSoundPath == null || Identifier.tryParse(wheelSoundPath) == null) {
+            wheelSoundPath = "minecraft:ui.button.click";
+        }
+        if (wheelFinishSoundPath == null || Identifier.tryParse(wheelFinishSoundPath) == null) {
+            wheelFinishSoundPath = "minecraft:entity.player.levelup";
+        }
+    }
+
+    private static boolean validWeights(List<Integer> weights) {
+        return weights != null && weights.size() == 3
+                && weights.stream().allMatch(weight -> weight != null && weight >= 0)
+                && weights.stream().anyMatch(weight -> weight > 0);
+    }
+
+    public void applyChallengeToggles() {
+        ChallengeRegistry.getAll().forEach(challenge ->
+                challenge.setEnabled(challengeToggles == null
+                        || !Boolean.FALSE.equals(challengeToggles.get(challenge.getId()))));
+    }
+
     public List<Integer> getWeightsForDay(long currentDay) {
         List<Integer> bestWeights = List.of(3, 2, 1);
         long maxMatchedDay = -1;
 
+        if (difficultyWeightsByDay == null) return bestWeights;
         for (Map.Entry<String, List<Integer>> entry : difficultyWeightsByDay.entrySet()) {
             try {
                 long minDay = Long.parseLong(entry.getKey());
-                if (currentDay >= minDay && minDay > maxMatchedDay) {
+                if (minDay >= 1 && currentDay >= minDay && minDay > maxMatchedDay && validWeights(entry.getValue())) {
                     maxMatchedDay = minDay;
                     bestWeights = entry.getValue();
                 }

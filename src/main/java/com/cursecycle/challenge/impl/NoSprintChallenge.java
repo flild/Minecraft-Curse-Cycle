@@ -3,6 +3,7 @@ package com.cursecycle.challenge.impl;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeScope;
+import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.state.CurseCycleState;
 import net.fabricmc.api.EnvType;
@@ -26,12 +27,15 @@ public class NoSprintChallenge extends Challenge {
     }
 
     public static boolean isNoSprintActiveForPlayer(PlayerEntity player) {
+        if (player == null) return false;
         if (player.getWorld().isClient()) {
             if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
                 return ClientDataHolder.getActiveChallengeIds().contains(ID);
             }
             return false;
         } else if (player instanceof ServerPlayerEntity serverPlayer) {
+            Challenge challenge = ChallengeRegistry.get(ID);
+            if (challenge == null || !challenge.isEnabled()) return false;
             MinecraftServer server = serverPlayer.getServer();
             if (server == null) return false;
 
@@ -49,10 +53,10 @@ public class NoSprintChallenge extends Challenge {
     @Override
     public void onStart(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null) {
-            if (player.isSprinting()) player.setSprinting(false);
+            player.setSprinting(false);
         } else if (server != null) {
             for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-                if (p.isSprinting()) p.setSprinting(false);
+                p.setSprinting(false);
             }
         }
     }
@@ -60,19 +64,19 @@ public class NoSprintChallenge extends Challenge {
     @Override
     public void onTick(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null) {
-            if (player.isSprinting()) player.setSprinting(false);
+            player.setSprinting(false);
         }
     }
 
     @Override
     public void onPlayerJoin(MinecraftServer server, ServerPlayerEntity player) {
-        if (player != null && player.isSprinting()) {
+        if (player != null) {
             player.setSprinting(false);
         }
     }
 
     @Override
     public void onStop(MinecraftServer server, ServerPlayerEntity player) {
-        // Normal sprinting capability resumes naturally when isNoSprintActiveForPlayer returns false.
+        if (player != null) player.setSprinting(false);
     }
 }

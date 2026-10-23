@@ -34,26 +34,33 @@ public class RouletteSelector {
         List<Challenge> availableMedium = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM);
         List<Challenge> availableHard = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD);
 
+        // Zero-weight categories are not eligible in this progression stage.
+        if (targetEasyCount == 0) availableEasy = List.of();
+        if (targetMediumCount == 0) availableMedium = List.of();
+        if (targetHardCount == 0) availableHard = List.of();
+
         List<String> pool = state.getCurrentPool();
+        Set<String> eligibleIds = new LinkedHashSet<>();
+        availableEasy.forEach(c -> eligibleIds.add(c.getId()));
+        availableMedium.forEach(c -> eligibleIds.add(c.getId()));
+        availableHard.forEach(c -> eligibleIds.add(c.getId()));
+        pool.retainAll(eligibleIds);
 
         if (pool.isEmpty()) {
-            refillPool(pool, availableEasy, availableMedium, availableHard, state.getLastDrawnChallengeId());
+            pool.addAll(eligibleIds);
         }
+
+        // Keep the previous winner in the bag, but defer it for this draw if alternatives exist.
+        List<String> drawPool = new ArrayList<>(pool);
+        if (drawPool.size() > 1) drawPool.remove(state.getLastDrawnChallengeId());
 
         List<Challenge> selectedForWheel = new ArrayList<>();
-        selectedForWheel.addAll(pickCandidates(availableEasy, targetEasyCount, pool));
-        selectedForWheel.addAll(pickCandidates(availableMedium, targetMediumCount, pool));
-        selectedForWheel.addAll(pickCandidates(availableHard, targetHardCount, pool));
+        selectedForWheel.addAll(pickCandidates(availableEasy, targetEasyCount, drawPool));
+        selectedForWheel.addAll(pickCandidates(availableMedium, targetMediumCount, drawPool));
+        selectedForWheel.addAll(pickCandidates(availableHard, targetHardCount, drawPool));
 
         if (selectedForWheel.isEmpty()) {
-            for (Challenge c : ChallengeRegistry.getAll()) {
-                if (c.isEnabled()) {
-                    selectedForWheel.add(c);
-                }
-            }
-        }
-
-        if (selectedForWheel.isEmpty()) {
+            state.markDirty();
             return null;
         }
 
@@ -78,35 +85,19 @@ public class RouletteSelector {
         return new WheelResult(selectedForWheel, winner, subChallenges);
     }
 
-    private static void refillPool(List<String> pool, List<Challenge> easy, List<Challenge> medium, List<Challenge> hard, String lastDrawnId) {
-        pool.clear();
-        Set<String> allIds = new LinkedHashSet<>();
-        easy.forEach(c -> allIds.add(c.getId()));
-        medium.forEach(c -> allIds.add(c.getId()));
-        hard.forEach(c -> allIds.add(c.getId()));
-
-        if (allIds.size() > 1 && lastDrawnId != null) {
-            allIds.remove(lastDrawnId);
-            pool.addAll(allIds);
-            pool.add(lastDrawnId);
-        } else {
-            pool.addAll(allIds);
-        }
-    }
-
     private static List<Challenge> pickCandidates(List<Challenge> available, int count, List<String> pool) {
         List<Challenge> result = new ArrayList<>();
         if (available.isEmpty()) return result;
 
         List<Challenge> inPool = available.stream().filter(c -> pool.contains(c.getId())).toList();
-        List<Challenge> sourceList = !inPool.isEmpty() ? inPool : available;
+        if (inPool.isEmpty()) return result;
 
-        List<Challenge> copy = new ArrayList<>(sourceList);
+        List<Challenge> copy = new ArrayList<>(inPool);
         Collections.shuffle(copy);
 
         for (int i = 0; i < count; i++) {
             if (copy.isEmpty()) {
-                copy = new ArrayList<>(available);
+                copy = new ArrayList<>(inPool);
                 Collections.shuffle(copy);
             }
             if (!copy.isEmpty()) {

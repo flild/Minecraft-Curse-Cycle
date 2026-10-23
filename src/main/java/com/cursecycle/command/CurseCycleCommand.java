@@ -32,16 +32,20 @@ public class CurseCycleCommand {
         return CommandManager.literal(rootAlias)
             .then(CommandManager.literal("active").executes(ctx -> showActive(ctx.getSource())))
             .then(CommandManager.literal("next").executes(ctx -> showNext(ctx.getSource())))
-            .then(CommandManager.literal("trigger_spin").executes(ctx -> triggerSpin(ctx.getSource())))
-            .then(CommandManager.literal("activate")
+            .then(adminCommand("trigger_spin").executes(ctx -> triggerSpin(ctx.getSource())))
+            .then(adminCommand("activate")
                 .then(CommandManager.argument("id", StringArgumentType.string())
                     .executes(ctx -> activateChallenge(ctx.getSource(), StringArgumentType.getString(ctx, "id")))))
             .then(CommandManager.literal("list").executes(ctx -> listChallenges(ctx.getSource())))
             .then(CommandManager.literal("history").executes(ctx -> showHistory(ctx.getSource())))
-            .then(CommandManager.literal("setday")
-                .then(CommandManager.argument("day", LongArgumentType.longArg(1))
+            .then(adminCommand("setday")
+                .then(CommandManager.argument("day", LongArgumentType.longArg(1, Long.MAX_VALUE / 24000L))
                     .executes(ctx -> setDay(ctx.getSource(), LongArgumentType.getLong(ctx, "day")))))
-            .then(CommandManager.literal("reset").executes(ctx -> resetState(ctx.getSource())));
+            .then(adminCommand("reset").executes(ctx -> resetState(ctx.getSource())));
+    }
+
+    private static LiteralArgumentBuilder<ServerCommandSource> adminCommand(String name) {
+        return CommandManager.literal(name).requires(source -> source.hasPermissionLevel(2));
     }
 
     private static int showActive(ServerCommandSource source) {
@@ -77,7 +81,8 @@ public class CurseCycleCommand {
 
     private static int triggerSpin(ServerCommandSource source) {
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
-        RouletteSelector.WheelResult result = RouletteSelector.selectNextChallenge(CurseCycleMod.getConfig(), state);
+        RouletteSelector.WheelResult result = CycleManager.selectUpcomingChallenge(state, CurseCycleMod.getConfig(),
+                source.getServer().getOverworld().getTimeOfDay());
 
         if (result == null) {
             source.sendError(Text.literal("[Curse-Cycle] Ошибка: нет доступных испытаний для запуска колеса!"));
@@ -85,24 +90,31 @@ public class CurseCycleCommand {
         }
 
         String encodedWinner = result.getEncodedWinnerId();
-        state.setNextChallengeId(encodedWinner);
-        state.setSpinTriggeredForCurrentCycle(true);
 
         List<String> candidateIds = result.wheelItems.stream().map(Challenge::getId).toList();
         NetworkHandler.triggerWheelForAll(source.getServer(), candidateIds, encodedWinner);
+        CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Принудительно запущено колесо фортуны! Победитель: " + result.winner.getName()).formatted(Formatting.GREEN), true);
         return 1;
     }
 
     private static int activateChallenge(ServerCommandSource source, String id) {
-        if (id == null || id.isEmpty()) {
-            source.sendError(Text.literal("[Curse-Cycle] Укажите ID испытания!"));
+        Challenge challenge = ChallengeRegistry.get(ChallengeUtils.getBaseChallengeId(id));
+        List<String> subIds = ChallengeUtils.parseSubChallengeIds(id);
+        boolean invalidChildren = id != null && id.startsWith(ChallengeUtils.DOUBLE_CHALLENGE_PREFIX)
+                && (subIds.isEmpty() || subIds.stream().anyMatch(subId -> {
+                    Challenge child = ChallengeRegistry.get(subId);
+                    return child == null || !child.isEnabled() || ChallengeUtils.isDoubleChallenge(subId);
+                }));
+        if (challenge == null || !challenge.isEnabled() || invalidChildren) {
+            source.sendError(Text.literal("[Curse-Cycle] Неизвестное или отключённое испытание: " + id));
             return 0;
         }
 
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
         CycleManager.activateChallenge(source.getServer(), state, id);
+        CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Команда активации выполнена для ID: " + id).formatted(Formatting.GREEN), true);
         return 1;
@@ -142,7 +154,8 @@ public class CurseCycleCommand {
         }
         state.setCurrentDay(day);
         state.setTotalInGameTicks(newTimeOfDay);
-        state.setSpinTriggeredForCurrentCycle(false);
+        CycleManager.updateSchedule(source.getServer(), CurseCycleMod.getConfig());
+        CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Игровой день успешно изменен на День " + day).formatted(Formatting.GREEN), true);
         return 1;
@@ -160,14 +173,16 @@ public class CurseCycleCommand {
             }
         }
 
-        state.getActiveChallengeIds().clear();
-        state.setNextChallengeId(null);
-        state.setSpinTriggeredForCurrentCycle(false);
-        state.setCurrentDay(1);
-        state.setTotalInGameTicks(0);
-        state.getHistory().clear();
-        state.getCurrentPool().clear();
-        state.setLastDrawnChallengeId(null);
+        for (ServerPlayerEntity player : source.getServer().getPlayerManager().getPlayerList()) {
+            for (String id : new ArrayList<>(state.getPersonalActiveChallengeIds(player.getUuid()))) {
+                Challenge challenge = ChallengeRegistry.get(id);
+                if (challenge != null) challenge.onStop(source.getServer(), player);
+            }
+        }
+        state.reset();
+        source.getServer().getOverworld().setTimeOfDay(0);
+        CycleManager.updateSchedule(source.getServer(), CurseCycleMod.getConfig());
+        CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Состояние Curse-Cycle сброшено к начальному!").formatted(Formatting.YELLOW), true);
         return 1;

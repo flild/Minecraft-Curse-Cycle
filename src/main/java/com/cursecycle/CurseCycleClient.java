@@ -4,7 +4,6 @@ import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.gui.CurseCycleHudOverlay;
 import com.cursecycle.client.gui.MainMenuScreen;
 import com.cursecycle.client.gui.WheelScreen;
-import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.network.CurseCycleSyncPayload;
 import com.cursecycle.network.TriggerWheelPayload;
@@ -14,6 +13,7 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -27,6 +27,8 @@ public class CurseCycleClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CurseCycleMod.LOGGER.info("Initializing Curse-Cycle Client...");
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientDataHolder.reset());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ClientDataHolder.reset());
 
         // Register Keybinding 'H' to open main menu
         openMenuKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -38,7 +40,7 @@ public class CurseCycleClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openMenuKeyBinding.wasPressed()) {
-                if (client.currentScreen == null) {
+                if (client.currentScreen == null && client.player != null && ClientDataHolder.isSynced()) {
                     client.setScreen(new MainMenuScreen());
                 }
             }
@@ -46,12 +48,6 @@ public class CurseCycleClient implements ClientModInitializer {
             if (client.player != null && NoSprintChallenge.isNoSprintActiveForPlayer(client.player)) {
                 if (client.player.isSprinting()) {
                     client.player.setSprinting(false);
-                }
-            }
-
-            if (client.player != null && NoJumpingChallenge.isNoJumpingActiveForPlayer(client.player)) {
-                if (client.player.input != null && client.player.input.jumping) {
-                    client.player.input.jumping = false;
                 }
             }
         });
@@ -71,6 +67,7 @@ public class CurseCycleClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(TriggerWheelPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
+                if (!CurseCycleMod.getConfig().enableWheelAnimation) return;
                 if (context.client().currentScreen == null || !(context.client().currentScreen instanceof WheelScreen)) {
                     context.client().setScreen(new WheelScreen(payload.candidateIds(), payload.winnerId()));
                 }
@@ -79,6 +76,7 @@ public class CurseCycleClient implements ClientModInitializer {
 
         // HUD Render Callback
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
+            if (!ClientDataHolder.isSynced()) return;
             CurseCycleHudOverlay.render(
                 drawContext,
                 CurseCycleMod.getConfig(),

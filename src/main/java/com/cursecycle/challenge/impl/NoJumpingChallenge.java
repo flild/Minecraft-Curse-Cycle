@@ -3,6 +3,7 @@ package com.cursecycle.challenge.impl;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeScope;
+import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.state.CurseCycleState;
 import net.fabricmc.api.EnvType;
@@ -35,6 +36,8 @@ public class NoJumpingChallenge extends Challenge {
             }
             return false;
         } else if (player instanceof ServerPlayerEntity serverPlayer) {
+            Challenge challenge = ChallengeRegistry.get(ID);
+            if (challenge == null || !challenge.isEnabled()) return false;
             MinecraftServer server = serverPlayer.getServer();
             if (server == null) return false;
 

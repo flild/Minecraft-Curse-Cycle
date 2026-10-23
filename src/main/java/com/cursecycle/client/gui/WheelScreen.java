@@ -3,12 +3,16 @@ package com.cursecycle.client.gui;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
+import com.cursecycle.CurseCycleMod;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -76,6 +80,10 @@ public class WheelScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (!CurseCycleMod.getConfig().enableWheelAnimation) {
+            close();
+            return;
+        }
         ticksElapsed++;
 
         if (ticksElapsed <= TOTAL_SPIN_TICKS) {
@@ -89,18 +97,22 @@ public class WheelScreen extends Screen {
                 int currentSegment = (int) (currentAngle / segmentAngle);
                 if (currentSegment != lastSoundSegment) {
                     lastSoundSegment = currentSegment;
-                    MinecraftClient.getInstance().getSoundManager().play(
-                        PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f)
-                    );
+                    playWheelSound(CurseCycleMod.getConfig().wheelSoundPath,
+                            SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f);
                 }
             }
         } else if (!isFinished) {
             isFinished = true;
             currentAngle = targetAngle;
-            MinecraftClient.getInstance().getSoundManager().play(
-                PositionedSoundInstance.master(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f)
-            );
+            playWheelSound(CurseCycleMod.getConfig().wheelFinishSoundPath,
+                    SoundEvents.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
         }
+    }
+
+    private void playWheelSound(String path, SoundEvent fallback, float pitch, float volume) {
+        Identifier id = path == null ? null : Identifier.tryParse(path);
+        SoundEvent sound = id == null ? fallback : Registries.SOUND_EVENT.getOrEmpty(id).orElse(fallback);
+        MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(sound, pitch, volume));
     }
 
     @Override

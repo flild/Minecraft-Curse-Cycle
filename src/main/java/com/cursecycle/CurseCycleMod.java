@@ -39,6 +39,7 @@ public class CurseCycleMod implements ModInitializer {
         // Load config & register challenges
         config = CurseCycleConfig.load();
         ModChallenges.registerAll();
+        config.applyChallengeToggles();
         ChallengeEventManager.registerEvents();
 
         // Register payloads & commands

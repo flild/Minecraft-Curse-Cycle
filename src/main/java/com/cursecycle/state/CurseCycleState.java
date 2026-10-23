@@ -60,6 +60,21 @@ public class CurseCycleState extends PersistentState {
 
     public CurseCycleState() {}
 
+    public void reset() {
+        totalInGameTicks = 0;
+        currentDay = 1;
+        activeChallengeIds.clear();
+        nextChallengeId = null;
+        spinTriggeredForCurrentCycle = false;
+        lastActivatedCycle = -1;
+        lastSpinCycle = -1;
+        personalActiveChallenges.clear();
+        history.clear();
+        currentPool.clear();
+        lastDrawnChallengeId = null;
+        markDirty();
+    }
+
     public static CurseCycleState getServerState(MinecraftServer server) {
         PersistentStateManager stateManager = server.getWorld(World.OVERWORLD).getPersistentStateManager();
         CurseCycleState state = stateManager.get(new Type<>(
