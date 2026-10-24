@@ -1,5 +1,6 @@
 package com.cursecycle.state;
 
+import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
@@ -200,5 +201,7 @@ public class CycleManager {
                 );
             }
         }
+        // Camera restrictions must reach clients immediately, including scheduled activations.
+        syncState(server, state, CurseCycleMod.getConfig());
     }
 }

@@ -114,7 +114,6 @@ public class CurseCycleCommand {
 
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
         CycleManager.activateChallenge(source.getServer(), state, id);
-        CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
         source.sendFeedback(() -> Text.literal("[Curse-Cycle] Команда активации выполнена для ID: " + id).formatted(Formatting.GREEN), true);
         return 1;

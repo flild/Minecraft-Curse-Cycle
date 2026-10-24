@@ -1,6 +1,7 @@
 package com.cursecycle;
 
 import com.cursecycle.client.ClientDataHolder;
+import com.cursecycle.client.ForcedThirdPersonCamera;
 import com.cursecycle.client.gui.CurseCycleHudOverlay;
 import com.cursecycle.client.gui.MainMenuScreen;
 import com.cursecycle.client.gui.WheelScreen;
@@ -27,8 +28,14 @@ public class CurseCycleClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CurseCycleMod.LOGGER.info("Initializing Curse-Cycle Client...");
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientDataHolder.reset());
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ClientDataHolder.reset());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            ClientDataHolder.reset();
+            ForcedThirdPersonCamera.apply(client);
+        });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            ClientDataHolder.reset();
+            ForcedThirdPersonCamera.apply(client);
+        });
 
         // Register Keybinding 'H' to open main menu
         openMenuKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -39,6 +46,7 @@ public class CurseCycleClient implements ClientModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            ForcedThirdPersonCamera.apply(client);
             while (openMenuKeyBinding.wasPressed()) {
                 if (client.currentScreen == null && client.player != null && ClientDataHolder.isSynced()) {
                     client.setScreen(new MainMenuScreen());
@@ -62,6 +70,7 @@ public class CurseCycleClient implements ClientModInitializer {
                     payload.nextChallengeId(),
                     payload.historyChallengeIds()
                 );
+                ForcedThirdPersonCamera.apply(context.client());
             });
         });
 

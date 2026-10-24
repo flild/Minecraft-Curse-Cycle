@@ -16,7 +16,9 @@
     "SlipperyHandsLivingEntityMixin",
     "AbstractHorseEntityMixin"
   ],
-  "client": [],
+  "client": [
+    "ForcedThirdPersonGameOptionsMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
