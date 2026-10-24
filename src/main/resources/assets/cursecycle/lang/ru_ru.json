@@ -1,4 +1,6 @@
 {
+  "death.attack.cursecycle.the_floor_is_lava": "%1$s не смог спастись от пола",
+  "death.attack.cursecycle.the_floor_is_lava.player": "%1$s не смог спастись от пола, сражаясь с %2$s",
   "modmenu.name": "Curse-Cycle",
   "modmenu.description": "Каждые 5 дней игрового времени активируется новое испытание!",
   "key.cursecycle.category": "Curse-Cycle",

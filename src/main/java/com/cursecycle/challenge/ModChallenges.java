@@ -1,6 +1,7 @@
 package com.cursecycle.challenge;
 
 import com.cursecycle.challenge.impl.ArmorDisabledChallenge;
+import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
 import com.cursecycle.challenge.impl.FloorIsWaterChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
@@ -10,6 +11,7 @@ import com.cursecycle.challenge.test.*;
 public class ModChallenges {
     public static void registerAll() {
         ChallengeRegistry.register(new ArmorDisabledChallenge());
+        ChallengeRegistry.register(new FloorIsLavaChallenge());
         ChallengeRegistry.register(new FloorIsWaterChallenge());
         ChallengeRegistry.register(new NoJumpingChallenge());
         ChallengeRegistry.register(new NoSprintChallenge());
