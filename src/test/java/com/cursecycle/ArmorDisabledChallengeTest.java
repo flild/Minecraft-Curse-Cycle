@@ -21,14 +21,14 @@ class ArmorDisabledChallengeTest {
     }
 
     @Test
-    void registeredAsHardGlobalChallenge() {
+    void registeredAsMediumGlobalChallenge() {
         var challenge = ChallengeRegistry.get("armor_disabled");
         assertInstanceOf(ArmorDisabledChallenge.class, challenge);
         assertEquals("Голый король", challenge.getName());
         assertEquals("Броня и элитры полностью отключены", challenge.getShortDescription());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
-        assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));
+        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
     }
 
     @Test
@@ -40,7 +40,8 @@ class ArmorDisabledChallengeTest {
     @Test
     void disabledChallengeIsExcludedFromSelection() {
         var challenge = ChallengeRegistry.get(ArmorDisabledChallenge.ID);
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
         challenge.setEnabled(false);
-        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));
+        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
     }
 }
