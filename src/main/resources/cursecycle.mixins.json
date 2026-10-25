@@ -25,7 +25,9 @@
     "EffectLedgerLivingEntityMixin",
     "OneTimeMenuItemStackMixin",
     "OneTimeMenuCakeMixin",
-    "GillsLivingEntityMixin"
+    "GillsLivingEntityMixin",
+    "NoHealingLivingEntityMixin",
+    "HealthInitializationServerPlayerMixin"
   ],
   "client": [
     "ForcedThirdPersonGameOptionsMixin"
