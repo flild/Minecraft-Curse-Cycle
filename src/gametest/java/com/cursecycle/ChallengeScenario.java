@@ -1,0 +1,48 @@
+package com.cursecycle;
+
+import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.state.CycleManager;
+import com.mojang.authlib.GameProfile;
+import io.netty.channel.embedded.EmbeddedChannel;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.network.ClientConnection;
+import net.minecraft.network.NetworkSide;
+import net.minecraft.server.network.ConnectedClientData;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.test.TestContext;
+import net.minecraft.world.GameMode;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/** Isolates the shared registry activation used by synchronous gameplay scenarios. */
+public final class ChallengeScenario implements AutoCloseable {
+    public final TestContext context;
+    public final CurseCycleState state;
+    private final NbtCompound original;
+    private final List<ServerPlayerEntity> players = new ArrayList<>();
+    public ChallengeScenario(TestContext context) {
+        this.context = context;
+        state = CurseCycleState.getServerState(context.getWorld().getServer());
+        original = state.writeNbt(new NbtCompound(), context.getWorld().getRegistryManager());
+    }
+    public ServerPlayerEntity player() {
+        var server = context.getWorld().getServer();
+        UUID uuid = UUID.randomUUID();
+        var data = ConnectedClientData.createDefault(new GameProfile(uuid, "spec-"+uuid.toString().substring(0,8)), false);
+        var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions());
+        var connection = new ClientConnection(NetworkSide.SERVERBOUND);
+        new EmbeddedChannel(connection);
+        server.getPlayerManager().onPlayerConnect(connection, player, data);
+        player.changeGameMode(GameMode.SURVIVAL);
+        players.add(player);
+        return player;
+    }
+    public void activate(String id) { CycleManager.activateChallenge(context.getWorld().getServer(), state, id); }
+    @Override public void close() {
+        var manager = context.getWorld().getServer().getPlayerManager();
+        for (var player : players) if (manager.getPlayerList().contains(player)) manager.remove(player);
+        context.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY,
+                CurseCycleState.createFromNbt(original, context.getWorld().getRegistryManager()));
+    }
+}
