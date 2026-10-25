@@ -24,7 +24,8 @@
     "EffectDurationMixin",
     "EffectLedgerLivingEntityMixin",
     "OneTimeMenuItemStackMixin",
-    "OneTimeMenuCakeMixin"
+    "OneTimeMenuCakeMixin",
+    "GillsLivingEntityMixin"
   ],
   "client": [
     "ForcedThirdPersonGameOptionsMixin"
