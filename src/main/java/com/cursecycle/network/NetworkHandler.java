@@ -13,6 +13,7 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playS2C().register(FoodHistoryPayload.ID, FoodHistoryPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(CurseCycleSyncPayload.ID, CurseCycleSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TriggerWheelPayload.ID, TriggerWheelPayload.CODEC);
     }

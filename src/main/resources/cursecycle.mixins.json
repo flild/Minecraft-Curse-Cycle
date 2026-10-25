@@ -22,7 +22,9 @@
     "SlipperyHandsLivingEntityMixin",
     "AbstractHorseEntityMixin",
     "EffectDurationMixin",
-    "EffectLedgerLivingEntityMixin"
+    "EffectLedgerLivingEntityMixin",
+    "OneTimeMenuItemStackMixin",
+    "OneTimeMenuCakeMixin"
   ],
   "client": [
     "ForcedThirdPersonGameOptionsMixin"

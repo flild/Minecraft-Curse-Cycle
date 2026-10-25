@@ -60,6 +60,9 @@ public class CurseCycleClient implements ClientModInitializer {
             }
         });
 
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.FoodHistoryPayload.ID, (payload, context) ->
+                context.client().execute(() -> ClientDataHolder.updateFoodHistory(payload.ids())));
+
         // Register S2C Packet Listeners
         ClientPlayNetworking.registerGlobalReceiver(CurseCycleSyncPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
