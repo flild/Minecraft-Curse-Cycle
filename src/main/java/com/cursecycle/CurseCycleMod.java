@@ -49,6 +49,7 @@ public class CurseCycleMod implements ModInitializer {
         // Player Join Event -> sync state & re-apply active challenges
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
+            com.cursecycle.challenge.effect.EffectLedger.of(player).reconcile();
             CurseCycleState state = CurseCycleState.getServerState(server);
 
             long intervalTicks = config.challengeIntervalDays * 24000L;

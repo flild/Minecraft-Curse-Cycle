@@ -5,7 +5,7 @@
   "name": "Curse-Cycle gameplay tests",
   "environment": "server",
   "entrypoints": {
-    "fabric-gametest": ["com.cursecycle.ArmorDisabledGameTest", "com.cursecycle.FloorIsWaterGameTest", "com.cursecycle.FloorIsLavaGameTest", "com.cursecycle.SlipperyHandsGameTest", "com.cursecycle.InfiniteDietGameTest", "com.cursecycle.ForcedThirdPersonRpgGameTest", "com.cursecycle.ForcedThirdPersonFrontGameTest", "com.cursecycle.AdhdNoStandingStillGameTest", "com.cursecycle.InventoryLockdownGameTest"]
+    "fabric-gametest": ["com.cursecycle.NoBlockBreakingGameTest", "com.cursecycle.ArmorDisabledGameTest", "com.cursecycle.FloorIsWaterGameTest", "com.cursecycle.FloorIsLavaGameTest", "com.cursecycle.SlipperyHandsGameTest", "com.cursecycle.InfiniteDietGameTest", "com.cursecycle.ForcedThirdPersonRpgGameTest", "com.cursecycle.ForcedThirdPersonFrontGameTest", "com.cursecycle.AdhdNoStandingStillGameTest", "com.cursecycle.InventoryLockdownGameTest"]
   },
   "depends": { "cursecycle": "*" }
 }

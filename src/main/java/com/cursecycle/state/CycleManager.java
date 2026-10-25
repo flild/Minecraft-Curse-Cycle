@@ -161,6 +161,7 @@ public class CycleManager {
             }
         }
         state.getActiveChallengeIds().clear();
+        state.beginActivation();
 
         String historyEntryId = challengeId;
 

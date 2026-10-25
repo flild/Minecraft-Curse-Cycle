@@ -18,6 +18,13 @@ import java.util.*;
 public class CurseCycleState extends PersistentState {
     public static final String STATE_KEY = "cursecycle_state";
 
+    private long activationSerial = 0;
+    private NbtCompound challengeData = new NbtCompound();
+
+    public long getActivationSerial() { return activationSerial; }
+    public void beginActivation() { activationSerial++; challengeData = new NbtCompound(); markDirty(); }
+    public NbtCompound getChallengeData() { return challengeData; }
+
     private long totalInGameTicks = 0;
     private long currentDay = 1;
     private final List<String> activeChallengeIds = new ArrayList<>();
@@ -61,6 +68,7 @@ public class CurseCycleState extends PersistentState {
     public CurseCycleState() {}
 
     public void reset() {
+        beginActivation();
         totalInGameTicks = 0;
         currentDay = 1;
         activeChallengeIds.clear();
@@ -91,6 +99,8 @@ public class CurseCycleState extends PersistentState {
 
     public static CurseCycleState createFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         CurseCycleState state = new CurseCycleState();
+        state.activationSerial = tag.getLong("activationSerial");
+        state.challengeData = tag.getCompound("challengeData").copy();
         state.totalInGameTicks = tag.getLong("totalInGameTicks");
         state.currentDay = tag.getLong("currentDay");
         if (state.currentDay < 1) state.currentDay = 1;
@@ -152,6 +162,8 @@ public class CurseCycleState extends PersistentState {
 
     @Override
     public NbtCompound writeNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
+        tag.putLong("activationSerial", activationSerial);
+        tag.put("challengeData", challengeData.copy());
         tag.putLong("totalInGameTicks", totalInGameTicks);
         tag.putLong("currentDay", currentDay);
 
