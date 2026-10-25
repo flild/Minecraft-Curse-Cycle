@@ -3,6 +3,12 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "InventoryLockdownScreenHandlerMixin",
+    "InventoryLockdownPlayerInventoryMixin",
+    "InventoryLockdownInputSlotFillerMixin",
+    "InventoryLockdownMerchantScreenHandlerMixin",
+    "InventoryLockdownPlayerEntityMixin",
+    "InventoryLockdownServerPlayNetworkHandlerMixin",
     "InfiniteDietHungerManagerMixin",
     "InfiniteDietPlayerEntityMixin",
     "InfiniteDietServerPlayerMixin",
