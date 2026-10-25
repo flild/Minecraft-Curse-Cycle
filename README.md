@@ -30,6 +30,12 @@
 Активация: `/fdc activate infinite_diet`.
 [Сценарии проверки](docs/infinite-diet-testing.md).
 
+Испытание **«Смотри мне в глаза.»** (`forced_third_person_front`, MEDIUM/GLOBAL)
+фиксирует камеру спереди в Survival и Adventure, блокируя F5 и прямую смену
+перспективы. Creative и Spectator свободны. После завершения возвращается
+исходный вид. Активация: `/fdc activate forced_third_person_front`.
+[Сценарии проверки](docs/forced-third-person-front-testing.md).
+
 ## Основные особенности и механики
 
 1. **Согласованная система времени и интервалов:**

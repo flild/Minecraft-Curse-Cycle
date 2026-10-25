@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 @Mixin(GameOptions.class)
 public abstract class ForcedThirdPersonGameOptionsMixin {
     @ModifyVariable(method = "setPerspective", at = @At("HEAD"), argsOnly = true)
-    private Perspective cursecycle$forceThirdPersonBack(Perspective requested) {
+    private Perspective cursecycle$forceThirdPerson(Perspective requested) {
         return ForcedThirdPersonCamera.constrain(MinecraftClient.getInstance(), requested);
     }
 }

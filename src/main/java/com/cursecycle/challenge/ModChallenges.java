@@ -3,6 +3,7 @@ package com.cursecycle.challenge;
 import com.cursecycle.challenge.impl.ArmorDisabledChallenge;
 import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
 import com.cursecycle.challenge.impl.FloorIsWaterChallenge;
+import com.cursecycle.challenge.impl.ForcedThirdPersonFrontChallenge;
 import com.cursecycle.challenge.impl.ForcedThirdPersonRpgChallenge;
 import com.cursecycle.challenge.impl.InfiniteDietChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
@@ -16,6 +17,7 @@ public class ModChallenges {
         ChallengeRegistry.register(new ArmorDisabledChallenge());
         ChallengeRegistry.register(new FloorIsLavaChallenge());
         ChallengeRegistry.register(new FloorIsWaterChallenge());
+        ChallengeRegistry.register(new ForcedThirdPersonFrontChallenge());
         ChallengeRegistry.register(new ForcedThirdPersonRpgChallenge());
         ChallengeRegistry.register(new InfiniteDietChallenge());
         ChallengeRegistry.register(new NoJumpingChallenge());
