@@ -25,6 +25,8 @@ public final class ChallengeScenario implements AutoCloseable {
         this.context = context;
         state = CurseCycleState.getServerState(context.getWorld().getServer());
         original = state.writeNbt(new NbtCompound(), context.getWorld().getRegistryManager());
+        // The roulette may select any newly registered mechanic before tests start.
+        activate("test_easy");
     }
     public ServerPlayerEntity player() {
         var server = context.getWorld().getServer();

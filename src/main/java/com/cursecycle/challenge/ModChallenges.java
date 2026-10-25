@@ -6,6 +6,7 @@ import com.cursecycle.challenge.impl.RandomPotionChallenge;
 import com.cursecycle.challenge.impl.OneTimeMenuChallenge;
 import com.cursecycle.challenge.impl.GillsChallenge;
 import com.cursecycle.challenge.impl.NoHealingChallenge;
+import com.cursecycle.challenge.impl.OneHeartChallenge;
 import com.cursecycle.challenge.impl.AdhdNoStandingStillChallenge;
 import com.cursecycle.challenge.impl.ArmorDisabledChallenge;
 import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
@@ -22,6 +23,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new OneHeartChallenge());
         ChallengeRegistry.register(new NoHealingChallenge());
         ChallengeRegistry.register(new GillsChallenge());
         ChallengeRegistry.register(new OneTimeMenuChallenge());
