@@ -39,6 +39,14 @@ public final class ChallengeScenario implements AutoCloseable {
         return player;
     }
     public void activate(String id) { CycleManager.activateChallenge(context.getWorld().getServer(), state, id); }
+    public ServerPlayerEntity respawn(ServerPlayerEntity previous, boolean alive) {
+        var player = previous.getServer().getPlayerManager().respawnPlayer(previous, alive,
+                alive ? net.minecraft.entity.Entity.RemovalReason.CHANGED_DIMENSION : net.minecraft.entity.Entity.RemovalReason.KILLED);
+        player.networkHandler.player = player;
+        player.changeGameMode(GameMode.SURVIVAL);
+        players.add(player);
+        return player;
+    }
     @Override public void close() {
         var manager = context.getWorld().getServer().getPlayerManager();
         for (var player : players) if (manager.getPlayerList().contains(player)) manager.remove(player);

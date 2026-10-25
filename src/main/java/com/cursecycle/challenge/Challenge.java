@@ -79,6 +79,9 @@ public abstract class Challenge {
     /**
      * Called when a player leaves the server while this challenge is active.
      */
+    public void onPlayerRespawn(MinecraftServer server, ServerPlayerEntity oldPlayer,
+                                ServerPlayerEntity newPlayer, boolean alive) {}
+
     public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) {
         onStop(server, player);
     }

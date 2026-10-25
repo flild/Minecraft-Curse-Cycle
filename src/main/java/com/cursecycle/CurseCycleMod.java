@@ -103,6 +103,25 @@ public class CurseCycleMod implements ModInitializer {
             }
         });
 
+        // A live End return may replace the player object without ending its effects/timers.
+        net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+            var server = newPlayer.getServer();
+            if (alive) {
+                var ledgerNbt = new net.minecraft.nbt.NbtCompound();
+                com.cursecycle.challenge.effect.EffectLedger.of(oldPlayer).write(ledgerNbt);
+                com.cursecycle.challenge.effect.EffectLedger.of(newPlayer).read(ledgerNbt);
+                com.cursecycle.challenge.effect.EffectLedger.of(newPlayer).reconcile();
+            }
+            var state = CurseCycleState.getServerState(server);
+            var ids = new java.util.LinkedHashSet<>(state.getActiveChallengeIds());
+            ids.addAll(state.getPersonalActiveChallengeIds(newPlayer.getUuid()));
+            for (String id : ids) {
+                var challenge = ChallengeRegistry.get(id);
+                if (challenge != null && challenge.isEnabled())
+                    challenge.onPlayerRespawn(server, oldPlayer, newPlayer, alive);
+            }
+        });
+
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
     }

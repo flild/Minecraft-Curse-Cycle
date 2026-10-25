@@ -90,7 +90,12 @@ public final class EffectLedger {
             boolean changed = pair.getValue().owned.entrySet().removeIf(own ->
                     own.getValue().activation != activation || !ChallengeActivity.active(player, own.getKey())
                             || (!own.getValue().effect.isInfinite() && own.getValue().effect.getDuration() <= 0));
-            if (changed) publish(pair.getKey(), pair.getValue());
+            StatusEffectInstance visible = player.getStatusEffect(pair.getKey());
+            int ownedAmplifier = pair.getValue().owned.values().stream()
+                    .mapToInt(own -> own.effect.getAmplifier()).max().orElse(-1);
+            // Live player copies in vanilla do not copy hidden chains. Rebuild only when needed.
+            if (changed || (ownedAmplifier >= 0 && (visible == null || visible.getAmplifier() < ownedAmplifier)))
+                publish(pair.getKey(), pair.getValue());
             if (pair.getValue().owned.isEmpty()) it.remove();
         }
     }
