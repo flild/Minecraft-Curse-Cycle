@@ -89,6 +89,7 @@ public abstract class Challenge {
     /** Event Hooks for Challenge Mechanics **/
     public void onPlayerJump(MinecraftServer server, ServerPlayerEntity player) {}
     public void onPlayerDamage(MinecraftServer server, ServerPlayerEntity player, net.minecraft.entity.damage.DamageSource source, float amount) {}
+    public void onPlayerDamageApplied(MinecraftServer server, ServerPlayerEntity player, DamageReceipt damage) {}
     public void onBlockBreak(MinecraftServer server, ServerPlayerEntity player, net.minecraft.util.math.BlockPos pos, net.minecraft.block.BlockState state) {}
     public void onBlockPlace(MinecraftServer server, ServerPlayerEntity player, net.minecraft.util.math.BlockPos pos, net.minecraft.block.BlockState state) {}
     public void onItemUse(MinecraftServer server, ServerPlayerEntity player, net.minecraft.item.ItemStack stack) {}

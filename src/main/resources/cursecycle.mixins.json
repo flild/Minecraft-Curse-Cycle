@@ -28,7 +28,9 @@
     "GillsLivingEntityMixin",
     "NoHealingLivingEntityMixin",
     "HealthInitializationServerPlayerMixin",
-    "OneHeartLivingEntityMixin"
+    "OneHeartLivingEntityMixin",
+    "AppliedDamageLivingEntityMixin",
+    "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
     "ForcedThirdPersonGameOptionsMixin"
