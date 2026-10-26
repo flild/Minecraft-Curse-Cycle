@@ -1,4 +1,6 @@
 {
+  "death.attack.cursecycle.bitter_experience": "%1$s получил горький опыт",
+  "death.attack.cursecycle.bitter_experience.player": "%1$s получил горький опыт, сражаясь с %2$s",
   "death.attack.cursecycle.the_floor_is_lava": "%1$s не смог спастись от пола",
   "death.attack.cursecycle.the_floor_is_lava.player": "%1$s не смог спастись от пола, сражаясь с %2$s",
   "modmenu.name": "Curse-Cycle",
