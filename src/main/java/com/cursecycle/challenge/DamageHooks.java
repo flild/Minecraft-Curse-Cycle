@@ -2,7 +2,7 @@ package com.cursecycle.challenge;
 
 import com.cursecycle.state.CurseCycleState;
 import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 import java.util.ArrayDeque;
 import java.util.Comparator;
@@ -14,20 +14,24 @@ public final class DamageHooks {
     public static boolean needed(ServerPlayerEntity player) {
         return ChallengeActivity.active(player, "damage_slot_drop") || ChallengeActivity.active(player, "damage_teleport");
     }
-    public static DamageReceipt begin(ServerPlayerEntity player, DamageSource source) {
-        var receipt = new DamageReceipt(player, source);
+    public static DamageReceipt begin(LivingEntity target, DamageSource source) {
+        var receipt = new DamageReceipt(target, source);
         pending.get().push(receipt);
         return receipt;
     }
-    public static void accepted(PlayerEntity player) {
+    public static boolean isPending(LivingEntity target, DamageSource source) {
         var receipt = pending.get().peek();
-        if (receipt != null && receipt.player == player) receipt.accepted = true;
+        return receipt != null && receipt.target == target && receipt.source == source;
+    }
+    public static void accepted(LivingEntity target) {
+        var receipt = pending.get().peek();
+        if (receipt != null && receipt.target == target) receipt.accepted = true;
     }
     public static void finish(DamageReceipt receipt, boolean completed) {
         var stack = pending.get();
         if (stack.pop() != receipt) throw new IllegalStateException("Unbalanced damage receipt");
         if (stack.isEmpty()) pending.remove();
-        if (!completed || !receipt.accepted || !receipt.player.isAlive()) return;
+        if (!completed || !receipt.accepted || receipt.player == null || !receipt.player.isAlive()) return;
         var server = receipt.player.getServer();
         var state = CurseCycleState.getServerState(server);
         var ids = new LinkedHashSet<>(state.getActiveChallengeIds());

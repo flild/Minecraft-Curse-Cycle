@@ -10,6 +10,7 @@ import com.cursecycle.challenge.impl.OneHeartChallenge;
 import com.cursecycle.challenge.impl.DamageSlotDropChallenge;
 import com.cursecycle.challenge.impl.DamageTeleportChallenge;
 import com.cursecycle.challenge.impl.BitterExperienceChallenge;
+import com.cursecycle.challenge.impl.AttackRecoilChallenge;
 import com.cursecycle.challenge.impl.AdhdNoStandingStillChallenge;
 import com.cursecycle.challenge.impl.ArmorDisabledChallenge;
 import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
@@ -26,6 +27,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new AttackRecoilChallenge());
         ChallengeRegistry.register(new BitterExperienceChallenge());
         ChallengeRegistry.register(new DamageTeleportChallenge());
         ChallengeRegistry.register(new DamageSlotDropChallenge());
