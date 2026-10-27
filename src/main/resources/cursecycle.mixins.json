@@ -3,6 +3,8 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "CraftingTaxResultSlotMixin",
+    "CraftingTaxQuickMoveMixin",
     "AttackRecoilPlayerEntityMixin",
     "BitterExperienceOrbMixin",
     "InventoryLockdownScreenHandlerMixin",

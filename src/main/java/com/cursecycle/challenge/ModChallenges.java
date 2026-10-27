@@ -20,6 +20,7 @@ import com.cursecycle.challenge.impl.ForcedThirdPersonFrontChallenge;
 import com.cursecycle.challenge.impl.ForcedThirdPersonRpgChallenge;
 import com.cursecycle.challenge.impl.InfiniteDietChallenge;
 import com.cursecycle.challenge.impl.InventoryLockdownChallenge;
+import com.cursecycle.challenge.impl.CraftingTaxChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.challenge.impl.SlipperyHandsChallenge;
@@ -28,6 +29,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new CraftingTaxChallenge());
         ChallengeRegistry.register(new HotbarShuffleChallenge());
         ChallengeRegistry.register(new AttackRecoilChallenge());
         ChallengeRegistry.register(new BitterExperienceChallenge());

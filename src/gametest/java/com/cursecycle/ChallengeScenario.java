@@ -29,8 +29,10 @@ public final class ChallengeScenario implements AutoCloseable {
         activate("test_easy");
     }
     public ServerPlayerEntity player() {
+        return player(UUID.randomUUID());
+    }
+    public ServerPlayerEntity player(UUID uuid) {
         var server = context.getWorld().getServer();
-        UUID uuid = UUID.randomUUID();
         var data = ConnectedClientData.createDefault(new GameProfile(uuid, "spec-"+uuid.toString().substring(0,8)), false);
         var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions());
         var connection = new ClientConnection(NetworkSide.SERVERBOUND);
