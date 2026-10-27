@@ -26,6 +26,7 @@ import com.cursecycle.challenge.impl.NoBlockPlacingChallenge;
 import com.cursecycle.challenge.impl.FragileFloorChallenge;
 import com.cursecycle.challenge.impl.SunlightBurnChallenge;
 import com.cursecycle.challenge.impl.InvertedKeyboardChallenge;
+import com.cursecycle.challenge.impl.BlockedDirectionChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.challenge.impl.SlipperyHandsChallenge;
@@ -34,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new BlockedDirectionChallenge());
         ChallengeRegistry.register(new InvertedKeyboardChallenge());
         ChallengeRegistry.register(new SunlightBurnChallenge());
         ChallengeRegistry.register(new FragileFloorChallenge());

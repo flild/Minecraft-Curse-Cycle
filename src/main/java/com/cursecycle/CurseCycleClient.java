@@ -71,7 +71,8 @@ public class CurseCycleClient implements ClientModInitializer {
                     payload.ticksUntilNext(),
                     payload.activeChallengeIds(),
                     payload.nextChallengeId(),
-                    payload.historyChallengeIds()
+                    payload.historyChallengeIds(),
+                    payload.blockedDirection()
                 );
                 ForcedThirdPersonCamera.apply(context.client());
             });

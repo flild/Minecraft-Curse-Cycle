@@ -19,6 +19,7 @@ public class CurseCycleSyncPayload implements CustomPayload {
         PacketCodecs.STRING.collect(PacketCodecs.toList()), CurseCycleSyncPayload::activeChallengeIds,
         PacketCodecs.STRING, CurseCycleSyncPayload::nextChallengeId,
         PacketCodecs.STRING.collect(PacketCodecs.toList()), CurseCycleSyncPayload::historyChallengeIds,
+        PacketCodecs.STRING, CurseCycleSyncPayload::blockedDirection,
         CurseCycleSyncPayload::new
     );
 
@@ -27,13 +28,19 @@ public class CurseCycleSyncPayload implements CustomPayload {
     private final List<String> activeChallengeIds;
     private final String nextChallengeId;
     private final List<String> historyChallengeIds;
+    private final String blockedDirection;
 
     public CurseCycleSyncPayload(long currentDay, long ticksUntilNext, List<String> activeChallengeIds, String nextChallengeId, List<String> historyChallengeIds) {
+        this(currentDay, ticksUntilNext, activeChallengeIds, nextChallengeId, historyChallengeIds, "");
+    }
+
+    public CurseCycleSyncPayload(long currentDay, long ticksUntilNext, List<String> activeChallengeIds, String nextChallengeId, List<String> historyChallengeIds, String blockedDirection) {
         this.currentDay = currentDay;
         this.ticksUntilNext = ticksUntilNext;
         this.activeChallengeIds = activeChallengeIds;
         this.nextChallengeId = nextChallengeId != null ? nextChallengeId : "";
         this.historyChallengeIds = historyChallengeIds;
+        this.blockedDirection = blockedDirection;
     }
 
     public long currentDay() { return currentDay; }
@@ -41,6 +48,7 @@ public class CurseCycleSyncPayload implements CustomPayload {
     public List<String> activeChallengeIds() { return activeChallengeIds; }
     public String nextChallengeId() { return nextChallengeId; }
     public List<String> historyChallengeIds() { return historyChallengeIds; }
+    public String blockedDirection() { return blockedDirection; }
 
     @Override
     public Id<? extends CustomPayload> getId() {

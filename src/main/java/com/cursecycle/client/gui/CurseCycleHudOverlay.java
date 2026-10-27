@@ -2,6 +2,7 @@ package com.cursecycle.client.gui;
 
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.client.BlockedDirectionInput;
 import com.cursecycle.config.CurseCycleConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -36,6 +37,9 @@ public class CurseCycleHudOverlay {
                 if (ChallengeRegistry.get(id) != null) validCount++;
             }
             activeSectionHeight = validCount > 0 ? (validCount * 25) : (activeIds.size() * 14);
+            for (String id : activeIds) {
+                if (ChallengeRegistry.get(id) != null && !BlockedDirectionInput.feedback(id).isEmpty()) activeSectionHeight += 11;
+            }
         }
         int nextSectionHeight = (nextId != null && !nextId.isEmpty()) ? 16 : 0;
         int height = padding + 12 + 1 + 5 + 12 + activeSectionHeight + nextSectionHeight + padding;
@@ -87,6 +91,11 @@ public class CurseCycleHudOverlay {
                     context.drawTextWithShadow(textRenderer, Text.literal(diffText), x + width - padding - diffW, currentY, color);
                     currentY += 11;
 
+                    String feedback = BlockedDirectionInput.feedback(id);
+                    if (!feedback.isEmpty()) {
+                        context.drawTextWithShadow(textRenderer, Text.literal("   " + feedback), x + padding, currentY, 0xAAAAAA);
+                        currentY += 11;
+                    }
                     String desc = challenge.getShortDescription();
                     int maxDescW = width - (padding * 2) - 12;
                     if (textRenderer.getWidth(desc) > maxDescW) {

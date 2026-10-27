@@ -4,6 +4,7 @@ import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.client.ClientDataHolder;
+import com.cursecycle.client.BlockedDirectionInput;
 import com.cursecycle.config.CurseCycleConfig;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -291,7 +292,9 @@ public class MainMenuScreen extends Screen {
 
     private void renderChallengeModal(DrawContext context, TextRenderer tr, Challenge c) {
         int modalW = 280;
-        List<OrderedText> wrappedLines = tr.wrapLines(Text.literal(c.getDetailedRules()), modalW - 30);
+        String feedback = BlockedDirectionInput.feedback(c.getId());
+        String rules = c.getDetailedRules() + (feedback.isEmpty() ? "" : "\n" + feedback);
+        List<OrderedText> wrappedLines = tr.wrapLines(Text.literal(rules), modalW - 30);
         int modalH = Math.max(130, 48 + (wrappedLines.size() * 12) + 28);
         int modalX = (width - modalW) / 2;
         int modalY = (height - modalH) / 2;

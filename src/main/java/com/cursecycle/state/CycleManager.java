@@ -4,6 +4,7 @@ import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
+import com.cursecycle.challenge.impl.BlockedDirectionChallenge;
 import com.cursecycle.config.CurseCycleConfig;
 import com.cursecycle.network.NetworkHandler;
 import com.cursecycle.roulette.RouletteSelector;
@@ -67,6 +68,7 @@ public class CycleManager {
                             Text.literal("🎲 [Curse-Cycle] Следующее испытание выбрано! Вращаем колесо...")
                                     .formatted(Formatting.GOLD), false);
                 });
+        BlockedDirectionChallenge.reconcile(server);
     }
 
     // Keep scheduling separate from player effects and network I/O so time jumps can be tested.
@@ -170,6 +172,7 @@ public class CycleManager {
         }
 
         state.getActiveChallengeIds().addAll(toActivate);
+        BlockedDirectionChallenge.reconcile(server);
         state.addHistory(historyEntryId, state.getCurrentDay());
 
         for (String id : toActivate) {
