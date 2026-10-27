@@ -44,6 +44,10 @@ public class CurseCycleMod implements ModInitializer {
 
         // Register payloads & commands
         NetworkHandler.registerPayloads();
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.HeavyBodyChallenge::clear);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.cursecycle.challenge.impl.HeavyBodyChallenge.forget(handler.getPlayer()));
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.MovementMemoryChallenge::tick);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.MovementMemoryChallenge::clear);
@@ -129,5 +133,6 @@ public class CurseCycleMod implements ModInitializer {
 
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeavyBodyChallenge::tick);
     }
 }

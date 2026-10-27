@@ -35,9 +35,16 @@ public final class ChallengeScenario implements AutoCloseable {
         return player(UUID.randomUUID());
     }
     public ServerPlayerEntity player(UUID uuid) {
+        return player(uuid, false);
+    }
+    public ServerPlayerEntity player(UUID uuid, boolean simulateMovement) {
         var server = context.getWorld().getServer();
         var data = ConnectedClientData.createDefault(new GameProfile(uuid, "spec-"+uuid.toString().substring(0,8)), false);
-        var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions());
+        var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions()) {
+            @Override public boolean isLogicalSideForUpdatingMovement() {
+                return simulateMovement || super.isLogicalSideForUpdatingMovement();
+            }
+        };
         var connection = new ClientConnection(NetworkSide.SERVERBOUND);
         channels.put(player, new EmbeddedChannel(connection));
         server.getPlayerManager().onPlayerConnect(connection, player, data);

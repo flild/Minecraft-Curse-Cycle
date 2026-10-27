@@ -1,0 +1,5 @@
+{
+  "heavy_body_pant": {
+    "sounds": [{ "name": "minecraft:entity.player.breath", "type": "event" }]
+  }
+}

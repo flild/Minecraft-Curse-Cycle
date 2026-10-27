@@ -18,6 +18,7 @@ public class ClientDataHolder {
     public static boolean hasEatenFood(String id) { return eatenFood.contains(id); }
 
     public static synchronized void reset() {
+        HeavyBodyInput.reset();
         MovementMemoryInput.reset();
         currentDay = 1;
         ticksUntilNext = 0;
@@ -38,6 +39,7 @@ public class ClientDataHolder {
         ticksUntilNext = ticks;
         activeChallengeIds.clear();
         activeChallengeIds.addAll(activeIds);
+        if (!activeIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID)) HeavyBodyInput.reset();
         if (!activeIds.contains(com.cursecycle.challenge.impl.MovementMemoryChallenge.ID)) MovementMemoryInput.reset();
         nextChallengeId = nextId;
         historyChallengeIds.clear();

@@ -14,6 +14,10 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playC2S().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(HeavyBodyPayload.ID, (payload, context) ->
+                com.cursecycle.challenge.impl.HeavyBodyChallenge.receive(context.player(), payload));
         PayloadTypeRegistry.playC2S().register(MovementMemoryPayload.ID, MovementMemoryPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(MovementMemoryPayload.ID, MovementMemoryPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(MovementMemoryPayload.ID, (payload, context) ->
@@ -36,6 +40,9 @@ public class NetworkHandler {
         String choice = direction != null && effectiveIds.contains(BlockedDirectionChallenge.ID) ? direction.id() : "";
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
+        if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID))
+            ServerPlayNetworking.send(player, new HeavyBodyPayload(
+                    CurseCycleState.getServerState(player.getServer()).getActivationSerial(), false));
         if (effectiveIds.contains(com.cursecycle.challenge.impl.MovementMemoryChallenge.ID))
             ServerPlayNetworking.send(player, new MovementMemoryPayload(
                     CurseCycleState.getServerState(player.getServer()).getActivationSerial(), -1, false));

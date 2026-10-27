@@ -46,6 +46,7 @@ public class CurseCycleClient implements ClientModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            com.cursecycle.client.HeavyBodyInput.tick(client);
             com.cursecycle.client.MovementMemoryInput.validate(client);
             ForcedThirdPersonCamera.apply(client);
             while (openMenuKeyBinding.wasPressed()) {
@@ -65,6 +66,8 @@ public class CurseCycleClient implements ClientModInitializer {
                 context.client().execute(() -> ClientDataHolder.updateFoodHistory(payload.ids())));
 
         // Register S2C Packet Listeners
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.HeavyBodyPayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.HeavyBodyInput.receive(payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.MovementMemoryPayload.ID, (payload, context) ->
                 context.client().execute(() -> com.cursecycle.client.MovementMemoryInput.receive(payload)));
         ClientPlayNetworking.registerGlobalReceiver(CurseCycleSyncPayload.ID, (payload, context) -> {

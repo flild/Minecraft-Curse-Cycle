@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.HeavyBodyChallenge());
         ChallengeRegistry.register(new BlockedDirectionChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.MovementMemoryChallenge());
         ChallengeRegistry.register(new InvertedKeyboardChallenge());
