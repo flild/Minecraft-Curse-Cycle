@@ -11,6 +11,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class NetworkHandlerTest {
     @Test
+    void keyboardInputFollowsServerEnabledGlobalsAndRecipientPersonalIds() {
+        ChallengeRegistry.clear();
+        ModChallenges.registerAll();
+        var id = "inverted_keyboard";
+        var globals = List.of(id, "no_sprint", id);
+        assertEquals(List.of(id, "no_sprint"), NetworkHandler.getEffectiveActiveIds(globals, List.of(id)));
+        var challenge = ChallengeRegistry.get(id);
+        try {
+            challenge.setEnabled(false);
+            assertEquals(List.of("no_sprint"), NetworkHandler.getEffectiveActiveIds(globals, List.of(id)));
+            challenge.setEnabled(true);
+            assertEquals(List.of("no_sprint", id), NetworkHandler.getEffectiveActiveIds(List.of("no_sprint"), List.of(id)));
+            assertEquals(List.of("no_sprint"), NetworkHandler.getEffectiveActiveIds(List.of("no_sprint"), List.of()));
+        } finally {
+            challenge.setEnabled(true);
+        }
+    }
+
+    @Test
     void personalPredictionIdsAreAddedOnlyToTheirRecipientWithoutDuplicates() {
         ChallengeRegistry.clear();
         ModChallenges.registerAll();

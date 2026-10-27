@@ -44,6 +44,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "InvertedKeyboardInputMixin",
     "ForcedThirdPersonGameOptionsMixin"
   ],
   "injectors": {

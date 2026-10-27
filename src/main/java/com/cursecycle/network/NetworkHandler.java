@@ -32,8 +32,12 @@ public class NetworkHandler {
     }
 
     static List<String> getEffectiveActiveIds(List<String> globalIds, List<String> personalIds) {
-        // Client slot prediction must use the same personal IDs as server enforcement.
-        var effectiveIds = new LinkedHashSet<>(globalIds);
+        // Client input and prediction must follow the server's enabled IDs in both scopes.
+        var effectiveIds = new LinkedHashSet<String>();
+        for (String id : globalIds) {
+            var challenge = ChallengeRegistry.get(id);
+            if (challenge != null && challenge.isEnabled()) effectiveIds.add(id);
+        }
         for (String id : personalIds) {
             var challenge = ChallengeRegistry.get(id);
             if (challenge != null && challenge.isEnabled()) effectiveIds.add(id);
