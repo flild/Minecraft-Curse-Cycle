@@ -24,6 +24,7 @@ import com.cursecycle.challenge.impl.CraftingTaxChallenge;
 import com.cursecycle.challenge.impl.LockedContainersChallenge;
 import com.cursecycle.challenge.impl.NoBlockPlacingChallenge;
 import com.cursecycle.challenge.impl.FragileFloorChallenge;
+import com.cursecycle.challenge.impl.SunlightBurnChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.challenge.impl.SlipperyHandsChallenge;
@@ -32,6 +33,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new SunlightBurnChallenge());
         ChallengeRegistry.register(new FragileFloorChallenge());
         ChallengeRegistry.register(new NoBlockPlacingChallenge());
         ChallengeRegistry.register(new LockedContainersChallenge());
