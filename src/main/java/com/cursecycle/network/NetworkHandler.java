@@ -14,6 +14,10 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playC2S().register(MovementMemoryPayload.ID, MovementMemoryPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(MovementMemoryPayload.ID, MovementMemoryPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(MovementMemoryPayload.ID, (payload, context) ->
+                com.cursecycle.challenge.impl.MovementMemoryChallenge.receive(context.player(), payload));
         PayloadTypeRegistry.playS2C().register(FoodHistoryPayload.ID, FoodHistoryPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(CurseCycleSyncPayload.ID, CurseCycleSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TriggerWheelPayload.ID, TriggerWheelPayload.CODEC);
@@ -32,6 +36,9 @@ public class NetworkHandler {
         String choice = direction != null && effectiveIds.contains(BlockedDirectionChallenge.ID) ? direction.id() : "";
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
+        if (effectiveIds.contains(com.cursecycle.challenge.impl.MovementMemoryChallenge.ID))
+            ServerPlayNetworking.send(player, new MovementMemoryPayload(
+                    CurseCycleState.getServerState(player.getServer()).getActivationSerial(), -1, false));
     }
 
     static List<String> getEffectiveActiveIds(List<String> globalIds, List<String> personalIds) {

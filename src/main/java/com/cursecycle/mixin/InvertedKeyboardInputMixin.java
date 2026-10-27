@@ -2,6 +2,7 @@ package com.cursecycle.mixin;
 
 import com.cursecycle.client.InvertedKeyboardInput;
 import com.cursecycle.client.BlockedDirectionInput;
+import com.cursecycle.client.MovementMemoryInput;
 import net.minecraft.client.input.Input;
 import net.minecraft.client.input.KeyboardInput;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,7 +16,8 @@ public abstract class InvertedKeyboardInputMixin extends Input {
     private void cursecycle$invertKeyboard(boolean slowDown, float slowDownFactor, CallbackInfo ci) {
         // Vanilla rebuilds all fields on every tick, so repeated ticks never invert old input twice.
         InvertedKeyboardInput.apply(this);
-        // Explicit order: remove the chosen resulting component after inversion, before travel normalizes it.
+        MovementMemoryInput.apply(this, slowDown, slowDownFactor);
+        // Explicit order: block the resulting component after inversion and memory, before travel normalizes it.
         BlockedDirectionInput.apply(this);
     }
 }

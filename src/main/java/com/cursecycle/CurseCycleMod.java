@@ -44,6 +44,11 @@ public class CurseCycleMod implements ModInitializer {
 
         // Register payloads & commands
         NetworkHandler.registerPayloads();
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.MovementMemoryChallenge::tick);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.MovementMemoryChallenge::clear);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.cursecycle.challenge.impl.MovementMemoryChallenge.forget(handler.getPlayer()));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CurseCycleCommand.register(dispatcher));
 
         // Player Join Event -> sync state & re-apply active challenges
