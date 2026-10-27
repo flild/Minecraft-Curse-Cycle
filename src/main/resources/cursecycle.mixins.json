@@ -3,6 +3,11 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "NoBlockPlacingBlockItemMixin",
+    "NoBlockPlacingFluidMixin",
+    "NoBlockPlacingFireMixin",
+    "NoBlockPlacingFlowerPotMixin",
+    "NoBlockPlacingCakeMixin",
     "LockedContainersServerPlayerMixin",
     "LockedContainersScreenHandlerMixin",
     "CraftingTaxResultSlotMixin",

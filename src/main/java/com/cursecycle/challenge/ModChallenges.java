@@ -22,6 +22,7 @@ import com.cursecycle.challenge.impl.InfiniteDietChallenge;
 import com.cursecycle.challenge.impl.InventoryLockdownChallenge;
 import com.cursecycle.challenge.impl.CraftingTaxChallenge;
 import com.cursecycle.challenge.impl.LockedContainersChallenge;
+import com.cursecycle.challenge.impl.NoBlockPlacingChallenge;
 import com.cursecycle.challenge.impl.NoJumpingChallenge;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
 import com.cursecycle.challenge.impl.SlipperyHandsChallenge;
@@ -30,6 +31,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new NoBlockPlacingChallenge());
         ChallengeRegistry.register(new LockedContainersChallenge());
         ChallengeRegistry.register(new CraftingTaxChallenge());
         ChallengeRegistry.register(new HotbarShuffleChallenge());
