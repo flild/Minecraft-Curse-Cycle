@@ -14,6 +14,8 @@ import net.minecraft.world.GameMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.IdentityHashMap;
+import java.util.Map;
 
 /** Isolates the shared registry activation used by synchronous gameplay scenarios. */
 public final class ChallengeScenario implements AutoCloseable {
@@ -21,6 +23,7 @@ public final class ChallengeScenario implements AutoCloseable {
     public final CurseCycleState state;
     private final NbtCompound original;
     private final List<ServerPlayerEntity> players = new ArrayList<>();
+    private final Map<ServerPlayerEntity, EmbeddedChannel> channels = new IdentityHashMap<>();
     public ChallengeScenario(TestContext context) {
         this.context = context;
         state = CurseCycleState.getServerState(context.getWorld().getServer());
@@ -36,12 +39,13 @@ public final class ChallengeScenario implements AutoCloseable {
         var data = ConnectedClientData.createDefault(new GameProfile(uuid, "spec-"+uuid.toString().substring(0,8)), false);
         var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions());
         var connection = new ClientConnection(NetworkSide.SERVERBOUND);
-        new EmbeddedChannel(connection);
+        channels.put(player, new EmbeddedChannel(connection));
         server.getPlayerManager().onPlayerConnect(connection, player, data);
         player.changeGameMode(GameMode.SURVIVAL);
         players.add(player);
         return player;
     }
+    public EmbeddedChannel channel(ServerPlayerEntity player) { return channels.get(player); }
     public void activate(String id) { CycleManager.activateChallenge(context.getWorld().getServer(), state, id); }
     public ServerPlayerEntity respawn(ServerPlayerEntity previous, boolean alive) {
         var player = previous.getServer().getPlayerManager().respawnPlayer(previous, alive,
@@ -54,6 +58,7 @@ public final class ChallengeScenario implements AutoCloseable {
     @Override public void close() {
         var manager = context.getWorld().getServer().getPlayerManager();
         for (var player : players) if (manager.getPlayerList().contains(player)) manager.remove(player);
+        channels.values().forEach(EmbeddedChannel::finishAndReleaseAll);
         context.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY,
                 CurseCycleState.createFromNbt(original, context.getWorld().getRegistryManager()));
     }
