@@ -21,6 +21,10 @@ public abstract class PlayerEntityMixin {
         }
 
         if (self instanceof ServerPlayerEntity serverPlayer) {
+            if (com.cursecycle.challenge.impl.AutoJumpChallenge.duplicateJump(serverPlayer)) {
+                ci.cancel();
+                return;
+            }
             if (serverPlayer.getServer() != null) {
                 ChallengeEventManager.dispatchToActive(
                     serverPlayer.getServer(),

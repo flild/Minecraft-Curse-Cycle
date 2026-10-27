@@ -14,6 +14,7 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playS2C().register(AutoJumpPayload.ID, AutoJumpPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HeavyBodyPayload.ID, (payload, context) ->
