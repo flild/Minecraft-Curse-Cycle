@@ -1,0 +1,30 @@
+// Optional, isolated CLIENT preLaunch validation; never included in the game mod JAR.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/invisible_mobs')
+        def probeOutput = project.file('build/invisible-mobs-client-probe')
+        tasks.register('compileInvisibleMobsProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('invisibleMobsProbeJar', Jar) {
+            dependsOn tasks.named('compileInvisibleMobsProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            vmArg '-Dmixin.debug.export=true'
+            runDir 'build/invisible-mobs-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        loom.runs.gametest { runDir 'build/invisible-mobs-gametest' }
+        tasks.named('runClient') { dependsOn tasks.named('invisibleMobsProbeJar') }
+    }
+}
