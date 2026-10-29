@@ -1,0 +1,28 @@
+// Optional, isolated CLIENT preLaunch validation; never included in the game mod JAR.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/tiny_fov')
+        def probeOutput = project.file('build/tiny-fov-client-probe')
+        tasks.register('compileTinyFovProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('tinyFovProbeJar', Jar) {
+            dependsOn tasks.named('compileTinyFovProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/tiny-fov-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        tasks.named('runClient') { dependsOn tasks.named('tinyFovProbeJar') }
+    }
+}
