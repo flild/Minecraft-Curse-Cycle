@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.SilentWorldChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.InvisibleMobsChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.OffsetCrosshairChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.BlindHudChallenge());

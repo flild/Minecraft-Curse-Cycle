@@ -47,6 +47,8 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "SilentWorldSoundListenerMixin",
+    "SilentWorldSoundSystemMixin",
     "InvisibleMobsEntityRenderDispatcherMixin",
     "BlindHudInGameHudMixin",
     "OffsetCrosshairInGameHudMixin",

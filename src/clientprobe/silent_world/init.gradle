@@ -1,0 +1,34 @@
+// Optional, isolated CLIENT preLaunch validation; never included in the game mod JAR.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/silent_world')
+        def probeOutput = project.file('build/silent-world-client-probe')
+        tasks.register('compileSilentWorldProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('silentWorldProbeJar', Jar) {
+            dependsOn tasks.named('compileSilentWorldProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            vmArg '-Dmixin.debug.export=true'
+            runDir 'build/silent-world-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        loom.runs.gametest { runDir 'build/silent-world-gametest' }
+        tasks.named('runClient') {
+            dependsOn tasks.named('silentWorldProbeJar')
+            // Real OpenAL Soft context and sources, with no physical audio output during tests.
+            environment 'ALSOFT_DRIVERS', 'null'
+        }
+    }
+}

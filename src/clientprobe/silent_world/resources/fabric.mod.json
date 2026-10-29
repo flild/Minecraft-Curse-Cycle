@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"silent_world_client_probe","version":"1.0.0","environment":"client","entrypoints":{"preLaunch":["validation.SilentWorldProbe"]}}
