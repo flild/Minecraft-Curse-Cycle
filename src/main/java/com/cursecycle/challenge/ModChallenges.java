@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.InvertedMouseChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.AutoJumpChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.GravityTenChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.HeavyBodyChallenge());
