@@ -36,6 +36,7 @@ import com.cursecycle.challenge.test.*;
 public class ModChallenges {
     public static void registerAll() {
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.OffsetCrosshairChallenge());
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.BlindHudChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.UpsideDownCameraChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.TinyFovChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.InvertedMouseChallenge());

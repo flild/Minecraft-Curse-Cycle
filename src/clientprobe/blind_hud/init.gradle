@@ -1,0 +1,30 @@
+// Optional, isolated CLIENT preLaunch validation; never included in the game mod JAR.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/blind_hud')
+        def probeOutput = project.file('build/blind-hud-client-probe')
+        tasks.register('compileBlindHudProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('blindHudProbeJar', Jar) {
+            dependsOn tasks.named('compileBlindHudProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            vmArg '-Dmixin.debug.export=true'
+            runDir 'build/blind-hud-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        loom.runs.gametest { runDir 'build/blind-hud-gametest' }
+        tasks.named('runClient') { dependsOn tasks.named('blindHudProbeJar') }
+    }
+}
