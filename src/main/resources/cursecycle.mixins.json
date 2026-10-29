@@ -47,6 +47,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "UpsideDownGameRendererMixin",
     "TinyFovGameRendererMixin",
     "InvertedMouseMixin",
     "MovementMemoryScreenMixin",
