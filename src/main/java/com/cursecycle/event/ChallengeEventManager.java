@@ -13,8 +13,8 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.TypedActionResult;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class ChallengeEventManager {
 
@@ -77,18 +77,12 @@ public class ChallengeEventManager {
     public static void dispatchToActive(MinecraftServer server, ServerPlayerEntity player, ChallengeConsumer consumer) {
         CurseCycleState state = CurseCycleState.getServerState(server);
 
-        for (String id : new ArrayList<>(state.getActiveChallengeIds())) {
-            Challenge c = ChallengeRegistry.get(id);
-            if (c != null && c.isEnabled()) {
-                consumer.accept(c);
-            }
-        }
-
-        List<String> personalIds = state.getPersonalActiveChallengeIds(player.getUuid());
-        for (String pId : new ArrayList<>(personalIds)) {
-            Challenge pc = ChallengeRegistry.get(pId);
-            if (pc != null && pc.isEnabled()) {
-                consumer.accept(pc);
+        Set<String> activeIds = new LinkedHashSet<>(state.getActiveChallengeIds());
+        activeIds.addAll(state.getPersonalActiveChallengeIds(player.getUuid()));
+        for (String id : activeIds) {
+            Challenge challenge = ChallengeRegistry.get(id);
+            if (challenge != null && challenge.isEnabled()) {
+                consumer.accept(challenge);
             }
         }
     }
