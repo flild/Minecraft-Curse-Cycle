@@ -153,5 +153,6 @@ public class CurseCycleMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.AutoJumpChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeavyBodyChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeartbeatChallenge::tick);
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.EndlessRaidChallenge::tick);
     }
 }

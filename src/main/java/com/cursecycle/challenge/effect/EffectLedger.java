@@ -30,6 +30,31 @@ public final class EffectLedger {
         return ((EffectLedgerOwner) player).cursecycle$effects();
     }
 
+    public boolean owns(String owner, RegistryEntry<StatusEffect> type) {
+        Entry entry = entries.get(type);
+        return entry != null && entry.owned.containsKey(owner);
+    }
+
+    public boolean exclusivelyOwns(String owner, RegistryEntry<StatusEffect> type) {
+        Entry entry = entries.get(type);
+        return entry != null && entry.external == null && entry.owned.size() == 1
+                && entry.owned.containsKey(owner);
+    }
+
+    /** Adopt a just-created vanilla omen, without replacing it or restarting its timer. */
+    public void adopt(String owner, RegistryEntry<StatusEffect> type) {
+        StatusEffectInstance effect = player.getStatusEffect(type);
+        if (effect == null || entries.containsKey(type)) return;
+        Entry entry = new Entry(null);
+        entry.vanillaTimed = true;
+        entry.owned.put(owner, new Contribution(
+                CurseCycleState.getServerState(player.getServer()).getActivationSerial(), copy(effect)));
+        entries.put(type, entry);
+    }
+
+    /** Vanilla consumed the entire visible/hidden omen chain; do not publish it again. */
+    public void consumed(RegistryEntry<StatusEffect> type) { entries.remove(type); }
+
     public void maintain(String owner, RegistryEntry<StatusEffect> type, int amplifier, int duration, int threshold) {
         if (!ChallengeActivity.active(player, owner)) { remove(owner); return; }
         Entry entry = entries.computeIfAbsent(type, key -> new Entry(copy(player.getStatusEffect(type))));
@@ -74,7 +99,8 @@ public final class EffectLedger {
                 // Vanilla upgrades a still-live hidden effect when the visible one expires.
                 entry.external = liveChain(entry.external);
             }
-            for (var own : entry.owned.values()) ((EffectDurationAccess) own.effect).cursecycle$advanceDuration();
+            if (!entry.vanillaTimed)
+                for (var own : entry.owned.values()) ((EffectDurationAccess) own.effect).cursecycle$advanceDuration();
         }
         reconcile();
     }
@@ -87,10 +113,11 @@ public final class EffectLedger {
         long activation = CurseCycleState.getServerState(player.getServer()).getActivationSerial();
         for (var it = entries.entrySet().iterator(); it.hasNext();) {
             var pair = it.next();
+            StatusEffectInstance visible = player.getStatusEffect(pair.getKey());
             boolean changed = pair.getValue().owned.entrySet().removeIf(own ->
                     own.getValue().activation != activation || !ChallengeActivity.active(player, own.getKey())
+                            || (pair.getValue().vanillaTimed && visible == null)
                             || (!own.getValue().effect.isInfinite() && own.getValue().effect.getDuration() <= 0));
-            StatusEffectInstance visible = player.getStatusEffect(pair.getKey());
             int ownedAmplifier = pair.getValue().owned.values().stream()
                     .mapToInt(own -> own.effect.getAmplifier()).max().orElse(-1);
             // Live player copies in vanilla do not copy hidden chains. Rebuild only when needed.
@@ -118,6 +145,7 @@ public final class EffectLedger {
         NbtList list = new NbtList();
         for (var pair : entries.entrySet()) {
             NbtCompound tag = new NbtCompound();
+            tag.putBoolean("vanillaTimed", pair.getValue().vanillaTimed);
             if (pair.getValue().external != null) tag.put("external", pair.getValue().external.writeNbt());
             NbtCompound owners = new NbtCompound();
             pair.getValue().owned.forEach((id, contribution) -> {
@@ -139,6 +167,7 @@ public final class EffectLedger {
             NbtCompound tag = list.getCompound(i);
             Entry entry = new Entry(tag.contains("external", NbtElement.COMPOUND_TYPE)
                     ? StatusEffectInstance.fromNbt(tag.getCompound("external")) : null);
+            entry.vanillaTimed = tag.getBoolean("vanillaTimed");
             RegistryEntry<StatusEffect> type = null;
             NbtCompound owners = tag.getCompound("owners");
             for (String id : owners.getKeys()) {
@@ -155,6 +184,9 @@ public final class EffectLedger {
 
     private static final class Entry {
         StatusEffectInstance external;
+        // Adopted omens are consumed by vanilla itself, possibly later in their creation tick.
+        // A parallel ledger clock could expire one tick early and cancel the raid trigger.
+        boolean vanillaTimed;
         final Map<String, Contribution> owned = new LinkedHashMap<>();
         Entry(StatusEffectInstance external) { this.external = external; }
     }

@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.EndlessRaidChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.NetheriteMobsChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.HeartbeatChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SilentWorldChallenge());
