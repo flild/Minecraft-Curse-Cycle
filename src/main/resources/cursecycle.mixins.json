@@ -3,6 +3,10 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "NetheriteMobsWorldMixin",
+    "NetheriteMobsMobMixin",
+    "NetheriteMobsLivingMixin",
+    "NetheriteMobsEntityMixin",
     "HeartbeatServerPlayerMixin",
     "AutoJumpLivingEntityMixin",
     "GravityTenLivingEntityMixin",
