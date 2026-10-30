@@ -1,4 +1,10 @@
 {
+  "death.attack.cursecycle.heartbeat": "%1$s missed a heartbeat",
+  "death.attack.cursecycle.heartbeat.player": "%1$s missed a heartbeat while fighting %2$s",
+  "key.cursecycle.heartbeat": "Heartbeat",
+  "text.cursecycle.heartbeat.grace": "%s · Preparation: %s",
+  "text.cursecycle.heartbeat.beat": "%s · Heartbeat",
+  "text.cursecycle.heartbeat.accepted": "%s · Beat accepted",
   "death.attack.cursecycle.bitter_experience": "%1$s had a bitter experience",
   "death.attack.cursecycle.bitter_experience.player": "%1$s had a bitter experience while fighting %2$s",
   "death.attack.cursecycle.the_floor_is_lava": "%1$s couldn't escape the floor",

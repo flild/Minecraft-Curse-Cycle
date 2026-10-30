@@ -14,6 +14,10 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playS2C().register(HeartbeatStatePayload.ID, HeartbeatStatePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(HeartbeatPressPayload.ID, HeartbeatPressPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(HeartbeatPressPayload.ID, (payload, context) ->
+                com.cursecycle.challenge.impl.HeartbeatChallenge.receive(context.player(), payload));
         PayloadTypeRegistry.playS2C().register(AutoJumpPayload.ID, AutoJumpPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
@@ -41,6 +45,7 @@ public class NetworkHandler {
         String choice = direction != null && effectiveIds.contains(BlockedDirectionChallenge.ID) ? direction.id() : "";
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
+        com.cursecycle.challenge.impl.HeartbeatChallenge.sync(player);
         if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID))
             ServerPlayNetworking.send(player, new HeavyBodyPayload(
                     CurseCycleState.getServerState(player.getServer()).getActivationSerial(), false));

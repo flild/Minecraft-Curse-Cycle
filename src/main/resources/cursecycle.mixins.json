@@ -3,6 +3,7 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "HeartbeatServerPlayerMixin",
     "AutoJumpLivingEntityMixin",
     "GravityTenLivingEntityMixin",
     "HeavyBodyLivingEntityMixin",
@@ -47,6 +48,9 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "HeartbeatKeyboardMixin",
+    "HeartbeatMouseMixin",
+    "HeartbeatGameRendererMixin",
     "SilentWorldSoundListenerMixin",
     "SilentWorldSoundSystemMixin",
     "InvisibleMobsEntityRenderDispatcherMixin",

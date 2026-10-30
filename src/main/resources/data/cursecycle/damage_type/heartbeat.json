@@ -1,0 +1,5 @@
+{
+  "message_id": "cursecycle.heartbeat",
+  "scaling": "never",
+  "exhaustion": 0.0
+}

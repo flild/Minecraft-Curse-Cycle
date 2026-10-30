@@ -1,4 +1,10 @@
 {
+  "death.attack.cursecycle.heartbeat": "%1$s пропустил удар сердца",
+  "death.attack.cursecycle.heartbeat.player": "%1$s пропустил удар сердца, сражаясь с %2$s",
+  "key.cursecycle.heartbeat": "Удар сердца",
+  "text.cursecycle.heartbeat.grace": "%s · Подготовка: %s",
+  "text.cursecycle.heartbeat.beat": "%s · Удар сердца",
+  "text.cursecycle.heartbeat.accepted": "%s · Удар принят",
   "death.attack.cursecycle.bitter_experience": "%1$s получил горький опыт",
   "death.attack.cursecycle.bitter_experience.player": "%1$s получил горький опыт, сражаясь с %2$s",
   "death.attack.cursecycle.the_floor_is_lava": "%1$s не смог спастись от пола",

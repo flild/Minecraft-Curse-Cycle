@@ -45,6 +45,19 @@ public class CurseCycleMod implements ModInitializer {
         // Register payloads & commands
         NetworkHandler.registerPayloads();
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.HeartbeatChallenge::clear);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.cursecycle.challenge.impl.HeartbeatChallenge.forget(handler.getPlayer()));
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            if (entity instanceof ServerPlayerEntity player)
+                com.cursecycle.challenge.impl.HeartbeatChallenge.forget(player);
+        });
+        net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(
+                (player, origin, destination) -> {
+                    com.cursecycle.challenge.impl.HeartbeatChallenge.forget(player);
+                    com.cursecycle.challenge.impl.HeartbeatChallenge.sync(player);
+                });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.AutoJumpChallenge::clear);
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
                 com.cursecycle.challenge.impl.AutoJumpChallenge.forget(handler.getPlayer()));
@@ -139,5 +152,6 @@ public class CurseCycleMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.AutoJumpChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeavyBodyChallenge::tick);
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeartbeatChallenge::tick);
     }
 }
