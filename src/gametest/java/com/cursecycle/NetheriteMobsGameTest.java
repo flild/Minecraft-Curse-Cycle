@@ -33,8 +33,12 @@ public class NetheriteMobsGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
     public void birthsIncludingPostSpawnInitialization(TestContext c) throws Exception {
         var cleanup = new ArrayList<Entity>();
+        var w = c.getWorld();
+        long originalTimeOfDay = w.getTimeOfDay();
         try (var s = new ChallengeScenario(c)) {
-            var w = c.getWorld();
+            // A real first tick may wear an undead mob's helmet in sunlight before we inspect it.
+            w.setTimeOfDay(18000);
+            w.calculateAmbientDarkness();
             var old = spawn(c, w, EntityType.ZOMBIE, cleanup);
             finish(w, old);
             old.equipStack(EquipmentSlot.HEAD, new ItemStack(Items.GOLDEN_HELMET));
@@ -54,13 +58,18 @@ public class NetheriteMobsGameTest implements FabricGameTest {
                 finish(w, mob);
                 c.assertTrue(helmet == mob.getEquippedStack(EquipmentSlot.HEAD), "Idempotent birth");
                 c.assertEquals(13, helmet.getDamage(), "No durability refill");
+                // Do not leave armed targets (especially villagers/Thorns) for later birth cases.
+                mob.discard();
             }
             c.assertTrue(old.getEquippedStack(EquipmentSlot.HEAD).isOf(Items.GOLDEN_HELMET), "Old mob untouched");
+            old.discard();
             for (var reason : List.of(SpawnReason.NATURAL, SpawnReason.SPAWN_EGG, SpawnReason.SPAWNER)) {
                 var mob = EntityType.ZOMBIE.spawn(w, c.getAbsolutePos(new BlockPos(2, 2, 2)), reason);
+                mob.setAiDisabled(true);
                 cleanup.add(mob);
                 finish(w, mob);
                 kit(c, mob);
+                mob.discard();
             }
             var command = w.getServer().getCommandSource().withWorld(w).withLevel(2);
             c.assertTrue(w.getServer().getCommandManager().getDispatcher().execute(
@@ -97,7 +106,11 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             rider.startRiding(vehicle, true);
             w.tickEntity(vehicle);
             kit(c, rider);
-        } finally { cleanup.forEach(Entity::discard); }
+        } finally {
+            cleanup.forEach(Entity::discard);
+            w.setTimeOfDay(originalTimeOfDay);
+            w.calculateAmbientDarkness();
+        }
         c.complete();
     }
 
@@ -294,7 +307,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             var stack = mob.getEquippedStack(slot);
             c.assertTrue(stack.isOf(items.get(i)), "Netherite " + slot + " on " + mob.getType());
             c.assertTrue(NetheriteMobsChallenge.isIssued(stack), "Origin " + slot);
-            c.assertEquals(0, stack.getDamage(), "Full initial durability " + slot);
+            c.assertEquals(0, stack.getDamage(), "Full initial durability " + slot + " on " + mob.getType());
             Map<RegistryKey<Enchantment>, Integer> expected = new HashMap<>(Map.of(Enchantments.PROTECTION, 4,
                     Enchantments.UNBREAKING, 3, Enchantments.MENDING, 1, Enchantments.THORNS, 3));
             if (slot == EquipmentSlot.HEAD) expected.putAll(Map.of(Enchantments.RESPIRATION, 3, Enchantments.AQUA_AFFINITY, 1));

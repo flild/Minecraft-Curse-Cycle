@@ -106,6 +106,14 @@ allprojects {
   полный набор не объявляется зелёным. Production-код и старый тест этого
   испытания ради результата не менялись.
 
+Последующая адресная правка по запросу пользователя закрыла эту нестабильность:
+изолированы взаимодействия мобов и дневной износ шлемов в fixture.
+Проверки сохранены. Прогон 30 повторов + три netherite GameTest дал 33/33;
+новая полная сборка — 149 JUnit; два полных запуска в разных свежих мирах —
+83/83 GameTest каждый, failures/errors=0.
+Причины, повторные проверки и логи: [netherite-mobs-testing.md](netherite-mobs-testing.md).
+Числа 82/83 выше относятся к первоначальному ревью и сохранены как история.
+
 Логи/отчёты: `build/foundation-{baseline,red,final,verified,isolated}-tests.log`,
 `build/reports/foundation-{baseline,red,final,verified,isolated}-gametest.xml`,
 копии JUnit `build/foundation-{baseline,focused,verified}-junit/`.

@@ -72,6 +72,57 @@
 урона теста износа: `generic` обходит броню, поэтому заменён реальной атакой
 игрока. Это не повод менять семантику обходящего броню урона.
 
+## Исправление нестабильности GameTest — 2026-11-01
+
+`birthsIncludingPostSpawnInitialization` сохраняет строгие проверки нулевого
+износа, точных чар и отсутствия восстановления. Исправлено окружение теста:
+
+- проверенные мобы удаляются между случаями, а у зомби из `EntityType.spawn`
+  отключён ИИ перед первым настоящим тиком;
+- сценарий начальной прочности выполняется ночью с пересчётом ambient darkness;
+  исходное время и освещение восстанавливаются в `finally`;
+- ошибка прочности теперь также указывает тип моба.
+
+Временная диагностика обнаружила реальную атаку зомби на оставшегося жителя
+и ответный урон `thorns`, затем вызовы `LivingEntity.damageEquipment`.
+Отдельно ванильный `ZombieEntity.tickMovement` случайно увеличивает damage
+шлема через `ItemStack.setDamage` на солнце. Поэтому первые исправления
+взаимодействий без контроля света ещё дали 4 сбоя в 33 стресс-проверках.
+
+После исправления обоих условий прошли 30 дополнительных запусков сценария
+с исходным временем 0/6000/18000 плюс три постоянных netherite GameTest:
+33/33, exit 0. Повторы создавались только локальным init-script под build;
+постоянное число GameTest не увеличено. Боевой тест износа/поломки не изменён,
+ванильные механики и production-код не менялись.
+
+Логи: `build/netherite-diagnostic.log`, `build/netherite-durability.log`,
+`build/netherite-stability.log` (первая, ещё неполная правка),
+`build/netherite-stability-fixed.log`. Соответствующие XML — под build/reports.
+Временный диагностический callback удалён; mixin диагностики и классы повторов
+подключались только локальными init-script и не входят в игровой JAR.
+
+Для воспроизводимого полного прогона использовать новый runDir:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        loom.runs.gametest.runDir = 'build/gametest-netherite-full-fresh'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/netherite-full-fresh.xml'
+    }
+}
+```
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/netherite-full-a.init.gradle
+.\gradlew.bat runGametest --offline -I build/netherite-full-b.init.gradle
+```
+
+Оба локальных init-script используют разные свежие миры. Проверенные XML:
+`build/reports/netherite-full-a-gametest.xml` и
+`build/reports/netherite-full-b-gametest.xml`: два раза 83/83, failures/errors=0.
+Первый запуск также заново выполнил 149 JUnit, failures/errors/skipped=0.
+Логи: `build/netherite-full-a.log`, `build/netherite-full-b.log`.
+
 ## Не выполненные ручные проверки
 
 Автоматические тесты используют headless-сервер и EmbeddedChannel-игроков.
