@@ -43,7 +43,7 @@ public class SlipperyHandsChallenge extends Challenge {
         if (challenge == null || !challenge.isEnabled() || server == null) return false;
         CurseCycleState state = CurseCycleState.getServerState(server);
         return state.getActiveChallengeIds().contains(ID)
-                || state.getPersonalActiveChallengeIds(player.getUuid()).contains(ID);
+                || state.findPersonalActiveChallengeIds(player.getUuid()).contains(ID);
     }
 
     public static float getSlipperiness(PlayerEntity player, float original) {

@@ -13,7 +13,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -26,28 +25,21 @@ public class CycleManager {
         updateSchedule(server, config);
 
         List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
-        if (!players.isEmpty()) {
-            // Tick active challenges (Global)
-            for (String id : new ArrayList<>(state.getActiveChallengeIds())) {
-                Challenge challenge = ChallengeRegistry.get(id);
-                if (challenge != null && challenge.isEnabled()) {
-                    for (ServerPlayerEntity player : players) {
-                        challenge.onTick(server, player);
-                    }
-                }
+        var globalIds = players.isEmpty() ? java.util.Set.<String>of()
+                : new java.util.LinkedHashSet<>(state.getActiveChallengeIds());
+        for (String id : globalIds) {
+            Challenge challenge = ChallengeRegistry.get(id);
+            if (challenge != null && challenge.isEnabled()) {
+                for (ServerPlayerEntity player : players) challenge.onTick(server, player);
             }
-
-            // Tick active challenges (Personal)
-            for (ServerPlayerEntity player : players) {
-                List<String> personalIds = state.getPersonalActiveChallengeIds(player.getUuid());
-                if (!personalIds.isEmpty()) {
-                    for (String pId : new ArrayList<>(personalIds)) {
-                        Challenge pChallenge = ChallengeRegistry.get(pId);
-                        if (pChallenge != null && pChallenge.isEnabled()) {
-                            pChallenge.onTick(server, player);
-                        }
-                    }
-                }
+        }
+        for (ServerPlayerEntity player : players) {
+            var personalIds = state.findPersonalActiveChallengeIds(player.getUuid());
+            if (personalIds.isEmpty()) continue;
+            for (String id : new java.util.LinkedHashSet<>(personalIds)) {
+                if (globalIds.contains(id)) continue;
+                Challenge challenge = ChallengeRegistry.get(id);
+                if (challenge != null && challenge.isEnabled()) challenge.onTick(server, player);
             }
         }
 
@@ -83,8 +75,11 @@ public class CycleManager {
 
         // Saved selections can reference challenges disabled since the last server session.
         boolean removed = state.getActiveChallengeIds().removeIf(id -> !isEnabled(id));
-        for (List<String> personalIds : state.getPersonalActiveChallenges().values()) {
+        for (var it = state.getPersonalActiveChallenges().values().iterator(); it.hasNext();) {
+            var personalIds = it.next();
             if (personalIds.removeIf(id -> !isEnabled(id))) state.markDirty();
+            // Old read-side lookups and removed assignments may leave empty UUID records.
+            if (personalIds.isEmpty()) { it.remove(); state.markDirty(); }
         }
         if (removed) {
             state.markDirty();
@@ -148,13 +143,13 @@ public class CycleManager {
         if (challengeId == null || challengeId.isEmpty()) return;
 
         List<String> toActivate = ChallengeUtils.resolveToActiveIds(challengeId).stream()
-                .filter(CycleManager::isEnabled).toList();
+                .filter(CycleManager::isEnabled).distinct().toList();
         if (toActivate.isEmpty()) return;
 
         List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
 
         // Stop current active global challenges
-        for (String oldId : new ArrayList<>(state.getActiveChallengeIds())) {
+        for (String oldId : new java.util.LinkedHashSet<>(state.getActiveChallengeIds())) {
             Challenge oldC = ChallengeRegistry.get(oldId);
             if (oldC != null) {
                 for (ServerPlayerEntity p : players) {

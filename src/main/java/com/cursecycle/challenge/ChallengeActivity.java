@@ -15,6 +15,6 @@ public final class ChallengeActivity {
         if (challenge == null || !challenge.isEnabled()) return false;
         var state = CurseCycleState.getServerState(p.getServer());
         return state.getActiveChallengeIds().contains(id)
-                || state.getPersonalActiveChallengeIds(p.getUuid()).contains(id);
+                || state.findPersonalActiveChallengeIds(p.getUuid()).contains(id);
     }
 }

@@ -12,8 +12,8 @@ import java.util.List;
 public class AllDebuffsChallenge extends Challenge {
     public static final String ID = "all_debuffs";
     public AllDebuffsChallenge() {
-        super(ID, "Собрал все болячки", "Все вредные эффекты I уровня, кроме мгновенного урона и иссушения.",
-                "В Survival и Adventure постоянно действуют все ванильные статус-эффекты категории HARMFUL из Minecraft 1.21.1 на I уровне, кроме Мгновенного урона и Иссушения. Эти два эффекта не выдаются ни при активации, ни во время испытания. Молоко не даёт постоянного освобождения: разрешённые эффекты возвращаются на следующем серверном тике. Отдельных импульсов прямого урона испытание не создаёт.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Собрал все болячки", "Все вредные эффекты I уровня.",
+                "Действуют все ванильные статус-эффекты категории HARMFUL, кроме иссушения и мгновенного урона. Продолжительные эффекты поддерживаются постоянно. Молоко не даёт постоянного освобождения: длительные эффекты возвращаются на следующем серверном тике.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
     public static List<RegistryEntry.Reference<StatusEffect>> effects() {
         return Registries.STATUS_EFFECT.streamEntries().filter(entry -> {

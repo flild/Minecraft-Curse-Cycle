@@ -77,7 +77,7 @@ public class AdhdNoStandingStillChallenge extends Challenge {
         if (player == null) return;
         Session session = session(server);
         boolean active = isEnabled() && (session.source.getActiveChallengeIds().contains(ID)
-                || session.source.getPersonalActiveChallengeIds(player.getUuid()).contains(ID));
+                || session.source.findPersonalActiveChallengeIds(player.getUuid()).contains(ID));
         if (!active) {
             session.players.remove(player.getUuid());
             return;

@@ -47,7 +47,7 @@ public class NoJumpingChallenge extends Challenge {
                 return true;
             }
 
-            return state.getPersonalActiveChallengeIds(serverPlayer.getUuid()).contains(ID);
+            return state.findPersonalActiveChallengeIds(serverPlayer.getUuid()).contains(ID);
         }
         return false;
     }

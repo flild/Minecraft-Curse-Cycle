@@ -233,6 +233,12 @@ public class CurseCycleState extends PersistentState {
 
     public Map<UUID, List<String>> getPersonalActiveChallenges() { return personalActiveChallenges; }
 
+    /** Read-only lookup: checking a mechanic must not create a saved assignment for every visitor. */
+    public List<String> findPersonalActiveChallengeIds(UUID uuid) {
+        return personalActiveChallenges.getOrDefault(uuid, Collections.emptyList());
+    }
+
+    /** Mutable assignment access. Call markDirty after changing its contents. */
     public List<String> getPersonalActiveChallengeIds(UUID uuid) {
         return personalActiveChallenges.computeIfAbsent(uuid, k -> new ArrayList<>());
     }

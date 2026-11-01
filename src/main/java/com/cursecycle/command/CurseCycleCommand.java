@@ -18,7 +18,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class CurseCycleCommand {
@@ -163,17 +162,10 @@ public class CurseCycleCommand {
     private static int resetState(ServerCommandSource source) {
         CurseCycleState state = CurseCycleState.getServerState(source.getServer());
 
-        for (String id : new ArrayList<>(state.getActiveChallengeIds())) {
-            Challenge c = ChallengeRegistry.get(id);
-            if (c != null) {
-                for (ServerPlayerEntity p : source.getServer().getPlayerManager().getPlayerList()) {
-                    c.onStop(source.getServer(), p);
-                }
-            }
-        }
-
         for (ServerPlayerEntity player : source.getServer().getPlayerManager().getPlayerList()) {
-            for (String id : new ArrayList<>(state.getPersonalActiveChallengeIds(player.getUuid()))) {
+            var ids = new java.util.LinkedHashSet<>(state.getActiveChallengeIds());
+            ids.addAll(state.findPersonalActiveChallengeIds(player.getUuid()));
+            for (String id : ids) {
                 Challenge challenge = ChallengeRegistry.get(id);
                 if (challenge != null) challenge.onStop(source.getServer(), player);
             }

@@ -15,7 +15,7 @@ public class RandomPotionChallenge extends Challenge {
     public static final String ID = "random_potion";
     public RandomPotionChallenge() {
         super(ID, "Лотырея от провизора", "Каждые 30 секунд — случайный эффект зелья.",
-                "Каждые 30 секунд серверного времени каждый игрок независимо получает случайный эффект зелья I уровня. Первый выбор происходит сразу. Обычный эффект длится до следующего выбора, мгновенный применяется один раз. Список эффектов фиксирован в правилах; дополнительные штрафы не назначаются. Равновероятный пул: minecraft:speed, slowness, strength, instant_health, instant_damage, jump_boost, regeneration, resistance, fire_resistance, water_breathing, invisibility, night_vision, weakness, poison, slow_falling, wind_charged, weaving, oozing, infested. Все перечисленные короткие ID имеют пространство minecraft. Молоко снимает вклад до очередного выбора. Creative и Spectator исключены.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                "Каждые 30 секунд серверного времени каждый игрок независимо получает случайный эффект зелья I уровня. Первый выбор происходит сразу. Обычный эффект длится до следующего выбора, мгновенный применяется один раз. Список эффектов фиксирован в правилах; дополнительные штрафы не назначаются.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     public static final List<String> POOL = List.of("speed", "slowness", "strength", "instant_health", "instant_damage",
             "jump_boost", "regeneration", "resistance", "fire_resistance", "water_breathing", "invisibility",

@@ -1,6 +1,5 @@
 package com.cursecycle;
 
-import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ModChallenges;
 import com.cursecycle.command.CurseCycleCommand;
@@ -16,8 +15,6 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
 
 public class CurseCycleMod implements ModInitializer {
     public static final String MOD_ID = "cursecycle";
@@ -92,41 +89,13 @@ public class CurseCycleMod implements ModInitializer {
                 state.getHistory().stream().map(h -> h.challengeId).toList()
             );
 
-            for (String id : state.getActiveChallengeIds()) {
-                Challenge c = ChallengeRegistry.get(id);
-                if (c != null && c.isEnabled()) {
-                    c.onPlayerJoin(server, player);
-                }
-            }
-
-            List<String> personalIds = state.getPersonalActiveChallengeIds(player.getUuid());
-            for (String pId : personalIds) {
-                Challenge pc = ChallengeRegistry.get(pId);
-                if (pc != null && pc.isEnabled()) {
-                    pc.onPlayerJoin(server, player);
-                }
-            }
+            ChallengeEventManager.dispatchToActive(server, player, c -> c.onPlayerJoin(server, player));
         });
 
         // Player Disconnect Event -> cleanup active challenge effects
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
-            CurseCycleState state = CurseCycleState.getServerState(server);
-
-            for (String id : state.getActiveChallengeIds()) {
-                Challenge c = ChallengeRegistry.get(id);
-                if (c != null && c.isEnabled()) {
-                    c.onPlayerLeave(server, player);
-                }
-            }
-
-            List<String> personalIds = state.getPersonalActiveChallengeIds(player.getUuid());
-            for (String pId : personalIds) {
-                Challenge pc = ChallengeRegistry.get(pId);
-                if (pc != null && pc.isEnabled()) {
-                    pc.onPlayerLeave(server, player);
-                }
-            }
+            ChallengeEventManager.dispatchToActive(server, player, c -> c.onPlayerLeave(server, player));
         });
 
         // A live End return may replace the player object without ending its effects/timers.
@@ -140,7 +109,7 @@ public class CurseCycleMod implements ModInitializer {
             }
             var state = CurseCycleState.getServerState(server);
             var ids = new java.util.LinkedHashSet<>(state.getActiveChallengeIds());
-            ids.addAll(state.getPersonalActiveChallengeIds(newPlayer.getUuid()));
+            ids.addAll(state.findPersonalActiveChallengeIds(newPlayer.getUuid()));
             for (String id : ids) {
                 var challenge = ChallengeRegistry.get(id);
                 if (challenge != null && challenge.isEnabled())

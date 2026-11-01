@@ -35,7 +35,7 @@ public final class DamageHooks {
         var server = receipt.player.getServer();
         var state = CurseCycleState.getServerState(server);
         var ids = new LinkedHashSet<>(state.getActiveChallengeIds());
-        ids.addAll(state.getPersonalActiveChallengeIds(receipt.player.getUuid()));
+        ids.addAll(state.findPersonalActiveChallengeIds(receipt.player.getUuid()));
         // The drop belongs to the original location, before any reaction teleports the player.
         ids.stream().sorted(Comparator.comparingInt(DamageHooks::priority)).forEach(id -> {
             var challenge = ChallengeRegistry.get(id);

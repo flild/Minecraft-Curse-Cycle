@@ -32,6 +32,19 @@ class CycleManagerTest {
     }
 
     @Test
+    void emptyAndDisabledPersonalAssignmentsAreRemovedFromTheSavedIndex() {
+        var empty = UUID.randomUUID();
+        var disabled = UUID.randomUUID();
+        state.getPersonalActiveChallengeIds(empty);
+        state.getPersonalActiveChallengeIds(disabled).add("no_sprint");
+        ChallengeRegistry.get("no_sprint").setEnabled(false);
+        advance(0);
+        assertTrue(state.getPersonalActiveChallenges().isEmpty());
+        assertTrue(state.findPersonalActiveChallengeIds(empty).isEmpty());
+        assertTrue(state.getPersonalActiveChallenges().isEmpty());
+    }
+
+    @Test
     void timeJumpActivatesThePromisedChallengeBeforeAnnouncingTheNextOne() {
         advance(0);
         advance(96000);

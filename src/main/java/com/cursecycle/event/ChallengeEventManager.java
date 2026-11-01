@@ -78,7 +78,7 @@ public class ChallengeEventManager {
         CurseCycleState state = CurseCycleState.getServerState(server);
 
         Set<String> activeIds = new LinkedHashSet<>(state.getActiveChallengeIds());
-        activeIds.addAll(state.getPersonalActiveChallengeIds(player.getUuid()));
+        activeIds.addAll(state.findPersonalActiveChallengeIds(player.getUuid()));
         for (String id : activeIds) {
             Challenge challenge = ChallengeRegistry.get(id);
             if (challenge != null && challenge.isEnabled()) {

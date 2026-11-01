@@ -40,7 +40,7 @@ public class NetworkHandler {
 
     public static void syncToPlayer(ServerPlayerEntity player, long currentDay, long ticksUntilNext, List<String> activeChallengeIds, String nextChallengeId, List<String> historyIds) {
         List<String> effectiveIds = getEffectiveActiveIds(activeChallengeIds,
-                CurseCycleState.getServerState(player.getServer()).getPersonalActiveChallengeIds(player.getUuid()));
+                CurseCycleState.getServerState(player.getServer()).findPersonalActiveChallengeIds(player.getUuid()));
         var direction = BlockedDirectionChallenge.reconcile(player.getServer());
         String choice = direction != null && effectiveIds.contains(BlockedDirectionChallenge.ID) ? direction.id() : "";
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
