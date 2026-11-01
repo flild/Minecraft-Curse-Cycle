@@ -62,4 +62,12 @@ public class OneTimeMenuChallenge extends Challenge {
     @Override public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null) feedback.remove(player.getUuid());
     }
+    @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
+        onPlayerLeave(server, player);
+    }
+    @Override public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        // Disabled challenges no longer receive lifecycle dispatch, including disconnect.
+        if (!enabled) feedback.clear();
+    }
 }

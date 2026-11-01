@@ -1,9 +1,93 @@
 # one_time_menu
 
-build, 67 JUnit и 13/13 GameTest прошли. Проверены повторный хлеб,
-переименование, сырое/готовое мясо, торт, независимый UUID, смерть/респаун,
-реальное сохранение истории на диск и новая активация. Клиентские состояния
-сброса проверены JUnit; реальный ввод/анимация и сценарии ниже ещё не проверены.
+Ревью 2026-11-01: `build` и свежие 149 JUnit, 8/8 предметных GameTest
+прошли. Старые результаты реализации не засчитывались заново. Исправлена
+очистка UUID-кэша подсказок при окончании и отключении испытания: прежде
+он удерживал UUID после замены испытания и последующего выхода игрока.
+
+Проверен настоящий SERVER runtime с применёнными Mixin:
+
+- Хлеб/переименование, разные ID сырого/готового мяса; второе завершение
+  не расходует стек и не добавляет питание. Начало проверяется в обеих руках.
+- Два состава подозрительного рагу: первый даёт эффект/миску, второй
+  не даёт ни эффекта, ни миски. Две порции мёда: первая снимает яд и выдаёт
+  одну бутылку, повтор не снимает яд, не расходуется и не дублирует тару.
+  Реальные молоко/зелья дважды доступны и не меняют историю еды.
+- Отказ ванили при полном голоде, прерванное использование, новая история
+  и активация во время анимации; выключение до finish восстанавливает ваниль.
+- Обычный и свечной торт используют общий ID; зажигание/тушение свечи и
+  попытка при полном голоде не записывают еду; другой торт не обходится.
+- Survival/Adventure, исключённые Creative/Spectator, enabled,
+  повторные start/join, late UUID, реальный JOIN/DISCONNECT dispatch,
+  Nether roundtrip, alive replacement, смерть/респаун, PERSONAL,
+  окончание офлайн, сохранение PersistentState на диск и загрузка истории.
+- Предметные пары no_sprint, infinite_diet, no_healing, inventory_lockdown:
+  проверяются обе механики и замена меню на второй ID. Дополнительно hotbar_shuffle.
+  Shuffle вызывается настоящим onTick с тестовым сдвигом deadline и seeded
+  RNG: это проверка отмены заменённого активного стека, не его интервала.
+- 32 start/stop цикла и disable освобождают feedback map; история при leave
+  сохраняется. За 45 настоящих приращений server.getTicks подсказка выдаётся
+  в тиках 0 и 40, даже при трёх вызовах use/finish за тик. Считается
+  GameMessageS2CPacket с overlay=true и точным текстом, не визуальный HUD.
+- Серверные /fdc list, /fdc activate one_time_menu, /fdc active исполняются
+  через OP2 dispatcher. Статически сверены все 6 метаданных и регистрация 1 раз.
+
+Большинство сценариев вызывает transformed ItemStack.use/finishUsing и
+ServerPlayerInteractionManager.interactBlock непосредственно. Игроки —
+ServerPlayerEntity с EmbeddedChannel, а не настоящие клиенты. ClientDataHolder
+reset/history проверен существующим JUnit; реальный CLIENT runtime/ввод,
+анимация, HUD/menu, задержки сети, физические порталы/смерть и полный restart
+JVM не проверялись. Эти ограничения не закрыты успешной сборкой.
+
+## Воспроизводимый предметный запуск
+
+Изолирующий init-script (сохранён также в
+`build/one-time-menu-review-verified.init.gradle`):
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/one-time-menu-review-verified-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.OneTimeMenuGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') { outputs.upToDateWhen { false } }
+        loom.runs.gametest.runDir = 'build/gametest-one-time-menu-review-verified-20261101'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/one-time-menu-review-verified.xml'
+    }
+}
+```
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/one-time-menu-review-verified.init.gradle
+.\gradlew.bat processGametestResources --offline --rerun-tasks
+```
+
+Для нового независимого запуска заменить `verified` во всех путях новым
+суффиксом. Исходный fabric.mod.json с 43 entrypoints не меняется; вторая
+команда восстанавливает обычный output ресурсов после изоляции.
+
+Логи всех попыток: `build/one-time-menu-review-{baseline,baseline-access,red,final,verified}.log`.
+Первый baseline exit1 до тестов: sandbox не открыл существующий GradleCache
+zip.lck; повтор с доступом exit0 (1 JUnit, 1/1 GameTest). Red: exit1, 4/5,
+новая регрессия воспроизводит удержание UUID. Final: exit1, 149 JUnit и 7/8;
+новый стенд ошибочно считал OverlayMessageS2CPacket, а sendMessage(Text,true)
+использует GameMessageS2CPacket. Исправлен только тестовый подсчёт. Verified:
+exit0, свежие 149 JUnit, 8/8, штатный shutdown. XML:
+`build/reports/one-time-menu-review-{baseline,red,final,verified}.xml`;
+копия итоговых JUnit: `build/reports/one-time-menu-review-junit/`.
+Baseline JUnit XML позднее перезаписан полным запуском; его task/log сохранены.
+
+Расходы оценены статически: проверка NBT-списка O(K) на попытку, snapshot
+O(K) при старте/join/respawn и успешном новом виде, хранение O(U×K) на текущую
+активацию; U — UUID, K — съеденные registry ID. Offline-история нужна по ТЗ;
+beginActivation удаляет прежнюю. Feedback O(P), очищается stop/leave/disable.
+Своего tick/render, C2S, обхода мира/чанков или периодического snapshot нет.
+Зарегистрированные use/finish/tryEat hooks имеют ненулевую цену даже inactive;
+MSPT/FPS/allocations и длительная многопользовательская нагрузка не измерялись.
 
 Каждый тип еды можно успешно съесть только один раз за текущую активацию. Сырая и приготовленная еда — разные виды, а имя, зачарования и содержимое компонентов не делают тот же предмет новым видом. Каждый игрок ведёт собственный список. Смерть, выход и перезапуск список не сбрасывают. Молоко и зелья к еде не относятся; один кусок торта считается использованием вида «торт».
 
