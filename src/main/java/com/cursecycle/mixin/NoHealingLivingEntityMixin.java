@@ -29,6 +29,7 @@ public abstract class NoHealingLivingEntityMixin {
         // The server is assigned before the interaction manager is ready: exclude the entire constructor.
         if (!cursecycle$loadingHealth && (Object) this instanceof ServerPlayerEntity player
                 && ((HealthInitialization) player).cursecycle$healthInitialized()
+                && !((HealthInitialization) player).cursecycle$copyingHealth()
                 && player.getServer() != null && ChallengeActivity.active(player, NoHealingChallenge.ID)
                 && health > player.getHealth()) return player.getHealth();
         return health;
