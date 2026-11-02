@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "gills_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "preLaunch": ["validation.GillsProbe"] },
+  "mixins": ["gills-probe.mixins.json"]
+}

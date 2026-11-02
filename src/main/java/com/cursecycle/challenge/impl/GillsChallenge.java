@@ -37,9 +37,13 @@ public class GillsChallenge extends Challenge {
         var root = state.getChallengeData();
         var players = root.getCompound(ID);
         var data = players.getCompound(player.getUuidAsString());
-        if (!data.contains("air")) { data.putInt("air", 300); data.putInt("dryTicks", 0); }
-        players.put(player.getUuidAsString(), data);
-        root.put(ID, players);
+        if (!data.contains("air")) {
+            data.putInt("air", 300);
+            data.putInt("dryTicks", 0);
+            players.put(player.getUuidAsString(), data);
+            root.put(ID, players);
+            state.markDirty();
+        }
         return data;
     }
     public static void updateBreathing(ServerPlayerEntity player) {
@@ -47,16 +51,17 @@ public class GillsChallenge extends Challenge {
         var data = data(player);
         var supply = new AirSupply(data.getInt("air"), data.getInt("dryTicks"));
         boolean damage = supply.step(player.isSubmergedIn(FluidTags.WATER));
-        data.putInt("air", supply.air);
-        data.putInt("dryTicks", supply.dryTicks);
-        CurseCycleState.getServerState(player.getServer()).markDirty();
+        if (data.getInt("air") != supply.air || data.getInt("dryTicks") != supply.dryTicks) {
+            data.putInt("air", supply.air);
+            data.putInt("dryTicks", supply.dryTicks);
+            CurseCycleState.getServerState(player.getServer()).markDirty();
+        }
         player.setAir(supply.air);
         if (damage) player.damage(player.getDamageSources().drown(), 2F);
     }
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null && ChallengeActivity.active(player, ID)) {
             player.setAir(data(player).getInt("air"));
-            CurseCycleState.getServerState(server).markDirty();
         }
     }
     @Override public void onTick(MinecraftServer server, ServerPlayerEntity player) {
@@ -71,7 +76,19 @@ public class GillsChallenge extends Challenge {
         onStart(server, newPlayer);
     }
     @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
+        forget(server, player);
         if (player != null) player.setAir(Math.clamp(player.getAir(), 0, player.getMaxAir()));
     }
-    @Override public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) { }
+    private void forget(MinecraftServer server, ServerPlayerEntity player) {
+        var ticks = lastTicks.get(server);
+        if (ticks != null && player != null) {
+            ticks.remove(player.getUuid());
+            if (ticks.isEmpty()) lastTicks.remove(server);
+        }
+    }
+    @Override public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) { forget(server, player); }
+    @Override public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        if (!enabled) lastTicks.clear();
+    }
 }
