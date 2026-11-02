@@ -1,0 +1,29 @@
+// Isolated CLIENT validation. Probe classes/resources never enter production source sets.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/one_heart')
+        def probeOutput = project.file('build/one_heart-client-probe')
+        tasks.register('compileOneHeartProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('one_heartProbeJar', Jar) {
+            dependsOn tasks.named('compileOneHeartProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            vmArg '-Dmixin.debug.export=true'
+            runDir 'build/one_heart-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        tasks.named('runClient') { dependsOn tasks.named('one_heartProbeJar') }
+    }
+}

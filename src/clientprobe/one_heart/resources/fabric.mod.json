@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "one_heart_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "preLaunch": ["validation.OneHeartProbe"] },
+  "mixins": ["one_heart-probe.mixins.json"]
+}

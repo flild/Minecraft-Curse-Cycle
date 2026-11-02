@@ -55,6 +55,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "OneHeartInGameHudMixin",
     "HeartbeatKeyboardMixin",
     "HeartbeatMouseMixin",
     "HeartbeatGameRendererMixin",
