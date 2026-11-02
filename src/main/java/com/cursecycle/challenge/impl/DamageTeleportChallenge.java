@@ -7,6 +7,7 @@ import com.cursecycle.challenge.ChallengeScope;
 import com.cursecycle.challenge.DamageReceipt;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.CampfireBlock;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.server.MinecraftServer;
@@ -100,6 +101,7 @@ public class DamageTeleportChallenge extends Challenge {
 
     private static boolean hazardous(BlockState state) {
         return state.isOf(Blocks.FIRE) || state.isOf(Blocks.SOUL_FIRE) || state.isOf(Blocks.LAVA)
+                || CampfireBlock.isLitCampfire(state)
                 || state.isOf(Blocks.MAGMA_BLOCK) || state.isOf(Blocks.CACTUS)
                 || state.isOf(Blocks.SWEET_BERRY_BUSH) || state.isOf(Blocks.POWDER_SNOW)
                 || state.isOf(Blocks.NETHER_PORTAL) || state.isOf(Blocks.END_PORTAL) || state.isOf(Blocks.END_GATEWAY);

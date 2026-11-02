@@ -19,7 +19,8 @@ Mixin, события, сетевые payload и таймеры не добав�
 
 Проверяется весь текущий хитбокс игрока: высотные границы мира,
 world border, загруженность всех пересекаемых чанков, отсутствие коллизий,
-жидкости, огня, лавы, магмы, кактуса, ягодных кустов, рыхлого снега и
+жидкости, огня (включая горящие обычный и душевный костры), лавы, магмы,
+кактуса, ягодных кустов, рыхлого снега и
 ванильных порталов. Опора определяется реальным пересечением блоковой
 коллизии с тонким слоем под стопами. Проверяются все опоры, включая
 выступающие формы заборов/стен и воду в waterlogged-блоке опоры.
@@ -35,7 +36,85 @@ world border, загруженность всех пересекаемых ча�
 обработчик читает актуальные эффективные GLOBAL/PERSONAL ID. После
 завершения перестаёт реагировать, не возвращая игрока в прежнюю позицию.
 
-## Автоматическая проверка 26.10.2026
+## Ревью 02.11.2026
+
+Подтверждён и исправлен дефект безопасности: горящий костёр имел твёрдую
+коллизию и проходил `isSafe`. На высоте его поверхности (7/16 блока)
+настоящий `player.damage` переносил игрока на одну из горящих опор.
+`CampfireBlock.isLitCampfire` исключает обычный и душевный горящие костры;
+потушенные остаются допустимыми. Общий damage receipt contract не менялся.
+
+Свежие предметные проверки `DamageTeleportGameTest`:
+
+- `safeTeleportActualDamageAndLifecycle`: исходный настоящий damage/Mixin,
+  щит, i-frames, setter, absorption, лодка, hazards, незагруженный чанк,
+  физика/взгляд, drop, тотем/смерть/два respawn path, disk и завершение.
+- `litCampfireSupportCannotStartDamageTeleportChain`: оба костра, контроль
+  без огня и реальный vanilla contact damage; восемь горящих опор,
+  отсутствие безопасной точки на всех 40 позициях и лишнего урона/переноса.
+- `everyDirectionAndHeightThroughActualDamageAndNoRetry`: каждая из 40 точек
+  поочерёдно единственная безопасная; одна фактическая телепортация на hit.
+  При полном отказе сохраняются скорость/fallDistance; 100 вызовов onTick
+  после восстановления пола не повторяют поиск (это не 100 реальных тиков).
+- `cancelledZeroLossSourcesAndNestedResults`: inactive, настоящий cancel,
+  Resistance V/invulnerable, пять источников; nested same/different source
+  дают два переноса на два принятых результата, absorption-only — один.
+- `modesPersonalRepeatedActivationAndActualDiskReconnect`: OP2-команды,
+  три игрока, JOIN, четыре режима, enabled, PERSONAL/overlap, 32 цикла
+  повторной активации/окончания, no_sprint; actual playerdata+PersistentState
+  disk reload active/ended и offline end, сохранение чужих предметов/Speed.
+- `dimensionsBoundsAndPartialCollisionSupports`: Nether/End, сухая верхняя
+  плита, выступающий забор/его waterlogged-вариант, height/border по хитбоксу.
+  Чанки арены заранее загружает fixture; поиск этого не делает.
+- `actualOrbDamageHealthCapAndBothDropOrders`: настоящий XP orb вызывает
+  один перенос после XP/damage; после снятия teleport XP-механика работает;
+  оба порядка drop/teleport оставляют полный стек у начала; one_heart cap
+  сам не переносит, настоящий несмертельный damage под cap переносит.
+
+Пакеты считаются в EmbeddedChannel. Это доказательство серверной отправки
+`PlayerPositionLookS2CPacket`, а не настоящей доставки/подтверждения клиентом.
+Базовый запуск: 149 JUnit + 1/1 GameTest. Red: 4/5 (safety gate), затем
+6/7 (фактический перенос на костёр). После исправления 7/7 предметных;
+финальные build + 149/149 JUnit (54 suites) + 19/19 GameTest
+(7 DamageTeleport, 8 DamageSlotDrop, 4 Foundation), штатный shutdown.
+Verifier подтвердил чистоту обоих production JAR и возврат 43 entrypoints.
+Логи/XML всех попыток и итоговые числа —
+в локальном `Промпты/reviews/09-damage_teleport.md`; старые числа ниже не
+засчитываются как новое ревью. Все миры отдельные под build.
+
+Предметный стенд воспроизводится init-script (для финального прогона также
+включены DamageSlotDropGameTest и FoundationGameTest):
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/damage-teleport-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.DamageTeleportGameTest', 'com.cursecycle.DamageSlotDropGameTest', 'com.cursecycle.FoundationGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') { outputs.upToDateWhen { false }; reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/damage-teleport-review-final-junit') }
+        loom.runs.gametest.runDir = 'build/gametest-damage-teleport-review-final-20261102'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/damage-teleport-review-final.xml'
+    }
+}
+```
+
+Команда: `./gradlew.bat build runGametest --offline -I build/damage-teleport-review-final.init.gradle`.
+После изоляции: `./gradlew.bat processGametestResources --offline --rerun-tasks`
+восстанавливает стандартный набор entrypoints (43).
+
+Оценка расходов статическая: до 40 кандидатов/локальных проверок, ранние
+activity/vehicle/world gates, нет собственных tick/map/NBT/retry. Общие
+receipt/dispatch и vanilla collision/teleport имеют стоимость. MSPT/FPS,
+allocations и нагрузочный профиль не измерялись. Настоящий клиент/HUD,
+сеть двух клиентов, physical portals/death/keepInventory, full JVM restart
+и реальные heartbeat/DoT pulses остаются ручными ограничениями; disk reload
+и несколько тестовых ServerPlayerEntity их не заменяют.
+
+## История реализации 26.10.2026 (не новое подтверждение ревью)
 
 Команды: `./gradlew.bat build runGametest --offline`, `git diff --check`.
 
