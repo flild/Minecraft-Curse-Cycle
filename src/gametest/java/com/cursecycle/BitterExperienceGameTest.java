@@ -5,6 +5,7 @@ import com.cursecycle.challenge.impl.BitterExperienceChallenge;
 import com.cursecycle.state.CurseCycleState;
 import com.cursecycle.state.CycleManager;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.Block;
@@ -32,11 +33,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class BitterExperienceGameTest implements FabricGameTest {
     private record Request(float damage, int xp, int toolDamage) {}
     private static final Map<UUID, List<Request>> REQUESTS = new HashMap<>();
+    private static final Map<UUID, Runnable> NESTED = new HashMap<>();
+    private static final Set<UUID> CANCELLED = new HashSet<>();
     static {
         // Observe actual requests before mitigation/i-frames without replacing damage.
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
@@ -45,7 +50,9 @@ public class BitterExperienceGameTest implements FabricGameTest {
                 if (requests != null) requests.add(new Request(amount, player.totalExperience,
                         player.getMainHandStack().getDamage()));
             }
-            return true;
+            var nested = NESTED.remove(entity.getUuid());
+            if (nested != null) nested.run();
+            return !CANCELLED.contains(entity.getUuid());
         });
     }
 
@@ -60,7 +67,7 @@ public class BitterExperienceGameTest implements FabricGameTest {
                 health(context, player, 20, "Inactive pickup is unchanged");
                 var server = player.getServer();
                 var dispatcher = server.getCommandManager().getDispatcher();
-                var source = server.getCommandSource();
+                var source = server.getCommandSource().withLevel(2);
                 dispatcher.execute("fdc list", source);
                 dispatcher.execute("fdc activate bitter_experience", source);
                 dispatcher.execute("fdc active", source);
@@ -174,6 +181,206 @@ public class BitterExperienceGameTest implements FabricGameTest {
             }
         }
         context.waitAndRun(5, context::complete);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "bitter_experience_nested")
+    public void nestedPickupsCancelledDamageAndRemovedOrb(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s);
+            s.activate("double_challenge:bitter_experience,damage_slot_drop");
+            var requests = new ArrayList<Request>();
+            REQUESTS.put(p.getUuid(), requests);
+            try {
+                p.getInventory().clear();
+                p.getInventory().setStack(10, new ItemStack(Items.DIAMOND, 3));
+                var merged = orb(p, 7, 2);
+                int xp = p.totalExperience;
+                NESTED.put(p.getUuid(), () -> {
+                    // A distinct portion, consumed reentrantly while the first request is pending.
+                    p.experiencePickUpDelay = 0;
+                    merged.onPlayerCollision(p);
+                });
+                p.experiencePickUpDelay = 0;
+                merged.onPlayerCollision(p);
+                c.assertEquals(2, requests.size(), "Nested consumed portions each request once");
+                c.assertEquals(xp + 7, requests.getFirst().xp(), "Outer XP precedes outer request");
+                c.assertEquals(xp + 14, requests.getLast().xp(), "Inner XP precedes inner request");
+                c.assertEquals(xp + 14, p.totalExperience, "Nested XP distributed once per portion");
+                health(c, p, 19, "Nested equal requests retain i-frames");
+                c.assertEquals(0, portions(merged), "Both portions consumed");
+                c.assertTrue(merged.isRemoved(), "Merged orb exhausted");
+                var drops = p.getServerWorld().getEntitiesByClass(ItemEntity.class, p.getBoundingBox().expand(2), e -> e.getStack().isOf(Items.DIAMOND));
+                c.assertEquals(1, drops.size(), "Only accepted inner damage drops once");
+                c.assertEquals(3, drops.getFirst().getStack().getCount(), "Entire stack retained");
+                drops.forEach(ItemEntity::discard);
+                p.experiencePickUpDelay = 0;
+                merged.onPlayerCollision(p);
+                c.assertEquals(2, requests.size(), "Stale removed orb cannot request again");
+
+                p.getInventory().setStack(10, new ItemStack(Items.DIAMOND));
+                p.timeUntilRegen = 0;
+                CANCELLED.add(p.getUuid());
+                xp = p.totalExperience;
+                pickup(p, 11);
+                c.assertEquals(3, requests.size(), "Cancelled damage still has exactly one request");
+                c.assertEquals(xp + 11, p.totalExperience, "Cancellation does not undo vanilla XP");
+                health(c, p, 19, "Cancelled request does no damage");
+                c.assertEquals(1, p.getInventory().getStack(10).getCount(), "Cancelled request does not drop");
+                CANCELLED.remove(p.getUuid());
+
+                // Orb damage nested inside an unrelated, larger damage request: two real results.
+                p.timeUntilRegen = 0;
+                p.getInventory().setStack(11, new ItemStack(Items.DIAMOND));
+                NESTED.put(p.getUuid(), () -> pickup(p, 1));
+                p.damage(p.getDamageSources().generic(), 2);
+                health(c, p, 17, "Nested pickup and remaining outer damage retain vanilla reduction");
+                c.assertEquals(4, requests.size(), "Generic damage itself never becomes an XP request");
+                c.assertTrue(p.getInventory().getStack(10).isEmpty() && p.getInventory().getStack(11).isEmpty(),
+                        "Both accepted nested damage results react independently");
+                p.getServerWorld().getEntitiesByClass(ItemEntity.class, p.getBoundingBox().expand(2), e -> e.getStack().isOf(Items.DIAMOND))
+                        .forEach(ItemEntity::discard);
+
+                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 200, 4));
+                p.getInventory().setStack(10, new ItemStack(Items.DIAMOND));
+                p.timeUntilRegen = 0;
+                pickup(p, 1);
+                health(c, p, 17, "Resistance V fully blocks actual damage");
+                c.assertEquals(5, requests.size(), "Fully mitigated pickup still requests once");
+                c.assertEquals(1, p.getInventory().getStack(10).getCount(), "No accepted loss means no reaction");
+            } finally {
+                REQUESTS.remove(p.getUuid());
+                NESTED.remove(p.getUuid());
+                CANCELLED.remove(p.getUuid());
+            }
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "bitter_experience_cadence", tickLimit = 100)
+    public void realServerTicksKeepVanillaPickupDelayAndIFrames(TestContext c) {
+        var s = new ChallengeScenario(c);
+        var p = ready(s);
+        p.setNoGravity(true);
+        p.getHungerManager().setFoodLevel(17); // Exclude vanilla natural regeneration from the damage measurement.
+        s.activate("bitter_experience");
+        var requests = new ArrayList<Request>();
+        REQUESTS.put(p.getUuid(), requests);
+        // Keep this entity unspawned so the fixture alone controls collision attempts;
+        // the actual server ticks advance the player's vanilla cooldowns, without resets.
+        var merged = new ExperienceOrbEntity(p.getWorld(), p.getX(), p.getY(), p.getZ(), 7);
+        var nbt = new NbtCompound();
+        merged.writeCustomDataToNbt(nbt);
+        nbt.putInt("Count", 3);
+        merged.readCustomDataFromNbt(nbt);
+        int xp = p.totalExperience;
+        long[] start = {-1};
+        boolean[] closed = {false};
+        int[] steps = {0};
+        p.experiencePickUpDelay = 0;
+        c.runAtEveryTick(() -> {
+                if (closed[0] || c.getTick() < 1) return;
+                try {
+                    if (start[0] < 0) start[0] = p.getServerWorld().getTime();
+                    int step = (int) (p.getServerWorld().getTime() - start[0]);
+                    c.assertEquals(steps[0]++, step, "One callback per consecutive real server tick");
+                    // The server drives tick(), but EmbeddedChannel does not drive the
+                    // play-network playerTick(). Advance that vanilla path once here.
+                    p.playerTick();
+                    if (step <= 4) merged.onPlayerCollision(p);
+                    if (step <= 4) c.assertEquals(20 - step, p.timeUntilRegen, "Vanilla i-frame countdown");
+                    if (step == 0 || step == 1) c.assertEquals(1, requests.size(), "Vanilla pickup delay rejects adjacent attempt");
+                    if (step == 2 || step == 3) c.assertEquals(2, requests.size(), "Second portion after two ticks only");
+                    if (step == 4) {
+                        c.assertEquals(3, requests.size(), "Three consumed portions in five collision attempts");
+                        c.assertEquals(xp + 21, p.totalExperience, "All merged XP once");
+                        health(c, p, 19, "i-frames suppress second and third actual damage");
+                    }
+                    if (step == 25) {
+                        c.assertEquals(0, p.timeUntilRegen, "i-frames naturally expired");
+                        float before = p.getHealth();
+                        health(c, p, 19, "No natural regeneration in this control");
+                        pickup(p, 1);
+                        c.assertEquals(4, requests.size(), "New pickup after natural i-frame expiry");
+                        health(c, p, before - 1, "Separated pickup deals one more damage");
+                        REQUESTS.remove(p.getUuid());
+                        closed[0] = true;
+                        s.close();
+                        c.complete();
+                    }
+                } catch (Throwable failure) {
+                    REQUESTS.remove(p.getUuid());
+                    closed[0] = true;
+                    s.close();
+                    throw failure;
+                }
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "bitter_experience_disk", tickLimit = 300)
+    public void repeatedActivationsAndActualPlayerDiskReload(TestContext c) throws Exception {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s);
+            var server = p.getServer();
+            var pm = server.getOverworld().getPersistentStateManager();
+            for (int i = 0; i < 32; i++) {
+                s.activate("bitter_experience");
+                long serial = s.state.getActivationSerial();
+                s.activate("double_challenge:bitter_experience,bitter_experience");
+                c.assertTrue(s.state.getActivationSerial() > serial, "Reactivation changes serial");
+                s.state.getPersonalActiveChallengeIds(p.getUuid()).add("bitter_experience");
+                p.setHealth(20);
+                p.timeUntilRegen = 0;
+                int xp = p.totalExperience;
+                pickup(p, 1);
+                health(c, p, 19, "Overlapping scopes and repeated IDs still one result");
+                c.assertEquals(xp + 1, p.totalExperience, "No duplicate XP on reactivation");
+                s.state.getPersonalActiveChallenges().clear();
+                s.activate("no_sprint");
+                p.timeUntilRegen = 0;
+                pickup(p, 1);
+                health(c, p, 19, "End never heals or damages on future pickup");
+            }
+            s.activate("bitter_experience");
+            p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 777));
+            p.getInventory().setStack(10, new ItemStack(Items.DIAMOND, 7));
+            var uuid = p.getUuid();
+            int xp = p.totalExperience;
+            disconnect(p);
+            pm.save();
+            var disk = pm.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+            pm.set(CurseCycleState.STATE_KEY, loaded);
+            p = s.player(uuid);
+            c.assertEquals(xp, p.totalExperience, "Actual playerdata retains XP");
+            health(c, p, 19, "Active reconnect does not heal or replay damage");
+            expireLoginProtection(p);
+            pickup(p, 7);
+            health(c, p, 18, "Active disk state applies only to new pickup");
+            c.assertEquals(xp + 7, p.totalExperience, "New XP granted once after disk reload");
+            p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 777));
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            pm.save();
+            disk = pm.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            pm.set(CurseCycleState.STATE_KEY, CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager()));
+            p = s.player(uuid);
+            c.assertEquals(777, p.getStatusEffect(StatusEffects.SPEED).getDuration(), "Foreign effect unchanged at offline end");
+            c.assertEquals(7, p.getInventory().getStack(10).getCount(), "Foreign inventory unchanged");
+            health(c, p, 18, "Ended reconnect does not restore health snapshot");
+            expireLoginProtection(p);
+            pickup(p, 7);
+            health(c, p, 18, "Ended disk state never restores pickup damage");
+            c.assertEquals(xp + 14, p.totalExperience, "Ordinary XP still granted");
+            p.setSprinting(true);
+            c.assertTrue(!p.isSprinting(), "No sprint still active after offline end");
+            c.assertTrue(CurseCycleState.getServerState(server).getChallengeData().isEmpty(), "No custom pickup state persists");
+        }
+        c.complete();
+    }
+
+    private static void disconnect(ServerPlayerEntity p) {
+        ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, p.getServer());
+        p.getServer().getPlayerManager().remove(p);
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "bitter_experience_lifecycle", tickLimit = 300)

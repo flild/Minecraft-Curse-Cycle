@@ -31,70 +31,88 @@ PERSONAL ID, живой ServerPlayer, Survival/Adventure. Собственных
 замена сущности и загрузка мира используют актуальную общую активацию.
 Завершение не откатывает уже полученный урон, опыт и починку.
 
-## Автоматические проверки
+## Ревью этапа 10 (2026-11-02)
 
-Команды из корня проекта:
+Подтверждённых дефектов не найдено; игровой код не менялся. Расширен только
+`BitterExperienceGameTest`. Итог pass_with_limits, механика pass,
+расходы no_issue_found / static. Полная матрица и журнал запусков:
+`Промпты/reviews/10-bitter_experience.md` (локальный ignored документ).
+Старые числа реализации не засчитываются как доказательства этого ревью.
+
+| Тест | Доказательство |
+|---|---|
+| consumedPortionsMendingAndVanillaDamage (T1) | OP2 fdc list/activate/active; inactive control; номиналы1/7/2477; XP до запроса; command/level spending; delay/count3; Mending all/partial; armor, ResistanceI, absorption, tags, totem/death |
+| activityPersistenceAndDamageReactions (T2) | no_sprint обе механики/end; modes/enabled; late player/PERSONAL; dead/live replacement; PersistentState disk; DSD/DT accepted vs i-frames; no_healing/one_heart пары |
+| nestedPickupsCancelledDamageAndRemovedOrb (T3) | reentrant collision той же Count2 сферы внутри ALLOW_DAMAGE: XP14/requests2/HP−1/drop1; stale removed orb requests0; cancelled pickup XP11/loss0/drop0; pickup nested in generic damage: two accepted results/two drops; ResistanceV request1/loss0/drop0 |
+| realServerTicksKeepVanillaPickupDelayAndIFrames (T4) | 25 реальных server ticks, attempts offsets0..4 → requests0/2/4, XP21/HP−1; offset25 ещё HP−1. Server вызывает tick, fixture вызывает vanilla playerTick вместо play-network; точный countdown20..16/0 проверяется,food17 исключает natural regen. Delay/i-frames после начала не сбрасываются. Сфера unspawned,притяжение/сеть не проверяются |
+| repeatedActivationsAndActualPlayerDiskReload (T5) | 32цикла repeated/double same ID/GLOBAL+PERSONAL/end, XP once/HP−1; actual playerdata save/rejoin и PersistentState disk load в одном JVM active/ended/offlineend; чужие Speed777/items7/XP/HP сохранены, no_sprint продолжает работать |
+
+Все тесты используют настоящие ServerPlayerEntity и transformed orb/damage path.
+Наблюдатель ALLOW_DAMAGE находится только в gametest source set; REQUESTS пишет
+amount/XP/tool damage до mitigation, одноразовый NESTED и CANCELLED нужны T3.
+UUID/closures удаляются в finally. T4 закрывает scenario на успехе/assertion failure.
+Общие damage/health/effect contracts и production JAR не включают новый стенд.
+
+Воспроизводимый изолированный запуск из корня (PowerShell):
 
 ```powershell
-.\gradlew.bat build
-.\gradlew.bat runGametest
-git diff --check
-git diff --cached --check
+.\gradlew.bat build runGametest --offline -I build/bitter-experience-review-final.init.gradle
+.\gradlew.bat processGametestResources --offline --rerun-tasks
+python build/bitter-experience-review-verify.py
 ```
 
-Итоговые результаты:
+Содержимое final init-script; для baseline/subject/verified/cadence/clocks/validated заменить `final`
+во всех путях и оставить entrypoint только BitterExperienceGameTest:
 
-- `.\gradlew.bat build` — BUILD SUCCESSFUL, 16 s; 78 JUnit, failures/errors/skipped = 0.
-- `.\gradlew.bat runGametest` — BUILD SUCCESSFUL; все 20 обязательных
-  GameTest пройдены, включая оба новых сценария bitter_experience.
-- XML: `build/test-results/test/TEST-*.xml`, `build/reports/gametest.xml`.
-- `git diff --check` и `git diff --cached --check` — без ошибок.
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/bitter-experience-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.BitterExperienceGameTest', 'com.cursecycle.DamageTeleportGameTest', 'com.cursecycle.DamageSlotDropGameTest', 'com.cursecycle.FoundationGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') { outputs.upToDateWhen { false }; reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/bitter-experience-review-final-junit') }
+        loom.runs.gametest.runDir = 'build/gametest-bitter-experience-review-final-20261102'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/bitter-experience-review-final.xml'
+    }
+}
+```
 
-Первый запуск build в песочнице не смог открыть
-`F:\Programs\GradleCache\wrapper\dists\gradle-8.10.2-bin\a04bxjujx95o3nb99gddekhwo\gradle-8.10.2-bin.zip.lck`
-из-за отказа в доступе. Сборка и GameTest успешно выполнены с разрешённым
-доступом к общему Gradle-кэшу; зависимости и настройки сборки не менялись.
-Первые попытки GameTest выявили пропущенное объявление IOException в новом
-тесте и неверную подготовку поглощения без разрешающего эффекта/атрибута.
-Исправлены тесты: установлен настоящий эффект Absorption и добавлена проверка,
-что поглощение существует до подбора. Итоговые результаты выше относятся
-к исправленному тестовому коду; игровых сбоев не осталось.
+Baseline: sandbox exit1 до тестов (zip.lck access denied), повтор с разрешённым
+существующим cache exit0,149JUnit и2/2GameTest. Lock не удалялся.
+Первая расширенная subject попытка: build/JUnit прошли,4/5GameTest;
+T4 timeout100 из-за рекурсивного waitAndRun в новой fixture. Заменён только
+тестовый scheduler на runAtEveryTick. Verified:4/5GT, vanilla pickup delay не
+продвигался, поскольку EmbeddedChannel не вызывает normal play-network updates.
+Cadence и clocks:4/5GT, абсолютный HP18 ошибочно ожидался без учёта vanilla
+saturated regeneration. Попытка вручную добавить tick дала validated4/5GT:
+точный countdown выявил двойной вызов,actual18 вместо ожидаемых19 на offset1.
+В final удалён дополнительный tick,оставлен playerTick вместо play-network,
+food17 исключает natural regen. Все failed XML сохранены;это исправления
+fixture, production не менялся. Финальные результаты — в отчёте этапа10 и XML.
+Final: exit0, свежие build+149/149JUnit в54suites,24/24GameTest
+(5BE+7DT+8DSD+4Foundation),штатный shutdown. Restore exit0 вернул43entrypoints;
+verifier exit0 сверил все семь XML/JUnit наборов,SHA5/5,metadata6/6,
+registration1,единственный custom tag bypasses_armor и два чистых production JAR.
+Логи `build/bitter-experience-review-<suffix>.log`, XML
+`build/reports/bitter-experience-review-<suffix>.xml`, отдельные JUnit
+`build/reports/bitter-experience-review-<suffix>-junit/TEST-*.xml`.
 
-`BitterExperienceChallengeTest` проверяет единственную регистрацию, метаданные,
-доступность по сложности, отключение, double_challenge и сериализацию общей
-и персональной активации без дополнительного состояния подбора.
+Повторный локальный javap текущего mapped Minecraft JAR сохранён в
+`build/bitter-experience-review-orb-bytecode.txt`: server-only/cooldown gate,
+repairPlayerGears → addExperience remainder → pickingCount−1 → discard.
+Это статическое подтверждение инструкций; игровые assertions — отдельно.
 
-Два `BitterExperienceGameTest` используют настоящие ServerPlayer и
-`ExperienceOrbEntity.onPlayerCollision`, с применённым Mixin. Наблюдатель
-`ServerLivingEntityEvents.ALLOW_DAMAGE` в тестовом source set считает запросы
-до mitigation/i-frames и снимает значения XP/прочности на момент запроса.
-Он не отменяет и не заменяет урон; UUID наблюдаемого игрока удаляется в finally.
-
-Покрываются:
-
-- Контроль без испытания, активация без урона за старый опыт, команды
-  `/fdc list`, `/fdc activate bitter_experience`, `/fdc active` через диспетчер.
-- Отдельные номиналы 1, 7 и 2477: один запрос урона 1, весь XP ровно один раз,
-  XP распределён до запроса. Команда `/experience` и списание уровня без урона.
-- Непотреблённая порция при pickup delay без XP/урона. Сущность с `Count=3`:
-  по одному запросу за порцию, 21 XP при номинале 7, удаление после последней.
-- Серия трёх успешных порций во время одних i-frames: три запроса, один
-  фактический урон. Тест открывает только ванильный pickup delay между порциями;
-  `timeUntilRegen` между ними не сбрасывается. Это синхронная проверка ветки,
-  а не измерение времени притяжения сфер настоящим клиентом.
-- Mending: полная трата XP на починку и починка с начислением остатка;
-  прочность восстанавливается до запроса урона, XP не дублируется.
-- Броня, Сопротивление I, действующее Поглощение, тотем при смертельном подборе,
-  смерть без тотема и отсутствие запросов для уже мёртвого игрока.
-- Creative/Spectator, возврат Adventure/Survival, выключенный ID,
-  поздний вход отдельного тестового игрока, персональная активация без утечки.
-- Смерть/респаун и замена живой сущности через общий стенд;
-  настоящий save/read NBT через PersistentStateManager, восстановление активности,
-  прекращение будущего урона и сохранение no_sprint при замене испытания.
-- Пары с damage_slot_drop и damage_teleport: фактически прошедший урон даёт
-  один дроп полного стака или перенос на 5 блоков; отклонённый i-frames запрос
-  не вызывает реакцию. Пары с no_healing и one_heart сохраняют запрет лечения
-  и максимум здоровья соответственно.
+Расходы: wrapper на каждый collision сохраняет boolean/int и проверяет count.
+Только consumed portion доходит до eligibility O(G+A); активная порция создаёт
+один DamageSource/один damage request. Нет собственных tick/render/packet/save
+hooks, maps, UUID history, timers/world scan. Inherited no-op callbacks и общие
+scheduler/sync/damage gates имеют цену (foundation-L02). В паре DSD/DT цена
+receipt/drop/teleport относится к соответствующей реакции, vanilla XP/Mending/
+tracking — к ванили. MSPT/FPS/allocations/load не измерялись.
 
 ## Оставшиеся ручные сценарии
 
