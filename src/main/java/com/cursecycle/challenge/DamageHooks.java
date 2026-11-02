@@ -19,9 +19,18 @@ public final class DamageHooks {
         pending.get().push(receipt);
         return receipt;
     }
-    public static boolean isPending(LivingEntity target, DamageSource source) {
+    /** The attack call site owns a receipt before entering LivingEntity.damage. Borrow it once. */
+    public static DamageReceipt beginAttack(LivingEntity target, DamageSource source) {
+        var receipt = begin(target, source);
+        receipt.awaitingAttackDamage = true;
+        return receipt;
+    }
+    public static boolean claimAttackDamage(LivingEntity target, DamageSource source) {
         var receipt = pending.get().peek();
-        return receipt != null && receipt.target == target && receipt.source == source;
+        if (receipt == null || !receipt.awaitingAttackDamage || receipt.target != target || receipt.source != source)
+            return false;
+        receipt.awaitingAttackDamage = false;
+        return true;
     }
     public static void accepted(LivingEntity target) {
         var receipt = pending.get().peek();

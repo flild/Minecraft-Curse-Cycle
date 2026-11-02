@@ -16,8 +16,9 @@ public abstract class AppliedDamageLivingEntityMixin {
     private boolean cursecycle$completedDamage(DamageSource source, float amount, Operation<Boolean> original) {
         if (!((Object) this instanceof ServerPlayerEntity player) || !DamageHooks.needed(player))
             return original.call(source, amount);
-        // The primary melee call may already own this receipt, including incoming reactions.
-        if (DamageHooks.isPending(player, source)) return original.call(source, amount);
+        // Borrow a primary-attack receipt once; recursive damage owns a separate result,
+        // even when vanilla reuses the same DamageSource instance.
+        if (DamageHooks.claimAttackDamage(player, source)) return original.call(source, amount);
         var receipt = DamageHooks.begin(player, source);
         boolean completed = false;
         try {

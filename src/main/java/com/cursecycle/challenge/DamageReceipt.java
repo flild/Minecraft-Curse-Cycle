@@ -15,6 +15,7 @@ public final class DamageReceipt {
     public final ServerWorld world;
     public final Vec3d position;
     boolean accepted;
+    boolean awaitingAttackDamage;
     DamageReceipt(LivingEntity target, DamageSource source) {
         this.target = target;
         this.player = target instanceof ServerPlayerEntity p ? p : null;

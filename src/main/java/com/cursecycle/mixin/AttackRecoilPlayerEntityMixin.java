@@ -27,7 +27,7 @@ public abstract class AttackRecoilPlayerEntityMixin {
                                          @Share("cursecycle$primaryDamage") LocalRef<DamageReceipt> primary) {
         if (!((Object) this instanceof ServerPlayerEntity player) || !AttackRecoilChallenge.eligible(player, target))
             return original.call(target, source, amount);
-        var receipt = DamageHooks.begin((LivingEntity) target, source);
+        var receipt = DamageHooks.beginAttack((LivingEntity) target, source);
         boolean completed = false;
         try {
             boolean result = original.call(target, source, amount);
