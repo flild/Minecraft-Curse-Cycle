@@ -2,105 +2,126 @@
 
 Испытание `attack_recoil`: MEDIUM/GLOBAL. Успешная основная ближняя атака
 добавляет к текущей скорости игрока горизонтальный импульс 0,6 от цели,
-сохраняя Y. Дистанция последующего перемещения зависит от ванильной физики.
+сохраняя Y. Итоговая дистанция зависит от ванильной физики.
 
-## Реализация и точки проверки
+## Реализация
 
-- `AttackRecoilPlayerEntityMixin` оборачивает только вызов `Entity.damage`
-  основной цели в `PlayerEntity.attack`. Sweep вызывает другой метод —
-  `LivingEntity.damage`. Локальная `@Share`-ссылка относится к одному вызову
-  атаки; общих счётчиков, кулдауна и сохраняемых маркеров нет.
-- Используется существующий `DamageHooks`/`DamageReceipt`, расширенный на
-  LivingEntity. Перехваты в обоих `applyDamage` наблюдают фактическое
-  уменьшение HP/поглощения до тотема. Возвращённого `damage == true`
-  недостаточно. Для игрока-цели существующая обёртка переиспользует текущий
-  receipt, чтобы не повторять damage_slot_drop/damage_teleport.
-- Импульс добавляется на нормальном возврате из всей атаки, после спринтерского
-  замедления и реакций зачарований. Направление определяется текущими XZ;
-  при совпадении используется противоположное yaw направление независимо от pitch.
-  Не используются телепортация, `takeKnockback`, изменение урона и восстановление скорости.
-- Сервер выставляет `velocityModified`; ванильный `EntityTrackerEntry`
-  отправляет скорость наблюдателям и самому игроку. Клиентской второй отдачи нет.
-- Активность проверяется для конкретного живого игрока и его GLOBAL/PERSONAL ID.
-  Creative/Spectator, пассажир и стойка для брони исключены. Приседание и
-  сопротивление отбрасыванию не масштабируют импульс. После завершения
-  прекращаются только новые импульсы.
+`AttackRecoilPlayerEntityMixin` оборачивает только `Entity.damage` основной
+цели в `PlayerEntity.attack`; sweep использует `LivingEntity.damage`.
+`@Share` хранит receipt одного вызова. Принятие определяется фактическим
+уменьшением HP/поглощения до тотема в обоих `applyDamage`, а не boolean return.
+Импульс применяется на нормальном возврате всей атаки после sprint damping
+и реакций зачарований. При совпадении XZ берётся противоположный yaw,
+независимо от pitch. Сопротивление отбрасыванию и приседание его не уменьшают.
+Creative/Spectator, мёртвый атакующий, пассажир и стойка исключены.
 
-Сигнатуры сверены с локальным байткодом Minecraft 1.21.1/Yarn build.3 и
-[документацией PlayerEntity](https://maven.fabricmc.net/docs/yarn-1.21.1+build.3/net/minecraft/entity/player/PlayerEntity.html).
+Сервер выставляет `velocityModified`. Локальный байткод 1.21.1/Yarn build.3
+подтверждает отправку через `EntityTrackerEntry.sendSyncPacket` наблюдателям
+и самому игроку. Собственного клиентского импульса, C2S, таймера, UUID map,
+NBT-маркера или восстановления старой скорости нет. После выключения
+прекращаются новые импульсы, уже полученная скорость сохраняется.
 
-## Автоматические проверки
+## Исправление ревью 2026-11-03
 
-Команды: `.\gradlew.bat build`, `.\gradlew.bat runGametest`,
-`git diff --check`, `git diff --cached --check`.
+`attack_recoil-F01`: ALLOW_DAMAGE основной атаки вызывает вложенный damage
+той же цели и отменяет основную атаку. Раньше вложенное уменьшение HP
+подтверждало outer receipt: HP−1 от постороннего источника давал ложную отдачу.
+Это воспроизведено на мобе и ServerPlayer без входящих damage-испытаний.
 
-`AttackRecoilChallengeTest` проверяет единственную регистрацию, русские
-метаданные, сложность/область, включение в выбор, отключение и сохранение
-двойной/персональной активации без дополнительных данных атаки.
+Теперь `AppliedDamageLivingEntityMixin` один раз заимствует primary receipt
+для любой записываемой LivingEntity. Рекурсивный damage той же цели получает
+свой receipt через `DamageHooks.isPending`; его accepted не подтверждает
+родительский вызов. Совпадение DamageSource не объединяет вызовы. Pop/remove
+в finally сохраняются. Урон, shield/i-frames и порядок drop→teleport не меняются.
 
-Три сценария `AttackRecoilGameTest` выполняют настоящий `ServerPlayerEntity.attack`
-с применёнными Mixin и проверяют:
+## Свежие автоматические проверки
 
-- неактивность и активацию без импульса; сложение скорости и неизменность Y;
-  диагональ, совпадение XZ и взгляд вниз; приседание/сопротивление;
-- фактическую потерю здоровья, только поглощения, смерть цели и восстановление
-  тотемом выше исходного HP; контроль урона/отбрасывания цели без испытания;
-  полный импульс после спринтерского замедления;
-- флаг штатной синхронизации и формирование пакета ванильным tracker;
-- i-frames, отмену ALLOW_DAMAGE, Resistance V без потерь, неуязвимую цель;
-  стойку, лодку и пустой взмах; отсутствие отдачи от прямых запросов урона
-  с источниками стрелы, огня, шипов, взрыва и даже playerAttack вне основной атаки;
-- настоящий sweep с подтверждённым уроном вторичной цели — один импульс;
-  два успешных вызова в одном серверном тике — два импульса;
-- щит с разрешённым PvP и сравнением с ванильным результатом; пассажира
-  без ускорения транспорта и спешивания;
-- `/fdc list`, `/fdc activate "double_challenge:attack_recoil,no_sprint"`,
-  `/fdc active`, независимого позднего игрока, PERSONAL, выключенный ID,
-  Survival/Creative/Spectator/Adventure и возврат;
-- смерть атакующего, респаун и замену живого объекта; реальное сохранение
-  PersistentState на диск и чтение NBT; прекращение новых импульсов без
-  обнуления скорости после замены на no_sprint;
-- совместимость с no_sprint и одну реакцию damage_slot_drop при успешной
-  атаке по ServerPlayerEntity, несмотря на вложенный путь получения урона.
+Все команды — из корня проекта, с существующим Gradle cache; зависимости прежние.
 
-PvP в стенде включается только на время сценария и восстанавливается.
-Первый запуск Gradle в песочнице не получил доступ к общему
-`F:\Programs\GradleCache\wrapper\dists\...\gradle-8.10.2-bin.zip.lck`;
-проверки запускаются с разрешённым доступом к кэшу без изменения зависимостей.
-При разработке исправлены кавычки составного ID тестовой команды и подготовка
-PvP в стенде; результаты промежуточных неуспешных запусков не считаются успешными.
+```powershell
+.\gradlew.bat build runGametest --offline -I build/attack-recoil-review-final.init.gradle
+.\gradlew.bat processGametestResources --offline --rerun-tasks
+python build/attack-recoil-review-verify.py
+git diff --check
+git diff --cached --check
+```
 
-Итог от 2026-10-27: `.\gradlew.bat build runGametest` — BUILD SUCCESSFUL,
-55 s. JUnit XML: 80 tests, failures/errors/skipped = 0. GameTest XML:
-23 testcase, failure/error/skipped = 0, включая три новых сценария.
-`git diff --check` — без ошибок. Staged diff проверен перед отдельным коммитом,
-`git diff --cached --check` — без ошибок.
+Финальный запуск 2026-11-03: exit 0, build, **149/149 JUnit в 54 suites**,
+**59/59 GameTest**: 8 AttackRecoil, 8 DamageSlotDrop, 7 DamageTeleport,
+5 BitterExperience, 4 Foundation, 7 Gills, по 5 NoHealing/OneHeart/AllDebuffs/
+RandomPotion. Штатный shutdown. Это адресная регрессия общего damage/health/
+effect-контракта, не новое полное ревью остальных испытаний.
+
+Лог `build/attack-recoil-review-final.log`, XML
+`build/reports/attack-recoil-review-final.xml`, JUnit
+`build/reports/attack-recoil-review-final-junit`. Verifier подтвердил 5 SHA,
+6 полей метаданных, регистрацию один раз, все результаты попыток, отсутствие
+стендов в двух production JAR и восстановленные 43 GameTest entrypoints.
+
+Предметные методы `AttackRecoilGameTest`:
+
+| Метод | Что действительно исполнено |
+|---|---|
+| primaryDamageBeforeTotemAndFinalVelocity | Настоящая attack: inactive/start, сложение/Y/диагональ/yaw, sneak/resistance, HP/absorption/death/totem, sprint и vanilla target control, tracker packet |
+| sweepShieldsFramesAndIndirectSources | Sweep с уроном вторичной цели/один импульс, два вызова в одном tick/два импульса, щит с PvP/control, i-frames/cancel/Resistance V/invulnerability/стойка/лодка/empty swing; прямые damage-запросы arrow/fire/thorns/explosion/playerAttack вне attack |
+| activityLifecycleAndPlayerDamageReactions | Команды list/activate/active, modes/enabled/passenger/vehicle, late/два игрока/PERSONAL, death/respawn/live replacement, state disk, no_sprint и player target/drop once |
+| nestedMobDamageCannotConfirmRejectedPrimary | Моб: nested same/different source × cancel/accept primary; HP−1/recoil0 либо HP−4/recoil1 |
+| nestedPlayerDamageCannotConfirmRejectedPrimary | То же для ServerPlayer без активных incoming-damage испытаний |
+| repeatedCallsExceptionsAndActualPlayerDiskReload | 32 цикла repeated/double same/GLOBAL+PERSONAL/end; thrown damage propagates, stack пуст, следующий hit работает; настоящие playerdata+PersistentState disk active/ended/offline end, HP/XP/items/foreign clock |
+| heavyJumpAndGravityTravelPreserveFullRecoil | Реальный jump heavy×0,6 + полный recoil; travel triple gravity/vanilla drag; после снятия recoil вторая механика остаётся |
+| actualThornsAndTeleportReactIndependently | Настоящий Thorns III enchantment на цели, наблюдаемый урон атакующему и teleport5; recoil по конечным XZ после teleport; после снятия recoil DT продолжает работать. ≤32 попыток на вариант, не benchmark |
+
+Все атаки серверные с применёнными Mixin. Игроки используют EmbeddedChannel,
+стендовые позиции/зарядку/вызовы travel, а не настоящий клиентский ввод.
+PvP восстанавливается, сущности и временный floor удаляются/возвращаются.
+Для физики пары используется simulateMovement=true; packet emission не
+доказывает доставку и применение скорости реальным клиентом.
+
+Журнал попыток: baseline 3/3; первый red init не компилировался из-за UTF-8 BOM
+(проверки не начались); red-execution 3/5 воспроизвёл два F01; fixed 5/5;
+expanded 8/8; final 59/59. На каждом реально исполненном build JUnit149/149.
+Ошибка запуска tools sandbox-bin access denied произошла до Gradle;
+команды выполнены с разрешённым доступом. Lock-файлы не удалялись.
+Подробные команды/пути и матрица полного ТЗ — локальный отчёт
+`Промпты/reviews/11-attack_recoil.md`.
+
+Оценка расходов static: gate O(G+A), импульс O(1), receipt stack O(D),
+incoming dispatch O(K log K + K×(G+A)). Новые claim/peek постоянно вызываются
+из damage, даже inactive; это ненулевая ограниченная работа. Нет own tick,
+render, поиска/force-load, markDirty или сериализации на удар. Вложенные
+receipts живут до finally. Пустой thread-local deque возможен по общему
+контракту foundation-L02; Player/World в нём не удерживаются. MSPT/FPS,
+allocations и длительный memory/load профиль не измерены.
+
+## Исторические результаты
+
+Старая реализация 2026-10-27 заявляла 80 JUnit и 23 GameTest. Эти числа
+не используются как доказательство ревью 2026-11-03. Старое замечание
+о ещё не реализованных heavy_body/movement_memory устарело; предметно
+на этом этапе проверена только указанная пара heavy_body.
 
 ## Ручные проверки — не выполнены
 
-Автотесты не заменяют настоящий клиент, фактический переход через портал,
-переподключение или полный перезапуск JVM. Следующие сценарии остаются ручными:
+1. `attack_recoil-L01`: одиночный Survival/Adventure, ровная площадка:
+   list/activate/active, русские HUD/menu без отдельного спама. Удар/диагональ/
+   совпадение XZ→добавленные 0,6/Y unchanged; sweep→один, промах/блок/стойка/
+   полный shield/пассажир→ноль. Реальные стрелы, fire aspect delay, pet attack
+   не дают своей отдачи. Проверить стену/трение/лёд, slippery_hands и
+   movement_memory, no_sprint/heavy_body/gravity_ten и ответные Шипы/DT;
+   после замены AR вторая механика остаётся. Portal/death/keepInventory оба
+   сохраняют ванильные последствия, возрождение даёт только новые реакции.
+2. `attack_recoil-L02`: dedicated + два настоящих Survival клиента и late third.
+   Проверить скорость самого атакующего/наблюдателя, independent hits и
+   GLOBAL/PERSONAL/double/end; disconnect/portal/death/rejoin одного не
+   меняют второго, нет второго клиентского импульса или rubberband.
+3. `attack_recoil-L03`: два полных новых JVM, active и ended/offline end;
+   сохранить мир без игроков, новый вход. Новый успешный удар→один при active,
+   ноль при ended; нет replay, отката чужих HP/XP/items/effect clocks.
+   Disk roundtrip внутри одного JVM не заменяет эту проверку.
+4. `attack_recoil-L04`: одинаковые мир/версии/P/G/A/attack rate/прогрев/
+   длительность, inactive/active/double и primary/sweep/nested controls;
+   отдельно mod gates/receipt/dispatch и vanilla combat/tracker/collision.
+   MSPT/FPS/allocations/retained memory и длительный reconnect/load профиль.
 
-1. В одиночном Survival на ровной площадке выполнить `/fdc list`,
-   `/fdc activate attack_recoil`, `/fdc active`. Проверить название,
-   HUD/меню и отсутствие дополнительного чат-спама или индикаторов.
-2. Проверить обычный удар, диагональ и группу с мечом; промах, удар блока,
-   стойку, полностью заблокированный удар и транспорт. Измерять именно
-   прибавленную скорость: последующая дистанция зависит от пола и столкновений.
-3. Выстрелить настоящей стрелой, поджечь цель зачарованным оружием, атаковать
-   через приручённое животное. Отложенные/косвенные попадания не дают импульса.
-4. Проверить доставку скорости реальному клиенту и наблюдателю, движение у стены,
-   трение, лёд, приседание и сопротивление отбрасыванию. Сравнить с контролем
-   обычного щита, который может иметь собственные ванильные последствия.
-5. Проверить no_sprint и slippery_hands вместе с attack_recoil; после замены на
-   no_sprint остаётся его запрет, будущая отдача прекращается, старая скорость
-   не обнуляется. Ответные Шипы и damage_teleport должны независимо срабатывать
-   по получению урона; отдача вычисляется после завершения атаки.
-6. Умереть/возродиться, сменить измерение порталом, выйти/войти при активности,
-   сохранить и полностью перезапустить мир. Затем завершить испытание офлайн
-   на выделенном сервере через `/fdc activate no_sprint` и снова войти:
-   завершённая активация и старый импульс не восстанавливаются.
-7. Необязательно: два настоящих клиента на выделенном сервере, независимые
-   атаки и отключение одного игрока. Основная механика не требует напарника.
-
-Сочетания с ещё не реализованными heavy_body/movement_memory здесь не проверены.
+Итог ревью: **pass_with_limits**, механика **fixed**, расходы
+**no_issue_found / static**. Невыполненные ручные сценарии не подтверждены.

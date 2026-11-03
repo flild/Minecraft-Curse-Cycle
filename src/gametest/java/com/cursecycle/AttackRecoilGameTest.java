@@ -30,8 +30,230 @@ import java.util.UUID;
 
 public class AttackRecoilGameTest implements FabricGameTest {
     private static final Set<UUID> CANCELLED = new HashSet<>();
+    private record NestedHit(boolean sameSource, boolean cancelPrimary) {}
+    private static final java.util.Map<UUID, NestedHit> NESTED = new java.util.HashMap<>();
+    private static final Set<UUID> THROWING = new HashSet<>();
+    private static final RuntimeException TEST_FAILURE = new RuntimeException("attack-recoil-test-damage-failure");
     static {
-        ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> !CANCELLED.contains(entity.getUuid()));
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
+            if (THROWING.contains(entity.getUuid())) throw TEST_FAILURE;
+            var nested = NESTED.remove(entity.getUuid());
+            if (nested != null) {
+                entity.damage(nested.sameSource() ? source : entity.getDamageSources().magic(), 1);
+                return !nested.cancelPrimary();
+            }
+            return !CANCELLED.contains(entity.getUuid());
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil_nested_mob")
+    public void nestedMobDamageCannotConfirmRejectedPrimary(TestContext context) {
+        nestedPrimary(context, false);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil_nested_player")
+    public void nestedPlayerDamageCannotConfirmRejectedPrimary(TestContext context) {
+        nestedPrimary(context, true);
+    }
+
+    private static void nestedPrimary(TestContext context, boolean playerTarget) {
+        try (var arena = new Arena(context)) {
+            var attacker = arena.player();
+            attacker.getAttributeInstance(EntityAttributes.GENERIC_ATTACK_DAMAGE).setBaseValue(4);
+            arena.scenario.activate("attack_recoil");
+            for (boolean sameSource : new boolean[]{false, true}) {
+                for (boolean cancel : new boolean[]{true, false}) {
+                    arena.charge(attacker);
+                    net.minecraft.entity.LivingEntity target;
+                    if (playerTarget) {
+                        var player = arena.player();
+                        player.teleport(context.getWorld(), attacker.getX(), attacker.getY(), attacker.getZ() + 2, 0, 0);
+                        target = player;
+                    } else target = arena.cow(attacker, 0, 2);
+                    float before = target.getHealth();
+                    attacker.setVelocity(Vec3d.ZERO);
+                    NESTED.put(target.getUuid(), new NestedHit(sameSource, cancel));
+                    try { attacker.attack(target); } finally { NESTED.remove(target.getUuid()); }
+                    context.assertEquals(before - (cancel ? 1 : 4), target.getHealth(), "Only accepted invocations reduce HP");
+                    vector(context, attacker.getVelocity(), cancel ? Vec3d.ZERO : new Vec3d(0, 0, -0.6),
+                            "Nested damage must not confirm primary; player=" + playerTarget + ", sameSource=" + sameSource + ", cancelled=" + cancel);
+                }
+            }
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil_disk", tickLimit = 300)
+    public void repeatedCallsExceptionsAndActualPlayerDiskReload(TestContext c) throws Exception {
+        try (var a = new Arena(c)) {
+            var p = a.player();
+            for (int i = 0; i < 32; i++) {
+                a.scenario.activate("attack_recoil");
+                long serial = a.scenario.state.getActivationSerial();
+                a.scenario.activate("double_challenge:attack_recoil,attack_recoil");
+                c.assertTrue(a.scenario.state.getActivationSerial() > serial, "New serial on repeated activation");
+                a.scenario.state.getPersonalActiveChallengeIds(p.getUuid()).add("attack_recoil");
+                p.setVelocity(new Vec3d(.2, .17, .1));
+                p.attack(a.cow(p, 0, 2));
+                vector(c, p.getVelocity(), new Vec3d(.2, .17, -.5), "Overlapping IDs give one impulse");
+                a.scenario.state.getPersonalActiveChallenges().clear();
+                a.scenario.activate("no_sprint");
+                vector(c, p.getVelocity(), new Vec3d(.2, .17, -.5), "End preserves current velocity");
+                p.attack(a.cow(p, 0, 2));
+                vector(c, p.getVelocity(), new Vec3d(.2, .17, -.5), "No new impulse after end");
+                p.setSprinting(true);
+                c.assertTrue(!p.isSprinting(), "Other mechanic remains");
+            }
+            a.scenario.activate("attack_recoil");
+            var failedTarget = a.cow(p, 0, 2);
+            p.setVelocity(Vec3d.ZERO);
+            THROWING.add(failedTarget.getUuid());
+            try {
+                try { p.attack(failedTarget); throw new AssertionError("Expected damage exception"); }
+                catch (RuntimeException failure) { c.assertTrue(failure == TEST_FAILURE, "Original exception propagates"); }
+            } finally { THROWING.remove(failedTarget.getUuid()); }
+            vector(c, p.getVelocity(), Vec3d.ZERO, "Exception gives no impulse");
+            var field = com.cursecycle.challenge.DamageHooks.class.getDeclaredField("pending");
+            field.setAccessible(true);
+            var pending = (ThreadLocal<?>) field.get(null);
+            c.assertTrue(((java.util.Deque<?>) pending.get()).isEmpty(), "Finally releases failed attack receipt");
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), new Vec3d(0, 0, -.6), "Next call works after exception");
+            c.assertTrue(((java.util.Deque<?>) pending.get()).isEmpty(), "Completed receipt holds no entity/world");
+
+            p.setHealth(17);
+            p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 777));
+            p.getInventory().setStack(10, new ItemStack(Items.DIAMOND, 7));
+            p.addExperience(37);
+            int xp = p.totalExperience;
+            var uuid = p.getUuid();
+            var server = p.getServer();
+            var pm = server.getOverworld().getPersistentStateManager();
+            disconnect(p);
+            pm.save();
+            var disk = pm.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+            pm.set(CurseCycleState.STATE_KEY, loaded);
+            p = a.scenario.player(uuid);
+            c.assertEquals(17F, p.getHealth(), "Actual playerdata retains HP");
+            c.assertEquals(xp, p.totalExperience, "Actual playerdata retains XP");
+            a.ready(p);
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), new Vec3d(0, 0, -.6), "Active disk load applies once to new hit");
+            p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 777));
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            pm.save();
+            disk = pm.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            pm.set(CurseCycleState.STATE_KEY, CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager()));
+            p = a.scenario.player(uuid);
+            c.assertEquals(777, p.getStatusEffect(StatusEffects.SPEED).getDuration(), "Foreign clock preserved on offline end");
+            c.assertEquals(7, p.getInventory().getStack(10).getCount(), "Foreign items preserved");
+            c.assertEquals(xp, p.totalExperience, "Foreign XP preserved");
+            a.ready(p);
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), Vec3d.ZERO, "Ended disk state gives no future recoil");
+            p.setSprinting(true);
+            c.assertTrue(!p.isSprinting(), "No sprint survives offline end/rejoin");
+            c.assertTrue(CurseCycleState.getServerState(server).getChallengeData().isEmpty(), "No per-attack persistent data");
+        }
+        c.complete();
+    }
+
+    private static void disconnect(ServerPlayerEntity p) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, p.getServer());
+        p.getServer().getPlayerManager().remove(p);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil_movement_pairs", tickLimit = 300)
+    public void heavyJumpAndGravityTravelPreserveFullRecoil(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.scenario.player(UUID.randomUUID(), true);
+            a.ready(p);
+            p.teleport(c.getWorld(), p.getX(), 180, p.getZ(), 0, 0);
+            p.setOnGround(true);
+            p.jump();
+            double jump = p.getVelocity().y;
+            a.scenario.activate("double_challenge:attack_recoil,heavy_body");
+            p.setVelocity(Vec3d.ZERO);
+            p.setOnGround(true);
+            p.jump();
+            c.assertTrue(Math.abs(p.getVelocity().y - jump * .6) < 1E-7, "Heavy body still scales jump");
+            var initial = p.getVelocity().add(.2, 0, .1);
+            p.setVelocity(initial);
+            p.setOnGround(false);
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), initial.add(0, 0, -.6), "Full recoil added to heavy jump");
+            a.scenario.activate("heavy_body");
+            p.setVelocity(Vec3d.ZERO);
+            p.setOnGround(true);
+            p.jump();
+            c.assertTrue(Math.abs(p.getVelocity().y - jump * .6) < 1E-7, "Heavy body remains after recoil ends");
+            p.setOnGround(false);
+            initial = new Vec3d(.2, .17, .1);
+            a.scenario.activate("double_challenge:attack_recoil,gravity_ten");
+            p.setVelocity(initial);
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), initial.add(0, 0, -.6), "Gravity pair preserves impulse immediately");
+            p.travel(Vec3d.ZERO);
+            vector(c, p.getVelocity(), new Vec3d(.2 * (double) .91F, (.17 - .24) * (double) .98F, -.5 * (double) .91F),
+                    "Real travel applies triple gravity and vanilla horizontal drag");
+            a.scenario.activate("gravity_ten");
+            p.setVelocity(initial);
+            p.setOnGround(false);
+            p.attack(a.cow(p, 0, 2));
+            vector(c, p.getVelocity(), initial, "No recoil after ending its half of gravity pair");
+            p.travel(Vec3d.ZERO);
+            c.assertTrue(Math.abs(p.getVelocity().y - (.17 - .24) * (double) .98F) < 1E-7, "Gravity remains after recoil ends");
+        } finally {
+            com.cursecycle.challenge.impl.HeavyBodyChallenge.clear(c.getWorld().getServer());
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil_thorns", tickLimit = 300)
+    public void actualThornsAndTeleportReactIndependently(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player();
+            var blocks = new java.util.LinkedHashMap<BlockPos, net.minecraft.block.BlockState>();
+            var base = BlockPos.ofFloored(p.getPos()).down();
+            for (var pos : BlockPos.iterate(base.add(-8, 0, -8), base.add(8, 0, 8))) {
+                blocks.put(pos.toImmutable(), c.getWorld().getBlockState(pos));
+                c.getWorld().setBlockState(pos, net.minecraft.block.Blocks.STONE.getDefaultState());
+            }
+            try {
+                var chest = new ItemStack(Items.DIAMOND_CHESTPLATE);
+                chest.addEnchantment(c.getWorld().getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT)
+                        .entryOf(net.minecraft.enchantment.Enchantments.THORNS), 3);
+                for (boolean recoil : new boolean[]{true, false}) {
+                    a.scenario.activate(recoil ? "double_challenge:attack_recoil,damage_teleport" : "damage_teleport");
+                    boolean reacted = false;
+                    for (int i = 0; i < 32 && !reacted; i++) {
+                        a.ready(p);
+                        p.setHealth(20);
+                        p.timeUntilRegen = 0;
+                        var target = a.cow(p, 0, 2);
+                        target.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, chest.copy());
+                        var origin = p.getPos();
+                        p.attack(target);
+                        c.assertTrue(target.getHealth() < target.getMaxHealth(), "Primary damage still applies");
+                        if (p.getHealth() < 20) {
+                            reacted = true;
+                            c.assertTrue(Math.abs(p.getPos().subtract(origin).horizontalLength() - 5) < 1E-7, "Actual Thorns teleports attacker once");
+                            double x = p.getX() - target.getX(), z = p.getZ() - target.getZ();
+                            double length = Math.hypot(x, z);
+                            vector(c, p.getVelocity(), recoil ? new Vec3d(.6 * x / length, 0, .6 * z / length) : Vec3d.ZERO,
+                                    "Recoil uses final position after actual enchantment/teleport; active=" + recoil);
+                        }
+                        target.discard();
+                    }
+                    c.assertTrue(reacted, "Observed actual Thorns within 32 bounded attempts");
+                }
+            } finally {
+                blocks.forEach((pos, state) -> c.getWorld().setBlockState(pos, state));
+            }
+        }
+        c.complete();
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "attack_recoil", tickLimit = 300)

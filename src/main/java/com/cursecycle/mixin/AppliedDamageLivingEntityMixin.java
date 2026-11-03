@@ -14,12 +14,14 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class AppliedDamageLivingEntityMixin {
     @WrapMethod(method = "damage")
     private boolean cursecycle$completedDamage(DamageSource source, float amount, Operation<Boolean> original) {
-        if (!((Object) this instanceof ServerPlayerEntity player) || !DamageHooks.needed(player))
-            return original.call(source, amount);
+        var target = (LivingEntity) (Object) this;
         // Borrow a primary-attack receipt once; recursive damage owns a separate result,
-        // even when vanilla reuses the same DamageSource instance.
-        if (DamageHooks.claimAttackDamage(player, source)) return original.call(source, amount);
-        var receipt = DamageHooks.begin(player, source);
+        // including mobs and player targets without incoming-damage challenges.
+        if (DamageHooks.claimAttackDamage(target, source)) return original.call(source, amount);
+        if (!DamageHooks.isPending(target)
+                && (!(target instanceof ServerPlayerEntity player) || !DamageHooks.needed(player)))
+            return original.call(source, amount);
+        var receipt = DamageHooks.begin(target, source);
         boolean completed = false;
         try {
             boolean result = original.call(source, amount);

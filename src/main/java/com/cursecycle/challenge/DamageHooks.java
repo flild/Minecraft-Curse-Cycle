@@ -32,6 +32,11 @@ public final class DamageHooks {
         receipt.awaitingAttackDamage = false;
         return true;
     }
+    /** Nested damage of a recorded target must not confirm its caller's result. */
+    public static boolean isPending(LivingEntity target) {
+        var receipt = pending.get().peek();
+        return receipt != null && receipt.target == target;
+    }
     public static void accepted(LivingEntity target) {
         var receipt = pending.get().peek();
         if (receipt != null && receipt.target == target) receipt.accepted = true;
