@@ -2,6 +2,7 @@ package com.cursecycle;
 
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.impl.HotbarShuffleChallenge;
+import com.cursecycle.challenge.impl.OneTimeMenuChallenge;
 import com.cursecycle.state.CurseCycleState;
 import com.cursecycle.state.CycleManager;
 import com.mojang.authlib.GameProfile;
@@ -40,14 +41,22 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.GameRules;
+import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class HotbarShuffleGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hotbar_shuffle", tickLimit = 1100)
     public void intervalsScreensUseAndLifecycle(TestContext context) { new Scenario(context).schedule(); }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hotbar_shuffle_ownership", tickLimit = 520)
+    public void packetBudgetOwnershipDimensionsAndDisk(TestContext context) { new Scenario(context).scheduleOwnership(); }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hotbar_shuffle_pairs", tickLimit = 250)
+    public void foodAndCraftingAroundShuffle(TestContext context) { new Scenario(context).schedulePairs(); }
 
     private static final class Connected {
         ServerPlayerEntity player;
@@ -300,7 +309,215 @@ public class HotbarShuffleGameTest implements FabricGameTest {
             });
         }
 
-        Connected connect(UUID uuid, GameMode mode) {
+        // Read-only inspection of ephemeral ownership; cadence still runs on actual server ticks.
+        Map<?, ?> ownedTimers() throws ReflectiveOperationException {
+            var field = HotbarShuffleChallenge.class.getDeclaredField("timers");
+            field.setAccessible(true);
+            var byServer = (Map<?, ?>) field.get(challenge);
+            var owned = (Map<?, ?>) byServer.get(server);
+            return owned == null ? Map.of() : owned;
+        }
+        Object timer(UUID uuid) throws ReflectiveOperationException { return ownedTimers().get(uuid); }
+
+        void reloadSharedState() throws Exception {
+            var persistence = server.getOverworld().getPersistentStateManager();
+            state.markDirty();
+            persistence.save();
+            var saved = persistence.readNbt(CurseCycleState.STATE_KEY, null,
+                    SharedConstants.getGameVersion().getSaveVersion().getId());
+            state = CurseCycleState.createFromNbt(saved.getCompound("data"), context.getWorld().getRegistryManager());
+            persistence.set(CurseCycleState.STATE_KEY, state);
+            context.assertFalse(state.getChallengeData().contains(HotbarShuffleChallenge.ID), "No timer/RNG in disk state");
+        }
+
+        void scheduleOwnership() {
+            context.runAtEveryTick(() -> {
+                if (!finished) for (var client : List.copyOf(clients)) drain(client);
+            });
+            at(1, () -> {
+                activate("test_easy");
+                first = connect(UUID.randomUUID(), GameMode.SURVIVAL);
+                empty = connect(UUID.randomUUID(), GameMode.ADVENTURE);
+                empty.player.getInventory().clear();
+                firstLayout = hotbar(first);
+                for (int i = 0; i < 32; i++) {
+                    activate("double_challenge:hotbar_shuffle,hotbar_shuffle");
+                    context.assertEquals(2, ownedTimers().size(), "Repeated ID owns one timer per eligible UUID");
+                    challenge.onStart(server, first.player);
+                    context.assertEquals(2, ownedTimers().size(), "Repeated start does not grow state");
+                    activate("no_sprint");
+                    context.assertTrue(ownedTimers().isEmpty(), "Stop frees all clocks each cycle");
+                    equal(firstLayout, hotbar(first), "No old inventory snapshot restored");
+                }
+                activate("hotbar_shuffle");
+                challenge.setEnabled(false);
+                context.assertTrue(ownedTimers().isEmpty(), "Disable clears clocks even without future dispatch");
+                challenge.onTick(server, first.player);
+                context.assertTrue(ownedTimers().isEmpty(), "Disabled direct call cannot reallocate a clock");
+                challenge.setEnabled(true);
+                activate("hotbar_shuffle");
+                state.getPersonalActiveChallenges().put(first.player.getUuid(), new ArrayList<>(List.of("hotbar_shuffle", "hotbar_shuffle")));
+                challenge.onTick(server, first.player);
+                context.assertEquals(2, ownedTimers().size(), "GLOBAL/PERSONAL overlap keeps two independent clocks");
+            });
+            at(40, () -> {
+                var oldTimer = timer(first.player.getUuid());
+                activate("hotbar_shuffle");
+                context.assertTrue(oldTimer != timer(first.player.getUuid()), "Same ID new activation resets its clock");
+                firstLayout = hotbar(first);
+                first.player.currentScreenHandler.sendContentUpdates();
+            });
+            at(139, () -> {
+                equal(firstLayout, hotbar(first), "Reactivation waits its own 99 ticks");
+                drain(first); first.updates.clear(); drain(empty); empty.updates.clear();
+            });
+            at(140, () -> {
+                challenge.onTick(server, first.player);
+                challenge.onTick(server, empty.player);
+                var after = hotbar(first);
+                changed(firstLayout, after, "Reactivated interval reaches 100");
+                multiset(firstLayout, after, "Packet-budget shuffle preserves all components");
+                drain(first); drain(empty);
+                int changedSlots = 0;
+                for (int i = 0; i < 9; i++) {
+                    if (ItemStack.areEqual(firstLayout.get(i), after.get(i))) continue;
+                    changedSlots++;
+                    int slot = hotbarSlot(first.player, i);
+                    var stack = after.get(i);
+                    context.assertEquals(1L, first.updates.stream().filter(p -> p.getSyncId() == first.player.currentScreenHandler.syncId
+                            && p.getSlot() == slot && ItemStack.areEqual(p.getStack(), stack)).count(), "Exactly one update for changed slot");
+                }
+                context.assertEquals(changedSlots, first.updates.size(), "Only changed hotbar slots sent, at most nine");
+                context.assertTrue(empty.updates.isEmpty(), "Empty hotbar emits no slot updates");
+                challenge.onTick(server, first.player);
+                drain(first);
+                context.assertEquals(changedSlots, first.updates.size(), "Duplicate dispatch emits nothing extra");
+                firstLayout = after;
+            });
+            at(151, () -> {
+                var clock = timer(first.player.getUuid());
+                first.player.teleport(server.getWorld(World.NETHER), 0.5, 100, 0.5, 0, 0);
+                challenge.onTick(server, first.player);
+                context.assertTrue(clock == timer(first.player.getUuid()), "Actual Nether teleport retains timer identity");
+            });
+            at(200, () -> {
+                var clock = timer(first.player.getUuid());
+                first.player.teleport(server.getWorld(World.END), 0.5, 100, 0.5, 0, 0);
+                challenge.onTick(server, first.player);
+                context.assertTrue(clock == timer(first.player.getUuid()), "Actual End teleport retains timer identity");
+            });
+            at(239, () -> equal(firstLayout, hotbar(first), "Dimension travel does not shorten remaining interval"));
+            at(240, () -> {
+                challenge.onTick(server, first.player);
+                changed(firstLayout, hotbar(first), "Dimension travel does not restart interval");
+                firstLayout = hotbar(first);
+                returning = first.player.getUuid();
+                first.player.addExperience(123);
+                // PlayerManager.remove writes actual playerdata; connect(false) does not replace loaded items.
+                disconnect(first);
+                context.assertEquals(1, ownedTimers().size(), "Disconnect frees only the departing UUID");
+                reloadSharedState();
+            });
+            at(260, () -> {
+                first = connect(returning, GameMode.SURVIVAL, false);
+                equal(firstLayout, hotbar(first), "Actual playerdata disk load retains shuffled stacks");
+                context.assertEquals(123, first.player.totalExperience, "Foreign XP survives disk load");
+                context.assertEquals(2, ownedTimers().size(), "Loaded JOIN creates only one new clock");
+            });
+            at(359, () -> equal(firstLayout, hotbar(first), "Disk-loaded JOIN gets a full interval"));
+            at(360, () -> {
+                challenge.onTick(server, first.player);
+                changed(firstLayout, hotbar(first), "Disk-loaded active state shuffles on its new boundary");
+                firstLayout = hotbar(first);
+                state.getPersonalActiveChallenges().remove(first.player.getUuid());
+                disconnect(first); disconnect(empty);
+                context.assertTrue(ownedTimers().isEmpty(), "Empty server has no player timers");
+                activate("no_sprint");
+                reloadSharedState();
+            });
+            at(370, () -> {
+                first = connect(returning, GameMode.SURVIVAL, false);
+                equal(firstLayout, hotbar(first), "Ended disk load leaves actual inventory as saved");
+                context.assertTrue(ownedTimers().isEmpty(), "Ended JOIN does not resurrect a timer");
+            });
+            at(475, () -> {
+                equal(firstLayout, hotbar(first), "Offline-ended state never shuffles after 100 ticks");
+                first.player.setSprinting(true);
+                context.assertFalse(first.player.isSprinting(), "No sprint survives ending shuffle");
+                cleanup(); context.complete();
+            });
+        }
+
+        void schedulePairs() {
+            context.runAtEveryTick(() -> {
+                if (!finished) for (var client : List.copyOf(clients)) drain(client);
+            });
+            at(1, () -> {
+                activate("test_easy");
+                first = connect(UUID.randomUUID(), GameMode.SURVIVAL);
+                first.player.getInventory().setStack(3, new ItemStack(Items.APPLE, 7));
+                first.player.getHungerManager().setFoodLevel(10);
+                activate("double_challenge:hotbar_shuffle,one_time_menu");
+                firstLayout = hotbar(first);
+            });
+            at(100, () -> {
+                seedSelected(first, false);
+                context.assertTrue(first.player.interactionManager.interactItem(first.player, first.player.getWorld(),
+                        first.player.getMainHandStack(), Hand.MAIN_HAND).isAccepted(), "Actual allowed food use starts");
+            });
+            at(101, () -> {
+                challenge.onTick(server, first.player);
+                context.assertFalse(first.player.isUsingItem(), "Shuffle cancels actual food use");
+                multiset(firstLayout, hotbar(first), "Cancelled food consumes neither old nor replacement stack");
+                context.assertFalse(OneTimeMenuChallenge.blocked(first.player, "minecraft:apple"), "Cancelled food is not recorded as eaten");
+                int apple = -1;
+                for (int i = 0; i < 9; i++) if (first.player.getInventory().getStack(i).isOf(Items.APPLE)) apple = i;
+                context.assertTrue(apple >= 0, "Whole apple stack moved");
+                first.player.getInventory().getStack(apple).finishUsing(first.player.getWorld(), first.player);
+                context.assertEquals(6, first.player.getInventory().getStack(apple).getCount(), "Successful finish after shuffle consumes exactly one");
+                context.assertTrue(OneTimeMenuChallenge.blocked(first.player, "minecraft:apple"), "Other mechanic records actual consumption");
+                // Retain OTM via PERSONAL while removing shuffle from GLOBAL.
+                state.getPersonalActiveChallenges().put(first.player.getUuid(), new ArrayList<>(List.of("one_time_menu")));
+                state.getActiveChallengeIds().remove("hotbar_shuffle");
+                challenge.onStop(server, first.player);
+                context.assertTrue(OneTimeMenuChallenge.blocked(first.player, "minecraft:apple"), "Ending shuffle does not erase food history");
+                state.getPersonalActiveChallenges().remove(first.player.getUuid());
+                activate("double_challenge:hotbar_shuffle,crafting_tax");
+                var h = first.player.playerScreenHandler;
+                h.getSlot(1).setStack(new ItemStack(Items.OAK_LOG, 2));
+                h.onContentChanged(h.getSlot(1).inventory);
+                first.player.experienceLevel = 2;
+                firstLayout = hotbar(first);
+            });
+            at(200, () -> {
+                var h = first.player.playerScreenHandler;
+                click(first, 0, h.getRevision());
+                context.assertEquals(1, first.player.experienceLevel, "Craft before shuffle charges one level");
+                context.assertEquals(4, h.getCursorStack().getCount(), "Craft before shuffle produces one whole output");
+                firstLayout = hotbar(first);
+            });
+            at(201, () -> {
+                var h = first.player.playerScreenHandler;
+                challenge.onTick(server, first.player);
+                changed(firstLayout, hotbar(first), "Shuffle continues with crafting tax");
+                context.assertEquals(4, h.getCursorStack().getCount(), "Shuffle leaves crafted cursor unchanged");
+                context.assertEquals(1, h.getSlot(1).getStack().getCount(), "Shuffle leaves crafting input unchanged");
+                click(first, 0, h.getRevision());
+                context.assertEquals(0, first.player.experienceLevel, "Craft after shuffle charges one more level");
+                context.assertEquals(8, h.getCursorStack().getCount(), "Both crafts conserve exact output");
+                state.getActiveChallengeIds().remove("hotbar_shuffle");
+                challenge.onStop(server, first.player);
+                h.getSlot(1).setStack(new ItemStack(Items.OAK_LOG));
+                h.onContentChanged(h.getSlot(1).inventory);
+                click(first, 0, h.getRevision());
+                context.assertEquals(8, h.getCursorStack().getCount(), "Tax still blocks unaffordable craft after shuffle ends");
+                context.assertEquals(1, h.getSlot(1).getStack().getCount(), "Rejected craft preserves input");
+                cleanup(); context.complete();
+            });
+        }
+
+        Connected connect(UUID uuid, GameMode mode) { return connect(uuid, mode, true); }
+        Connected connect(UUID uuid, GameMode mode, boolean seedInventory) {
             var data = ConnectedClientData.createDefault(new GameProfile(uuid, "shuffle-" + uuid.toString().substring(0, 8)), false);
             var player = new ServerPlayerEntity(server, context.getWorld(), data.gameProfile(), data.syncedOptions());
             var connection = new ClientConnection(NetworkSide.SERVERBOUND);
@@ -310,6 +527,7 @@ public class HotbarShuffleGameTest implements FabricGameTest {
             var client = new Connected(player, connection, channel);
             clients.add(client);
             prepare(player, mode);
+            if (!seedInventory) return client;
             var layout = initialLayout();
             for (int i = 0; i < 9; i++) player.getInventory().setStack(i, layout.get(i));
             player.getInventory().selectedSlot = 3;
@@ -332,7 +550,8 @@ public class HotbarShuffleGameTest implements FabricGameTest {
             prepare(client.player, GameMode.SURVIVAL);
         }
         void disconnect(Connected client) {
-            challenge.onPlayerLeave(server, client.player);
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(client.player.networkHandler, server);
             server.getPlayerManager().remove(client.player);
             server.getNetworkIo().getConnections().remove(client.connection);
             client.channel.finishAndReleaseAll();
@@ -420,6 +639,7 @@ public class HotbarShuffleGameTest implements FabricGameTest {
         }
         void cleanup() {
             finished = true;
+            challenge.setEnabled(true);
             for (var client : List.copyOf(clients)) disconnect(client);
             context.getWorld().getGameRules().get(GameRules.KEEP_INVENTORY).set(keepInventory, server);
             server.getOverworld().getPersistentStateManager().set(CurseCycleState.STATE_KEY,

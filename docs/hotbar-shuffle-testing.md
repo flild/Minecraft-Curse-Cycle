@@ -1,5 +1,107 @@
 # hotbar_shuffle — проверка
 
+## Ревью 2026-11-03, этап 12
+
+Production-код не менялся: подтверждённых дефектов не найдено. Расширен только
+`HotbarShuffleGameTest`, обратная связь и игровые ограничения прежние.
+Итог ревью — pass_with_limits, механика pass, расходы no_issue_found / static.
+
+Свежие прогоны (каждый в новом runDir, все exit 0):
+
+| Прогон | JUnit | GameTest | Лог / XML в build |
+|---|---|---|---|
+| baseline | 149/149, 54 suites | 1/1 | hotbar-shuffle-review-baseline.log; reports/hotbar-shuffle-review-baseline.xml |
+| expanded | 149/149, 54 suites | 3/3 | hotbar-shuffle-review-expanded.log; reports/hotbar-shuffle-review-expanded.xml |
+| final | 149/149, 54 suites | 3/3 | hotbar-shuffle-review-final.log; reports/hotbar-shuffle-review-final.xml |
+
+JUnit XML каждого прогона: `build/reports/hotbar-shuffle-review-<label>-junit/`.
+Исходный production HEAD: `0de3d997e935f4d3c41ac5ef1fcb6096e05dcac7`.
+Финальный код отличается только предметным тестом и этим документом.
+
+Команда финального прогона:
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/hotbar-shuffle-review-final.init.gradle
+.\gradlew.bat processGametestResources --offline --rerun-tasks
+python build/hotbar-shuffle-review-verify.py
+git diff --check
+git diff --cached --check
+```
+
+Воспроизводимое содержимое изолирующего init (не входит в JAR). Для повторного
+прогона выбрать новое имя runDir и соответствующие уникальные пути результатов:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/hotbar-shuffle-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.HotbarShuffleGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') { outputs.upToDateWhen { false }; reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/hotbar-shuffle-review-final-junit') }
+        loom.runs.gametest.runDir = 'build/gametest-hotbar-shuffle-review-final-20261103'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/hotbar-shuffle-review-final.xml'
+    }
+}
+```
+
+Три предметных GameTest:
+
+- `intervalsScreensUseAndLifecycle`: фактический END_SERVER_TICK, 99/100,
+  поздний вход, modes, GLOBAL/PERSONAL, real respawn и alive replacement,
+  целые стеки/count/components/durability/empty, еда/лук/offhand, сундук/cursor,
+  настоящие C2S click/stale revision и S2C slot packets; пары с lockdown,
+  damage_slot_drop и no_sprint. Контроль дропа из текущего инвентаря; snapshot
+  остальных слотов берётся непосредственно перед граничным вызовом.
+- `packetBudgetOwnershipDimensionsAndDisk`: 32 start/stop/double-same-ID цикла,
+  disable/re-enable, повторный start и новая активация того же ID, overlap scopes;
+  99/100 после повторной активации. На чистом playerScreenHandler ровно один
+  пакет на изменённый hotbar slot (не более 9), ни одного для пустого хотбара,
+  ни одного дополнительного после duplicate. Настоящие server teleport в Nether
+  и End сохраняют объект таймера и его остаток. PlayerManager сохраняет playerdata,
+  PersistentStateManager.save/readNbt загружает активное/завершённое состояние;
+  JOIN без подмены инвентаря восстанавливает фактические стеки и XP123, но
+  начинает новый полный интервал. Offline end при пустом сервере не оживляет
+  таймер/раскладку; no_sprint остаётся. Reflection только читает размеры map и
+  identity таймера; ticks/deadlines не подменяются. DISCONNECT вызывается через
+  Fabric event invoker, затем PlayerManager.remove и освобождение канала.
+- `foodAndCraftingAroundShuffle`: реальный interactItem начинает яблоко;
+  перемешивание отменяет использование без расхода и без записи one_time_menu.
+  Последующий finishUsing расходует одно яблоко и фиксирует историю; снятие
+  shuffle не стирает её. C2S крафт до/после границы выдаёт по 4 доски, списывает
+  по одному уровню, не меняет cursor/input при shuffle; после снятия shuffle
+  налог по-прежнему блокирует крафт при XP0. Это только адресная пара для этапа12,
+  самостоятельное ревью crafting_tax не начиналось.
+
+Оценка стоимости статическая, функциональный счётчик пакетов не является
+профилем latency/MSPT. Для P подходящих UUID — O(P) ephemeral timers на сервер,
+WeakHashMap не удерживает сервер через values. Один onTick: applicability O(G+A),
+lookup/clock O(1); до границы нет копирования стеков или своей отправки пакетов.
+На границе снимок 9 ссылок, O(9) Fisher–Yates на попытку, проверка ItemStack.areEqual
+учитывает стоимость компонентов. При неодинаковом хотбаре вероятность принятия
+попытки не менее 8/9 (минимум 9 различных раскладок), ожидается не более 9/8
+попытки. Детерминированного лимита повторов нет по требованию равномерного
+перевыбора; одинаковый/пустой хотбар возвращается без RNG. Затем 9 setStack,
+markDirty и один sendContentUpdates со сканированием S слотов текущего handler,
+стоимость сравнений зависит от компонентов. Нет world scan/force-load своего
+кода, NBT timers/RNG и дополнительного render/C2S hook. Общие dispatch/scheduler/
+20-tick sync и vanilla inventory sync сохраняют цену и не считаются нулевыми.
+
+Ограничения `hotbar_shuffle-L01..L04`: настоящий клиент/HUD/меню и ввод всех
+типов кликов/использования, реальные сетевые клиенты и задержки, физические
+порталы/обычный death drop, полный новый JVM active/ended/offline end и профиль
+нагрузки не выполнялись. Телепорт server API и disk roundtrip в одной JVM их
+не заменяют. Подробные шаги в локальном `Промпты/reviews/12-hotbar_shuffle.md`.
+
+Первый обычный PowerShell не стартовал (sandbox-bin ACL access5); разрешённый
+запуск вне неисправной песочницы работал. В подготовительном Python helper
+кодировка stdin испортила кириллический путь backup; повтор с UTF-8 создал
+backup, init был создан до ошибки и baseline Gradle прошёл. Lock-файлы не удалялись.
+
+
 «Курчу верчу запутать хочу», MEDIUM / GLOBAL. Первый и последующие интервалы —
 100 серверных тиков. Смена номера выбранного слота не следует за стеком.
 
@@ -26,7 +128,9 @@
 этого испытания. Раскладка никогда не откатывается. Активность сохраняется штатным
 `CurseCycleState`, сами предметы — ванильным инвентарём.
 
-## Автоматические проверки
+## Исторические проверки реализации (не доказательство ревью 2026-11-03)
+
+Ниже сохранены прежние результаты реализации; они не входят в свежие числа ревью.
 
 Команды после реализации:
 
