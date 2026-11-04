@@ -90,6 +90,11 @@ public final class SunlightBurnChallenge extends Challenge {
         }
     }
     @Override public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) { onStop(server, player); }
+    @Override public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        // Disabled challenges receive neither tick nor leave dispatch; release scheduling data now.
+        if (!enabled) checks.clear();
+    }
     @Override public void onPlayerRespawn(MinecraftServer server, ServerPlayerEntity oldPlayer,
                                          ServerPlayerEntity newPlayer, boolean alive) { onStop(server, oldPlayer); }
 }

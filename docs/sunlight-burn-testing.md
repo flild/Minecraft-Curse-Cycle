@@ -29,7 +29,93 @@
   гасит огонь, не восстанавливает здоровье и не меняет эффекты или экипировку.
   Смена измерения не добавляет импульс; новая среда проверяется по графику.
 
-## Автоматические проверки
+## Ревью 2026-11-04
+
+Подтверждён и исправлен `sunlight_burn-F01`: выключенный Challenge перестаёт
+получать tick/leave dispatch, поэтому прежний setter оставлял UUID/часы
+до конца жизни сервера. `setEnabled(false)` теперь сразу очищает только
+собственное расписание. Огонь, HP, эффекты и другие испытания не меняются.
+
+Свежие изолированные запуски:
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/sunlight-burn-review-<phase>.init.gradle
+```
+
+| phase | Exit | JUnit | GameTest | Результат |
+|---|---|---|---|---|
+| baseline | 0 | 149 / 54 suites | 2/2 | Исходные предметные сценарии |
+| red | 1 | 149 / 54 suites | 2/3 | Новая регрессия: disable оставляет clocks |
+| fixed | 0 | 149 / 54 suites | 3/3 | Минимальный setter fix |
+| expanded | 0 | 149 / 54 suites | 5/5 | Дополнены protection, пары и actual disk |
+| final | 0 | 149 / 54 suites | 17/17 | 5 sunlight_burn + 7 gills + 5 no_healing |
+
+Финальный запуск: BUILD SUCCESSFUL in48s, штатный shutdown. Baseline65s,
+red49s, fixed65s, expanded49s. Изменённые Java проверены в final;
+следом менялась только документация. После изоляции восстановить штатные
+ресурсы: `.\gradlew.bat processGametestResources --offline --rerun-tasks`.
+Verifier: `python build/sunlight-burn-review-verify.py` — XML всех пяти
+попыток, JUnit, metadata6/6, параметры20/80/12000, SHA5/5 входного snapshot,
+43 исходных entrypoints и чистота binary/sources JAR. Это проверка состава
+артефактов, не подтверждение всех игровых сценариев.
+
+Init меняет только GameTest entrypoints, runDir и пути отчётов; JUnit
+принудительно исполняется заново. Файлы: `build/sunlight-burn-review-<phase>.log`,
+`build/reports/sunlight-burn-review-<phase>.xml`, соседний каталог `-junit`;
+runDir `build/gametest-sunlight-burn-review-<phase>-20261104`.
+Неудачный red сохранён и не считается успешной проверкой.
+
+Новые предметные сценарии `SunlightBurnGameTest`:
+
+- `disabledAndDepartingPlayersReleaseChecks`: 32 активации, serial,
+  независимые UUID, duplicate/start/stop, немедленный disable, освобождение
+  последнего server bucket; настоящий Fabric DISCONNECT, пустой сервер;
+  чужой огонь 250 и `no_sprint` сохраняются. Reflection только читает cache.
+- `vanillaProtectionAndIndependentPairs`: обычный playerTick с бронёй и
+  Fire Protection IV, сравнение ванильного контроля и солнечного огня;
+  точный остаток 80, Fire Resistance без потери HP/эффекта, no_healing
+  блокирует heal после огня и остаётся после снятия солнца; gills расходует
+  воздух на суше, вода восстанавливает воздух и прекращает солнечные
+  обновления, после снятия солнца gills продолжает работать.
+- `diskReloadOfflineEndAndForeignPlayerData`: настоящий PlayerManager
+  save/remove/connect и PersistentStateManager save/read/set; active/ended/
+  offline end при пустом сервере. Fire250, named diamond17, XP7+.625,
+  HP17 и Fire Resistance сохранены; active JOIN проверяет сразу, duplicate
+  не повторяет, ended не возвращает механику, собственных данных в NBT нет.
+- Расширены исходные сценарии: inactive control, остаточный огонь под крышей,
+  OP2 команды, Nether→Overworld между проверками без дополнительного
+  импульса. Реальный график 19/20 тиков и естественное затухание после stop.
+  Arena вызывает Fabric DISCONNECT и при cleanup/reconnect.
+
+`javap` текущего mapped Minecraft 1.21.1 сохранён в
+`build/sunlight-burn-review-vanilla.txt`: hasRain учитывает только RAIN;
+raycast обходит пересечённые клетки; getBlockState вне высоты возвращает
+VOID_AIR, внутри обращается к chunk текущего столбца; setOnFireForTicks
+масштабируется GENERIC_BURNING_TIME, setFireTicks задаёт точный остаток.
+
+Расходы оценены статически. На активного подходящего игрока — gate/map на
+серверный тик, проверка среды раз в20 тиков, до одного вертикального raycast
+O(H×V), где H — расстояние от глаз до topY в клетках, V — стоимость формы.
+Внутри обычной высоты мира H ограничено высотой измерения; ниже minY луч
+также проходит расстояние до нижней границы. Нет перебора мира/чанков или
+собственного запроса далёких chunks; World.getBlockState использует vanilla
+getChunk текущего XZ. Нельзя приписывать этому API гарантию `create=false`.
+Кэш O(P), без ссылок на Player/World; stop/leave/disable освобождают записи.
+Неактивное испытание не выполняет свой raycast; общие dispatch/sync имеют цену.
+MSPT/FPS/allocations/retained memory не измерялись.
+
+Обычный клиент/HUD/меню, реальные multiplayer/latency, полный новый процесс
+JVM и нагрузка **не проверены**. EmbeddedChannel, pinned players и ручное
+вызывание playerTick не заменяют клиентскую игру. В environment проверка
+`Arena.check` заново начинает только солнечный clock ради условий среды;
+cadence проверяет отдельный асинхронный тест через реальные server ticks.
+Диск перезагружается в одной JVM, мир/chunks не перезапускаются.
+Точные открытые сценарии: локальный отчёт `Промпты/reviews/17-sunlight_burn.md`,
+ограничения sunlight_burn-L01–L04; они не закрывают прежние limits других ID.
+
+## Исторические автоматические проверки реализации
+
+Следующие числа и попытки относятся к прежней реализации, не к ревью выше.
 
 Итоговая команда: `.\gradlew.bat build runGametest --offline`.
 BUILD SUCCESSFUL, 1m 19s: 95 JUnit и 39/39 GameTest, failures/errors/skipped = 0.
@@ -94,8 +180,8 @@ GameTest использует настоящих серверных игроко
    Дисковый roundtrip в GameTest выполняется без полного перезапуска JVM.
 5. Пары с armor_disabled, no_block_placing и реакциями damage_slot_drop /
    damage_teleport: только фактически прошедший обычный огненный урон
-   должен запускать реакции. silent_world и blind_hud проверить после
-   их реализации; в этой эстафете они не реализуются.
+   должен запускать реакции. silent_world и blind_hud проверить реальными
+   клиентами; текущее ревью не подтверждает эти пары.
 6. Необязательно: два настоящих клиента на выделенном сервере; один под
    крышей, другой на солнце, отключение одного не влияет на другого.
 
