@@ -1,0 +1,28 @@
+// Isolated CLIENT validation: never part of the production source sets.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/heavy_body')
+        def probeOutput = project.file('build/heavy-body-review-client-probe')
+        tasks.register('compileHeavyBodyProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('heavyBodyProbeJar', Jar) {
+            dependsOn tasks.named('compileHeavyBodyProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/heavy-body-review-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        tasks.named('runClient') { dependsOn tasks.named('heavyBodyProbeJar') }
+    }
+}

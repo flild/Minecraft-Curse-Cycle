@@ -62,6 +62,15 @@ public class HeavyBodyGameTest implements FabricGameTest {
         return found;
     }
 
+    private static java.util.List<HeavyBodyPayload> contexts(ChallengeScenario s, ServerPlayerEntity p) {
+        var channel = s.channel(p); channel.runPendingTasks(); channel.flush();
+        var found = new java.util.ArrayList<HeavyBodyPayload>(); Object packet;
+        while ((packet = channel.readOutbound()) != null)
+            if (packet instanceof net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket custom
+                    && custom.payload() instanceof HeavyBodyPayload heavy) found.add(heavy);
+        return found;
+    }
+
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heavy_body_physics", tickLimit = 40)
     public void realPhysicsEffectsExclusionsAndLifecycle(TestContext c) throws Exception {
         var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
@@ -178,6 +187,10 @@ public class HeavyBodyGameTest implements FabricGameTest {
                     if (tick == 101) intent(s, other, false);
                     if (tick == 121) intent(s, other, true);
                     if (tick == 231) intent(s, p, false);
+                    // Repeated valid packets never restart accumulation or create extra sounds.
+                    intent(s, p, move); intent(s, p, move);
+                    if (tick == 75) intent(s, p, s.state.getActivationSerial() - 1, false);
+                    if (tick == 100) server.getOverworld().setTimeOfDay(server.getOverworld().getTimeOfDay() + 24000);
                     HeavyBodyChallenge.tick(server); HeavyBodyChallenge.tick(server);
                     var one = packets(s, p); var two = packets(s, other);
                     if (tick == 150 || tick == 230) c.assertEquals(1L, one.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "100 ticks, then 80 tick interval");
@@ -193,5 +206,138 @@ public class HeavyBodyGameTest implements FabricGameTest {
                 } catch (Throwable failure) { HeavyBodyChallenge.clear(server); s.close(); throw failure; }
             });
         }
+    }
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<Object, java.util.Map<Object, Object>> sessions() throws Exception {
+        var field = HeavyBodyChallenge.class.getDeclaredField("SESSIONS"); field.setAccessible(true);
+        return (java.util.Map<Object, java.util.Map<Object, Object>>) field.get(null);
+    }
+    private static void disconnect(ServerPlayerEntity player) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(player.networkHandler, player.getServer());
+        player.getServer().getPlayerManager().remove(player);
+    }
+    private static CurseCycleState reload(TestContext c) throws Exception {
+        var server = c.getWorld().getServer(); var manager = server.getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(server).markDirty(); manager.save();
+        var disk = manager.readNbt(CurseCycleState.STATE_KEY, null,
+                net.minecraft.SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+        manager.set(CurseCycleState.STATE_KEY, loaded); return loaded;
+    }
+    private static void foreign(TestContext c, ServerPlayerEntity p, net.minecraft.item.ItemStack cargo) {
+        c.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo, p.getInventory().getStack(8)), "Foreign named items");
+        c.assertEquals(7, p.experienceLevel, "Foreign XP"); c.assertEquals(.625F, p.experienceProgress, "Foreign XP progress");
+        c.assertEquals(17F, p.getHealth(), "Foreign HP");
+        c.assertTrue(p.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE), "Foreign effect");
+    }
+
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heavy_body_disk")
+    public void sessionsScopesLifecycleAndDiskNeverReplayBreathing(TestContext c) throws Exception {
+        var server = c.getWorld().getServer();
+        try (var s = new ChallengeScenario(c)) {
+            var p = s.player(); var other = s.player(); var uuid = p.getUuid();
+            var challenge = ChallengeRegistry.get(ID);
+            var cargo = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17);
+            cargo.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal("foreign-heavy-review"));
+            p.getInventory().clear(); p.getInventory().setStack(8, cargo.copy());
+            p.experienceLevel = 7; p.experienceProgress = .625F; p.setHealth(17);
+            p.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 1200, 0));
+            s.activate("test_easy"); s.state.getPersonalActiveChallengeIds(uuid).add(ID);
+            contexts(s, p); contexts(s, other);
+            com.cursecycle.network.NetworkHandler.syncToAll(server, 1, 20, s.state.getActiveChallengeIds(), "", java.util.List.of());
+            var sync = contexts(s, p);
+            c.assertEquals(java.util.List.of(new HeavyBodyPayload(s.state.getActivationSerial(), false)), sync, "Actual S2C context to PERSONAL owner");
+            c.assertTrue(contexts(s, other).isEmpty(), "No context to unrelated player");
+            intent(s, other, true); c.assertFalse(sessions().containsKey(server), "Unrelated PERSONAL recipient cannot create session");
+            intent(s, p, true); c.assertEquals(1, sessions().get(server).size(), "Only PERSONAL owner has input");
+            HeavyBodyChallenge.clear(server); s.state.getPersonalActiveChallengeIds(uuid).clear();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                long serial = s.state.getActivationSerial(); s.activate("double_challenge:heavy_body,heavy_body");
+                c.assertEquals(serial + 1, s.state.getActivationSerial(), "One activation for duplicate ID");
+                intent(s, p, serial, true); c.assertFalse(sessions().containsKey(server), "Old activation cannot create session");
+                intent(s, p, true); intent(s, p, true); intent(s, other, true);
+                c.assertEquals(2, sessions().get(server).size(), "Bounded one session per player");
+                var old = sessions().get(server).get(uuid);
+                challenge.onPlayerJoin(server, p); challenge.onStart(server, p);
+                c.assertFalse(sessions().get(server).containsKey(uuid), "Repeated start clears own accumulation");
+                c.assertEquals(1, sessions().get(server).size(), "Other session retained");
+                intent(s, p, true); c.assertTrue(old != sessions().get(server).get(uuid), "Fresh breathing object");
+                challenge.setEnabled(false); HeavyBodyChallenge.tick(server);
+                c.assertFalse(sessions().containsKey(server), "Disabled tick releases player/world/server references");
+                challenge.setEnabled(true); s.activate("double_challenge:heavy_body,no_sprint"); intent(s, p, true);
+                p.setOnGround(true); near(c, .6, HeavyBodyChallenge.scale(p, 1), "Both mechanics active");
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "Companion active");
+                s.activate("no_sprint"); c.assertFalse(sessions().containsKey(server), "End clears last bucket");
+                near(c, 1, HeavyBodyChallenge.scale(p, 1), "End removes own multiplier");
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "End retains no_sprint"); foreign(c, p, cargo);
+            }
+            s.activate(ID); intent(s, p, true); intent(s, other, true);
+            p.changeGameMode(GameMode.CREATIVE); HeavyBodyChallenge.tick(server);
+            c.assertFalse(sessions().get(server).containsKey(uuid), "Creative drops timer");
+            p.changeGameMode(GameMode.SURVIVAL); intent(s, p, true);
+            p.teleport(server.getWorld(World.NETHER), 0, 80, 0, 0, 0); HeavyBodyChallenge.tick(server);
+            var current = sessions().get(server).get(uuid);
+            var inputField = current.getClass().getDeclaredField("input"); inputField.setAccessible(true);
+            c.assertFalse(inputField.getBoolean(current), "Dimension replacement has no old input");
+            p.teleport(c.getWorld(), 0, 80, 0, 0, 0); intent(s, p, true);
+            var oldPlayer = other; other = s.respawn(other, true);
+            c.assertFalse(sessions().get(server).containsKey(oldPlayer.getUuid()), "Respawn releases old object");
+            disconnect(other); intent(s, p, true);
+            s.state.getChallengeData().putString("foreign-heavy", "preserve");
+            disconnect(p); c.assertFalse(sessions().containsKey(server), "Actual Fabric disconnect clears last session");
+            var loaded = reload(c); c.assertFalse(loaded.getChallengeData().contains(ID), "Disk has no input or breathing clocks");
+            c.assertEquals("preserve", loaded.getChallengeData().getString("foreign-heavy"), "Foreign world state");
+            p = s.player(uuid); foreign(c, p, cargo); p.setOnGround(true);
+            near(c, .6, HeavyBodyChallenge.scale(p, 1), "Active disk rejoin physics");
+            c.assertFalse(sessions().containsKey(server), "Rejoin does not replay old breathing");
+            com.cursecycle.state.CycleManager.activateChallenge(server, loaded, "no_sprint"); disconnect(p); reload(c);
+            p = s.player(uuid); foreign(c, p, cargo); p.setOnGround(true);
+            near(c, 1, HeavyBodyChallenge.scale(p, 1), "Ended disk rejoin"); disconnect(p);
+            loaded = reload(c); com.cursecycle.state.CycleManager.activateChallenge(server, loaded, ID); reload(c);
+            com.cursecycle.state.CycleManager.activateChallenge(server, CurseCycleState.getServerState(server), "no_sprint"); reload(c);
+            p = s.player(uuid); foreign(c, p, cargo); p.setOnGround(true);
+            near(c, 1, HeavyBodyChallenge.scale(p, 1), "Empty server offline end stays ended");
+            p.setSprinting(true); c.assertFalse(p.isSprinting(), "Disk end retains companion"); disconnect(p);
+            c.assertFalse(sessions().containsKey(server), "No retained context after repeated lifecycle");
+        } finally { ChallengeRegistry.get(ID).setEnabled(true); HeavyBodyChallenge.clear(server); }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heavy_body_pairs")
+    public void realJumpGravityAndAutoJumpKeepIndependentPhysics(TestContext c) {
+        var server = c.getWorld().getServer();
+        try (var s = new ChallengeScenario(c)) {
+            var p = s.player(UUID.randomUUID(), true);
+            p.setOnGround(true); p.setVelocity(Vec3d.ZERO); p.jump(); double ordinary = p.getVelocity().y;
+            s.activate("double_challenge:heavy_body,gravity_ten");
+            p.setOnGround(true); p.setVelocity(Vec3d.ZERO); p.jump(); near(c, ordinary * .6, p.getVelocity().y, "Gravity leaves scaled jump impulse");
+            p.setOnGround(false); p.setVelocity(Vec3d.ZERO); p.travel(Vec3d.ZERO); double both = p.getVelocity().y;
+            s.activate(ID); p.setOnGround(false); p.setVelocity(Vec3d.ZERO); p.travel(Vec3d.ZERO);
+            c.assertTrue(Math.abs(p.getVelocity().y) < Math.abs(both), "Ending gravity keeps ordinary heavy air branch");
+            s.activate("double_challenge:heavy_body,gravity_ten");
+            s.activate("gravity_ten"); p.setOnGround(false); p.setVelocity(Vec3d.ZERO); p.travel(Vec3d.ZERO);
+            near(c, both, p.getVelocity().y, "Ending heavy preserves gravity travel");
+            s.activate("double_challenge:heavy_body,auto_jump");
+            p.setOnGround(true); p.setVelocity(Vec3d.ZERO);
+            com.cursecycle.challenge.impl.AutoJumpChallenge.tick(server);
+            near(c, ordinary * .6, p.getVelocity().y, "Automatic real jump passes heavy multiplier once");
+            c.assertFalse(p.isOnGround(), "Automatic takeoff actually happened");
+            s.activate(ID); p.setOnGround(true); p.setVelocity(Vec3d.ZERO);
+            com.cursecycle.challenge.impl.AutoJumpChallenge.tick(server);
+            near(c, 0, p.getVelocity().y, "Ending auto leaves no automatic jump");
+            p.jump(); near(c, ordinary * .6, p.getVelocity().y, "Ending auto retains heavy manual jump");
+            s.activate("double_challenge:heavy_body,auto_jump");
+            s.activate("auto_jump"); p.setOnGround(true); p.setVelocity(Vec3d.ZERO);
+            com.cursecycle.challenge.impl.AutoJumpChallenge.tick(server);
+            near(c, ordinary, p.getVelocity().y, "Ending heavy keeps automatic vanilla impulse");
+            s.activate("double_challenge:heavy_body,silent_world");
+            p.setOnGround(true); p.setVelocity(Vec3d.ZERO); p.jump();
+            near(c, ordinary * .6, p.getVelocity().y, "Silence keeps heavy physics");
+            s.activate(ID); p.setOnGround(true); p.setVelocity(Vec3d.ZERO); p.jump();
+            near(c, ordinary * .6, p.getVelocity().y, "Ending silence keeps heavy physics");
+        } finally { HeavyBodyChallenge.clear(server); com.cursecycle.challenge.impl.AutoJumpChallenge.clear(server); }
+        c.complete();
     }
 }
