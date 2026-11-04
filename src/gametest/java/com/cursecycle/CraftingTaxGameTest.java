@@ -83,9 +83,17 @@ public class CraftingTaxGameTest implements FabricGameTest {
             for (int button : List.of(0, 1)) {
                 reset(p, h, 2);
                 logs(h, 1);
+                var before = p.getServerWorld().getEntitiesByClass(net.minecraft.entity.ItemEntity.class,
+                        p.getBoundingBox().expand(8), entity -> true);
                 h.onSlotClick(0, button, SlotActionType.THROW, p);
-                context.assertTrue(h.getSlot(1).getStack().isEmpty(), "Throw consumes one recipe");
-                context.assertEquals(1, p.experienceLevel, "Throw pays once regardless of requested item count");
+                var dropped = p.getServerWorld().getEntitiesByClass(net.minecraft.entity.ItemEntity.class,
+                        p.getBoundingBox().expand(8), entity -> !before.contains(entity));
+                try {
+                    context.assertTrue(h.getSlot(1).getStack().isEmpty(), "Throw consumes one recipe");
+                    context.assertEquals(1, p.experienceLevel, "Throw pays once regardless of requested item count");
+                    context.assertEquals(4, dropped.stream().filter(e -> e.getStack().isOf(Items.OAK_PLANKS))
+                            .mapToInt(e -> e.getStack().getCount()).sum(), "Throw creates exactly the whole recipe output");
+                } finally { dropped.forEach(net.minecraft.entity.Entity::discard); }
             }
             reset(p, h, 3);
             logs(h, 1);
@@ -112,6 +120,7 @@ public class CraftingTaxGameTest implements FabricGameTest {
             h.onSlotClick(0, 0, SlotActionType.SWAP, p);
             context.assertTrue(p.getInventory().getStack(0).isOf(Items.STONE), "Incompatible occupied swap is rejected by vanilla");
             context.assertEquals(3, p.experienceLevel, "Rejected swap is free");
+            scenario.activate("test_easy");
         }
         context.complete();
     }
@@ -198,6 +207,7 @@ public class CraftingTaxGameTest implements FabricGameTest {
             context.assertEquals(8, p.getInventory().getStack(8).getCount(), "Tax respects hotbar-only shift insertion");
             context.assertTrue(p.getInventory().getStack(9).isEmpty(), "Locked inventory is untouched");
             context.assertEquals(1, p.experienceLevel, "Lockdown pair pays for two executions");
+            s.activate("test_easy");
         }
         context.complete();
     }
@@ -253,10 +263,10 @@ public class CraftingTaxGameTest implements FabricGameTest {
             persistence.set(CurseCycleState.STATE_KEY, loaded);
             craftAtZero(context, p, false, "Disk-restored activity enforces payment");
             UUID uuid = p.getUuid();
-            p.getServer().getPlayerManager().remove(p);
+            disconnect(p);
             var returning = s.player(uuid);
             craftAtZero(context, returning, false, "Same UUID reconnect uses active rules");
-            p.getServer().getPlayerManager().remove(returning);
+            disconnect(returning);
             // The disk round trip replaced the scenario's original state instance.
             com.cursecycle.state.CycleManager.activateChallenge(p.getServer(), loaded, "no_sprint");
             returning = s.player(uuid);
@@ -287,28 +297,240 @@ public class CraftingTaxGameTest implements FabricGameTest {
         s.activate(CraftingTaxChallenge.ID);
         reset(p, p.playerScreenHandler, 0);
         logs(p.playerScreenHandler, 1);
-        CraftingTaxChallenge.canPay(p);
-        CraftingTaxChallenge.canPay(p);
+        p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.PICKUP, p);
+        p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.PICKUP, p);
         try { context.assertEquals(1, notices(channel), "Repeated attempts in one tick send one actionbar notice"); }
         catch (Throwable failure) { cleanup(s, p, channel); throw failure; }
         context.waitAndRun(39, () -> {
             try {
-                CraftingTaxChallenge.canPay(p);
+                p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.PICKUP, p);
                 context.assertEquals(0, notices(channel), "No repeat before forty ticks");
             } catch (Throwable failure) { cleanup(s, p, channel); throw failure; }
         });
         context.waitAndRun(40, () -> {
             try {
-                CraftingTaxChallenge.canPay(p);
+                p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.PICKUP, p);
                 context.assertEquals(1, notices(channel), "Next denial at forty ticks sends another notice");
                 context.complete();
             } finally { cleanup(s, p, channel); }
         });
     }
 
-    private static void cleanup(ChallengeScenario s, ServerPlayerEntity p, EmbeddedChannel channel) {
-        ChallengeRegistry.get(CraftingTaxChallenge.ID).onPlayerLeave(p.getServer(), p);
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "crafting_tax_cache")
+    public void disabledFeedbackCannotRetainDepartedPlayers(TestContext context) throws Exception {
+        var challenge = ChallengeRegistry.get(CraftingTaxChallenge.ID);
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var other = s.player();
+            s.activate(CraftingTaxChallenge.ID);
+            craftAtZero(context, p, false, "First player denial");
+            craftAtZero(context, other, false, "Independent second denial");
+            context.assertEquals(2, noticeEntries(p).size(), "Two independent feedback entries");
+            notices(s.channel(p)); notices(s.channel(other));
+            challenge.setEnabled(false);
+            try {
+                context.assertTrue(noticeEntries(p).isEmpty(), "Disable must clear feedback before lifecycle dispatch is skipped");
+                context.assertFalse(noticeServers().containsKey(p.getServer()), "Disable releases server bucket");
+                craftAtZero(context, p, true, "Disabled hook cannot reallocate feedback");
+                context.assertTrue(noticeEntries(p).isEmpty(), "Disabled calls keep cache empty");
+                disconnect(p);
+                context.assertTrue(noticeEntries(other).isEmpty(), "Disabled disconnect has no retained departed UUID");
+            } finally { challenge.setEnabled(true); }
+            craftAtZero(context, other, false, "Re-enable without a new activation enforces payment");
+            context.assertEquals(1, notices(s.channel(other)), "Re-enable provides a fresh denial immediately");
+            s.activate("no_sprint");
+        } finally { challenge.setEnabled(true); }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "crafting_tax_cache")
+    public void feedbackOwnershipAndRepeatedCleanup(TestContext context) throws Exception {
+        var challenge = ChallengeRegistry.get(CraftingTaxChallenge.ID);
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var other = s.player();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                s.activate("double_challenge:crafting_tax,crafting_tax");
+                craftAtZero(context, p, false, "Denial in repeated activation");
+                craftAtZero(context, other, false, "Independent denial in repeated activation");
+                context.assertEquals(2, noticeEntries(p).size(), "One record per UUID despite repeated ID");
+                challenge.onStart(p.getServer(), p);
+                p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.PICKUP, p);
+                context.assertEquals(1, notices(s.channel(p)), "Repeated start/denial cannot spam within an activation");
+                context.assertEquals(1, notices(s.channel(other)), "Second player has independent throttle");
+                s.activate("no_sprint");
+                context.assertTrue(noticeEntries(p).isEmpty(), "Stop releases UUID records");
+                context.assertFalse(noticeServers().containsKey(p.getServer()), "Last stop releases empty server bucket");
+            }
+            s.activate(CraftingTaxChallenge.ID);
+            craftAtZero(context, p, false, "Connected denial");
+            craftAtZero(context, other, false, "Other connected denial");
+            var otherNotice = noticeEntries(other).get(other.getUuid());
+            disconnect(p);
+            context.assertEquals(1, noticeEntries(other).size(), "Fabric disconnect frees only departing UUID");
+            context.assertTrue(otherNotice == noticeEntries(other).get(other.getUuid()), "Disconnect preserves other throttle");
+            var returning = s.player(p.getUuid());
+            craftAtZero(context, returning, false, "Same UUID reconnect uses current rules");
+            context.assertEquals(1, notices(s.channel(returning)), "Reconnect receives fresh feedback");
+            returning.setHealth(0);
+            var replacement = s.respawn(returning, false);
+            context.assertFalse(noticeEntries(other).containsKey(returning.getUuid()), "Respawn releases old feedback");
+            craftAtZero(context, replacement, false, "New living object applies tax");
+            s.activate("no_sprint");
+            context.assertFalse(noticeServers().containsKey(other.getServer()), "Cleanup is idempotent after replacement");
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "crafting_tax_disk")
+    public void paidOutputAndExperienceSurviveActualDiskLoad(TestContext context) throws Exception {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var server = p.getServer();
+            s.activate(CraftingTaxChallenge.ID);
+            reset(p, p.playerScreenHandler, 7);
+            p.experienceProgress = 0.625F;
+            p.totalExperience = 321;
+            p.setHealth(17);
+            p.getInventory().setStack(0, new ItemStack(Items.DIAMOND, 7));
+            logs(p.playerScreenHandler, 1);
+            p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.QUICK_MOVE, p);
+            context.assertEquals(6, p.experienceLevel, "Successful craft charged before save");
+            UUID uuid = p.getUuid();
+            disconnect(p); // Writes real playerdata; the next connect does not reseed inventory or XP.
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Actual empty server");
+            var loaded = reloadState(context, server);
+            context.assertTrue(loaded.getActiveChallengeIds().contains(CraftingTaxChallenge.ID), "Disk retains activation");
+            context.assertFalse(loaded.getChallengeData().contains(CraftingTaxChallenge.ID), "No saved tax credit or XP snapshot");
+            p = s.player(uuid);
+            assertSavedPayment(context, p, 6, 4);
+            logs(p.playerScreenHandler, 1);
+            p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.QUICK_MOVE, p);
+            context.assertEquals(5, p.experienceLevel, "Loaded active state charges the next execution once");
+            context.assertEquals(8, count(p, Items.OAK_PLANKS), "Loaded active state adds exactly one output");
+            disconnect(p);
+            com.cursecycle.state.CycleManager.activateChallenge(server, loaded, "no_sprint");
+            loaded = reloadState(context, server);
+            context.assertFalse(loaded.getActiveChallengeIds().contains(CraftingTaxChallenge.ID), "Offline end saved to disk");
+            p = s.player(uuid);
+            assertSavedPayment(context, p, 5, 8);
+            logs(p.playerScreenHandler, 1);
+            p.playerScreenHandler.onSlotClick(0, 0, SlotActionType.QUICK_MOVE, p);
+            context.assertEquals(5, p.experienceLevel, "Ended disk load does not restore tax or refund previous payments");
+            context.assertEquals(12, count(p, Items.OAK_PLANKS), "Ended craft remains vanilla");
+            p.setSprinting(true);
+            context.assertFalse(p.isSprinting(), "No sprint remains after offline end");
+            disconnect(p);
+            com.cursecycle.state.CycleManager.activateChallenge(server, loaded, CraftingTaxChallenge.ID);
+            com.cursecycle.state.CycleManager.activateChallenge(server, loaded, "no_sprint");
+            context.assertFalse(noticeServers().containsKey(server), "Empty-server start/end has no deferred feedback state");
+        }
+        context.complete();
+    }
+
+    private static void assertSavedPayment(TestContext c, ServerPlayerEntity p, int levels, int planks) {
+        c.assertEquals(levels, p.experienceLevel, "Playerdata preserves paid level count");
+        c.assertEquals(0.625F, p.experienceProgress, "Playerdata preserves fractional progress");
+        c.assertEquals(321, p.totalExperience, "Playerdata preserves vanilla total XP");
+        c.assertEquals(planks, count(p, Items.OAK_PLANKS), "Playerdata preserves actual output, without replay");
+        c.assertEquals(7, count(p, Items.DIAMOND), "Foreign inventory is not rolled back");
+        c.assertEquals(17F, p.getHealth(), "Foreign health is not rolled back");
+    }
+    private static CurseCycleState reloadState(TestContext c, net.minecraft.server.MinecraftServer server) throws Exception {
+        var persistence = server.getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(server).markDirty();
+        persistence.save();
+        var saved = persistence.readNbt(CurseCycleState.STATE_KEY, null,
+                SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(saved.getCompound("data"), c.getWorld().getRegistryManager());
+        persistence.set(CurseCycleState.STATE_KEY, loaded);
+        return loaded;
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "crafting_tax_routes")
+    public void actualWorkbenchPacketsAndContainerPair(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var world = context.getWorld();
+            var pos = context.getAbsolutePos(new net.minecraft.util.math.BlockPos(1, 2, 1));
+            var original = world.getBlockState(pos);
+            try {
+                p.teleport(world, pos.getX() + 0.5, pos.getY(), pos.getZ() + 2, 0, 0);
+                world.setBlockState(pos, net.minecraft.block.Blocks.CRAFTING_TABLE.getDefaultState());
+                s.activate("double_challenge:crafting_tax,locked_containers");
+                p.openHandledScreen(world.getBlockState(pos).createScreenHandlerFactory(world, pos));
+                context.assertTrue(p.currentScreenHandler instanceof CraftingScreenHandler, "Container restriction allows actual workbench");
+                var h = p.currentScreenHandler;
+                for (var action : List.of(SlotActionType.PICKUP, SlotActionType.SWAP, SlotActionType.QUICK_MOVE)) {
+                    for (int button : List.of(0, 1)) {
+                        reset(p, h, 1);
+                        logs(h, 1);
+                        p.networkHandler.onClickSlot(new ClickSlotC2SPacket(h.syncId + 1, h.getRevision(), 0,
+                                button, action, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
+                        context.assertEquals(1, p.experienceLevel, "Wrong screen packet is free");
+                        context.assertEquals(1, h.getSlot(1).getStack().getCount(), "Wrong screen cannot consume input");
+                        p.networkHandler.onClickSlot(new ClickSlotC2SPacket(h.syncId, h.getRevision(), 0,
+                                button, action, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
+                        context.assertEquals(0, p.experienceLevel, "Actual workbench packet charges once: " + action);
+                        context.assertEquals(4, count(p, Items.OAK_PLANKS) + h.getCursorStack().getCount(), "Whole workbench output delivered");
+                        context.assertTrue(h.getSlot(1).getStack().isEmpty(), "Workbench consumes one ingredient set");
+                        logs(h, 1);
+                        p.networkHandler.onClickSlot(new ClickSlotC2SPacket(h.syncId, h.getRevision(), 0,
+                                button, action, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
+                        context.assertEquals(1, h.getSlot(1).getStack().getCount(), "Next unpaid execution preserves input");
+                    }
+                }
+                reset(p, h, 2);
+                fill(p);
+                var named = new ItemStack(Items.OAK_PLANKS, 60);
+                named.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal("foreign"));
+                p.getInventory().setStack(8, named);
+                logs(h, 1);
+                h.onSlotClick(0, 0, SlotActionType.QUICK_MOVE, p);
+                context.assertEquals(2, p.experienceLevel, "Different components cannot provide merge capacity");
+                context.assertEquals(60, named.getCount(), "Foreign components and stack retained");
+                context.assertEquals(1, h.getSlot(1).getStack().getCount(), "Component mismatch preserves input");
+                reset(p, h, 0);
+                p.closeHandledScreen();
+                world.setBlockState(pos, net.minecraft.block.Blocks.CHEST.getDefaultState());
+                p.openHandledScreen(world.getBlockState(pos).createScreenHandlerFactory(world, pos));
+                context.assertTrue(p.currentScreenHandler == p.playerScreenHandler, "Other mechanic still blocks actual chest");
+                s.activate("locked_containers");
+                craftAtZero(context, p, true, "Ending tax allows free crafting");
+                p.openHandledScreen(world.getBlockState(pos).createScreenHandlerFactory(world, pos));
+                context.assertTrue(p.currentScreenHandler == p.playerScreenHandler, "Ending tax preserves container restriction");
+                s.activate("double_challenge:crafting_tax,blind_hud");
+                craftAtZero(context, p, false, "Hidden HUD does not bypass payment");
+                notices(s.channel(p));
+                s.activate("blind_hud");
+                craftAtZero(context, p, true, "Ending tax preserves blind HUD activation and vanilla crafting");
+                context.assertTrue(ChallengeActivity.active(p, "blind_hud"), "Other activation remains");
+            } finally {
+                p.closeHandledScreen();
+                world.setBlockState(pos, original);
+                s.activate("test_easy");
+            }
+        }
+        context.complete();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<Object, java.util.Map<UUID, Object>> noticeServers() throws Exception {
+        var field = CraftingTaxChallenge.class.getDeclaredField("NOTICES");
+        field.setAccessible(true);
+        return (java.util.Map<Object, java.util.Map<UUID, Object>>) field.get(null);
+    }
+    private static java.util.Map<UUID, Object> noticeEntries(ServerPlayerEntity p) throws Exception {
+        return noticeServers().getOrDefault(p.getServer(), java.util.Map.of());
+    }
+    private static void disconnect(ServerPlayerEntity p) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(p.networkHandler, p.getServer());
         p.getServer().getPlayerManager().remove(p);
+    }
+
+    private static void cleanup(ChallengeScenario s, ServerPlayerEntity p, EmbeddedChannel channel) {
+        disconnect(p);
         s.close();
         channel.finishAndReleaseAll();
     }

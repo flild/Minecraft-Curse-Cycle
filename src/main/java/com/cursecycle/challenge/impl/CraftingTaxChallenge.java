@@ -68,7 +68,15 @@ public final class CraftingTaxChallenge extends Challenge {
 
     @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
         var notices = NOTICES.get(server);
-        if (notices != null && player != null) notices.remove(player.getUuid());
+        if (notices != null && player != null) {
+            notices.remove(player.getUuid());
+            if (notices.isEmpty()) NOTICES.remove(server);
+        }
+    }
+    @Override public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        // Disabled challenges no longer receive lifecycle dispatch, including disconnect.
+        if (!enabled) NOTICES.clear();
     }
     @Override public void onPlayerRespawn(MinecraftServer server, ServerPlayerEntity oldPlayer,
                                           ServerPlayerEntity newPlayer, boolean alive) {
