@@ -49,6 +49,31 @@ public class MovementMemoryGameTest implements FabricGameTest {
         } finally { buffer.release(); }
     }
 
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "movement_memory_repeated", tickLimit = 60)
+    public void newerRepeatedHoldCannotExtendDeadlineOrSpamReplies(TestContext c) {
+        var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
+        var player = s.player(); s.activate(ID); var channel = s.channel(player); packets(channel);
+        request(s, player, 1, true); last(c, channel, 1, true);
+        int start = server.getTicks();
+        c.waitAndRun(10, () -> {
+            try {
+                for (int sequence = 2; sequence <= 33; sequence++) request(s, player, sequence, true);
+                c.assertTrue(packets(channel).stream().noneMatch(p -> p.sequence() >= 0),
+                        "Already holding: no repeat acknowledgement or restart (periodic context sync allowed)");
+            } catch (Throwable failure) { s.close(); throw failure; }
+        });
+        c.waitAndRun(20, () -> {
+            try {
+                c.assertEquals(20, server.getTicks() - start, "Original deadline");
+                MovementMemoryChallenge.tick(server); last(c, channel, 33, false);
+                request(s, player, 34, true); last(c, channel, 34, true);
+                request(s, player, 35, false); last(c, channel, 35, false);
+                request(s, player, 36, true); last(c, channel, 36, true);
+            } finally { s.close(); }
+            c.complete();
+        });
+    }
+
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "movement_memory_timing", tickLimit = 80)
     public void exactServerIntervalAndIndependentPlayers(TestContext c) {
         var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
@@ -110,6 +135,7 @@ public class MovementMemoryGameTest implements FabricGameTest {
                 first.changeGameMode(mode); request(s, first, sequence, true);
                 last(c, channel, sequence++, mode == GameMode.ADVENTURE || mode == GameMode.SURVIVAL);
             }
+            request(s, first, 29, false); last(c, channel, 29, false);
             request(s, first, 30, true); last(c, channel, 30, true);
             first.teleport(server.getWorld(World.NETHER), .5, 80, .5, 0, 0); first.onTeleportationDone();
             MovementMemoryChallenge.tick(server); last(c, channel, 30, false);
@@ -134,5 +160,101 @@ public class MovementMemoryGameTest implements FabricGameTest {
             last(c, s.channel(first), -1, false);
         }
         c.waitAndRun(5, c::complete);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<Object, java.util.Map<Object, Object>> sessions() throws Exception {
+        var field = MovementMemoryChallenge.class.getDeclaredField("SESSIONS"); field.setAccessible(true);
+        return (java.util.Map<Object, java.util.Map<Object, Object>>) field.get(null);
+    }
+    private static void disconnect(ServerPlayerEntity player) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(player.networkHandler, player.getServer());
+        player.getServer().getPlayerManager().remove(player);
+    }
+    private static CurseCycleState reload(TestContext c) throws Exception {
+        var server = c.getWorld().getServer(); var manager = server.getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(server).markDirty(); manager.save();
+        var disk = manager.readNbt(CurseCycleState.STATE_KEY, null,
+                net.minecraft.SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+        manager.set(CurseCycleState.STATE_KEY, loaded); return loaded;
+    }
+    private static void foreign(TestContext c, ServerPlayerEntity p, net.minecraft.item.ItemStack cargo) {
+        c.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo, p.getInventory().getStack(8)), "Foreign named items");
+        c.assertEquals(7, p.experienceLevel, "Foreign XP"); c.assertEquals(.625F, p.experienceProgress, "Foreign XP progress");
+        c.assertEquals(17F, p.getHealth(), "Foreign HP");
+        c.assertTrue(p.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE), "Foreign effect");
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "movement_memory_disk")
+    public void repeatedSessionsDisconnectAndActualDiskWithoutInputReplay(TestContext c) throws Exception {
+        try (var s = new ChallengeScenario(c)) {
+            var server = c.getWorld().getServer(); var p = s.player(); var uuid = p.getUuid();
+            var channel = s.channel(p); var challenge = ChallengeRegistry.get(ID);
+            var cargo = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17);
+            cargo.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal("foreign-memory-review"));
+            p.getInventory().clear(); p.getInventory().setStack(8, cargo.copy());
+            p.experienceLevel = 7; p.experienceProgress = .625F; p.setHealth(17);
+            p.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 1200, 0));
+            for (int cycle = 0; cycle < 32; cycle++) {
+                long serial = s.state.getActivationSerial(); s.activate("double_challenge:movement_memory,movement_memory");
+                c.assertEquals(serial + 1, s.state.getActivationSerial(), "One serial for duplicate IDs"); packets(channel);
+                request(s, p, 1, true); last(c, channel, 1, true);
+                request(s, p, 1, true); request(s, p, 0, false);
+                MovementMemoryChallenge.receive(p, new MovementMemoryPayload(serial, 100, true));
+                MovementMemoryChallenge.receive(p, new MovementMemoryPayload(serial + 1, -1, true));
+                c.assertTrue(packets(channel).isEmpty(), "Duplicate/stale/negative requests have no replies");
+                c.assertEquals(1, sessions().get(server).size(), "One session per online UUID");
+                challenge.onStart(server, p); challenge.onPlayerJoin(server, p);
+                c.assertEquals(1, sessions().get(server).size(), "Idempotent start/join");
+                challenge.setEnabled(false); MovementMemoryChallenge.tick(server); last(c, channel, 1, false);
+                c.assertFalse(sessions().containsKey(server), "Disabled tick releases player and empty server bucket");
+                challenge.setEnabled(true); request(s, p, 2, true); last(c, channel, 2, true);
+                s.activate("double_challenge:movement_memory,no_sprint"); packets(channel);
+                request(s, p, 3, true); last(c, channel, 3, true);
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "Companion active");
+                s.activate("no_sprint"); packets(channel); MovementMemoryChallenge.tick(server);
+                c.assertFalse(sessions().containsKey(server), "End clears own references");
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "End retains companion"); foreign(c, p, cargo);
+            }
+            s.activate("double_challenge:movement_memory,no_sprint"); packets(channel);
+            request(s, p, 1, true); last(c, channel, 1, true);
+            s.state.getChallengeData().putString("foreign-memory", "preserve");
+            disconnect(p); c.assertFalse(sessions().containsKey(server), "Fabric disconnect releases session");
+            var loaded = reload(c); c.assertFalse(loaded.getChallengeData().contains(ID), "Disk stores no direction/deadline");
+            c.assertEquals("preserve", loaded.getChallengeData().getString("foreign-memory"), "Foreign world data");
+            p = s.player(uuid); foreign(c, p, cargo); last(c, s.channel(p), -1, false);
+            c.assertFalse(sessions().containsKey(server), "Active disk rejoin has no replay session");
+            CycleManager.activateChallenge(server, loaded, "no_sprint"); disconnect(p); reload(c);
+            p = s.player(uuid); foreign(c, p, cargo); c.assertTrue(packets(s.channel(p)).isEmpty(), "Ended disk rejoin has no context");
+            CycleManager.activateChallenge(server, CurseCycleState.getServerState(server), ID); disconnect(p); loaded = reload(c);
+            c.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Empty server reload");
+            CycleManager.activateChallenge(server, loaded, "no_sprint"); reload(c);
+            p = s.player(uuid); foreign(c, p, cargo); c.assertTrue(packets(s.channel(p)).isEmpty(), "Offline end never restores context");
+            p.setSprinting(true); c.assertFalse(p.isSprinting(), "Offline end preserves no_sprint"); disconnect(p);
+            c.assertFalse(sessions().containsKey(server), "No retained player/world/server session");
+        } finally { ChallengeRegistry.get(ID).setEnabled(true); }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "movement_memory_pairs")
+    public void intervalNeverReplacesVelocityOrHeavyJumpPhysics(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = s.player(); var server = c.getWorld().getServer(); var channel = s.channel(p);
+            p.setSprinting(false); p.setOnGround(true); p.setVelocity(0, 0, 0); p.jump(); double control = p.getVelocity().y;
+            s.activate("double_challenge:movement_memory,heavy_body"); packets(channel);
+            request(s, p, 1, true); last(c, channel, 1, true);
+            p.setOnGround(true); p.setVelocity(0, 0, 0); p.jump();
+            c.assertTrue(Math.abs(p.getVelocity().y - control * .6) < .000001,
+                    "Real heavy jump with memory active: control=" + control + ", actual=" + p.getVelocity().y);
+            var velocity = new net.minecraft.util.math.Vec3d(.23, .31, -.47); p.setVelocity(velocity);
+            request(s, p, 2, false); last(c, channel, 2, false);
+            c.assertEquals(velocity, p.getVelocity(), "Cancel never cancels external inertia");
+            s.activate("heavy_body"); c.assertEquals(velocity, p.getVelocity(), "End leaves external velocity");
+            p.setOnGround(true); p.setVelocity(0, 0, 0); p.jump();
+            c.assertTrue(Math.abs(p.getVelocity().y - control * .6) < .000001, "End retains actual heavy jump");
+        }
+        c.complete();
     }
 }

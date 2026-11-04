@@ -66,9 +66,17 @@ public final class MovementMemoryChallenge extends Challenge {
         }
         if (request.sequence() <= session.sequence) return;
         session.sequence = request.sequence();
-        session.holding = request.holding() && eligible(player);
-        session.startedAt = server.getTicks();
-        send(session);
+        boolean holding = request.holding() && eligible(player);
+        // A newer sequence identifies the reply, not a new input transition. Only an actual
+        // state change starts/cancels an interval; repeated holds cannot slide its deadline.
+        if (session.holding != holding) {
+            session.holding = holding;
+            if (holding) session.startedAt = server.getTicks();
+            send(session);
+        } else if (!holding && request.holding()) {
+            // Reject a client's predicted hold when server eligibility disagrees.
+            send(session);
+        }
     }
 
     public static void tick(MinecraftServer server) {
