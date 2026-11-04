@@ -1,5 +1,111 @@
 # no_block_placing — проверка
 
+## Ревью этапа 15 — 04.11.2026
+
+Проверен production HEAD `cbc46af9dfc4fabf1a1b37e74520798f7df700ee`, Java21,
+MC1.21.1/Yarn1.21.1+build.3/Fabric0.102.0+1.21.1/Loader0.16.0.
+Production/shared contracts не менялись; расширены только предметный GameTest
+и изолированный CLIENT probe. Подтверждённых production-дефектов не найдено.
+Предварительный итог `pass_with_limits`, механика `pass`, расходы
+`no_issue_found / static`. Полный отчёт: локальный
+`Промпты/reviews/15-no_block_placing.md`.
+
+Свежие проверки (история реализации ниже не засчитывается повторно):
+
+| Запуск | Команда после `.\gradlew.bat` | Результат |
+|---|---|---|
+| baseline | `build runGametest --offline -I build/no-block-placing-review-baseline.init.gradle` | exit0/31s,149JUnit/54suites,4/4GT |
+| expanded | та же с `no-block-placing-review-expanded.init.gradle` | exit1/31s,149JUnit,6/7GT; новый C2S control не ставил блок из-за неподтверждённого teleport |
+| verified | та же с `no-block-placing-review-verified.init.gradle` | exit0/32s,149JUnit,7/7GT после vanilla TeleportConfirm |
+| CLIENT attempt1 | `runClient --offline -I src/clientprobe/no_block_placing/init.gradle` | exit1/19s; preLaunch без datapacks не имел тега CANDLES |
+| CLIENT final | та же команда | exit0/18s,`NO_BLOCK_PLACING_CLIENT_PROBE_PASSED checks=57 vanillaContinuations=6` |
+| final | `build runGametest --offline -I build/no-block-placing-review-final.init.gradle` | exit0/32s,149JUnit/54suites,15/15GT:7NBP+8LC; normal shutdown |
+
+Логи `build/no-block-placing-review-{baseline,expanded,verified,final}.log`,
+XML `build/reports/no-block-placing-review-{baseline,expanded,verified,final}.xml`,
+JUnit в соседних каталогах с `-junit`. Первый CLIENT лог сохранён как
+`build/no-block-placing-review-client-attempt1.log`, успешный — `...-client.log`.
+Ошибки новых fixtures сохранены; они не объявлены дефектами production.
+Первый PowerShell sandbox не создал процесс (`helper_sandbox_lock_failed`,
+SetNamedSecurityInfoW access5); разрешённые escalated команды работают.
+
+Новые тесты поверх прежних четырёх:
+
+- `currentPacketsCannotPlaceOrSpendAndStopRestoresPlacement`: настоящий
+  `ServerPlayNetworkHandler.onPlayerInteractBlock`, vanilla подтверждение
+  телепорта, 9 видов предметов × обе руки × 8 запросов. Никаких блоков,
+  многоблочных половин, потери count/custom name/durability/USED.
+  Тот же C2S после окончания ставит камень и расходует ровно1; no_sprint остаётся.
+  Это EmbeddedChannel на серверном потоке, без реального клиента/latency.
+- `repeatActivationAndActualPlayerdataDoNotRestoreOldState`: 32 повтора
+  double same ID/new serial, disabled/reenabled, end; фактический
+  PlayerManager save/load и PersistentState disk active/ended/offlineend/
+  empty server в одной JVM. Именованные17алмазов, XP7+.625, HP17 сохранены;
+  Fabric DISCONNECT вызван; своего snapshot/cache/NBT нет.
+- `existingContentsEntitiesAndActualDispenserRemainAllowed`: извлечение
+  растения из горшка, поедание торта, заполнение существующего котла водой/
+  лавой/снегом с ванильной тарой, стойка для брони как сущность;
+  настоящий vanilla DispenserBehavior с BlockPointer/DispenserBlockEntity
+  устанавливает воду и возвращает пустое ведро. Пара LC запрещает оба
+  действия; после окончания NBP установка разрешена, LC продолжает deny.
+  Запуск redstone/scheduled tick раздатчика этим не проверяется.
+
+CLIENT probe теперь воспроизводится из `src/clientprobe/no_block_placing`:
+init-script отдельно компилирует/упаковывает probe, production sourceSets
+не меняются. Проверяет 7 transformed targets и настоящие методы place,
+placeFluid, fire useOnBlock, pot/cake onUseWithItem в Survival/Adventure,
+обе руки, reset/end/disabled/dead/excluded modes и vanilla continuation.
+Unsafe создаёт синтетические Player/ClientWorld, getBlockState возвращает
+камень; единственный CANDLES tag задан fixture, поскольку preLaunch идёт
+до datapack/sync. canPlace заменён счётчиком с false: шесть проходов
+показывают возврат к vanilla, а не успешную клиентскую установку.
+Нет подмены production gate/Mixin, но настоящие prediction/network/HUD/
+рендер/ghost blocks не проверены. Probe заканчивается до открытия окна.
+
+Воспроизводимая изоляция GameTest; `stage` = baseline/expanded/verified/final,
+для первых трёх оставить только NoBlockPlacingGameTest:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def stage = 'final'
+        def stem = "no-block-placing-review-${stage}"
+        def resources = project.file("build/${stem}-resources")
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.NoBlockPlacingGameTest', 'com.cursecycle.LockedContainersGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') { outputs.upToDateWhen { false }; reports.junitXml.outputLocation = layout.buildDirectory.dir("reports/${stem}-junit") }
+        loom.runs.gametest.runDir = "build/gametest-${stem}-20261104"
+        loom.runs.gametest.vmArg "-Dfabric-api.gametest.report-file=../reports/${stem}.xml"
+    }
+}
+```
+
+После изолированного запуска восстановить43entrypoints:
+`.\gradlew.bat processGametestResources --offline --rerun-tasks`.
+Проверить `python build/no-block-placing-review-verify.py` и оба production
+JAR: GameTest/validation/probe не должны попасть в binary/sources.
+
+Стоимость ограничена статически: server gate O(G+A), client O(C), где
+G/A/C — длины GLOBAL/PERSONAL/synced списков; один lookup реестра,
+fire читает один blockstate только после active gate. Pot/cake выполняют
+ограниченный vanilla выбор перед перехватом. Пустой/null actor выходит
+раньше state lookup. Нет своего tick/map/snapshot/rollback/packet/NBT;
+общий dispatch и sync по-прежнему стоят времени. MSPT/FPS/allocations и
+retained memory не измерены, functional counts не являются профилем.
+
+Открыты NBP-L01..L04: настоящий клиент и ручные предметные края/пары,
+dedicated+2клиента+late3/latency/ghost, полный новый JVM active/ended,
+сопоставимый нагрузочный профиль. Прежние ограничения других этапов
+сохранены. Физические порталы/End/keepInventory, рамка/картина/вагонетка,
+дерево из саженца/поршень/моб/реальный redstone и пары с fragile_floor,
+no_block_breaking/inventory_lockdown остаются ручными сценариями ниже.
+
+## История реализации — 27.10.2026
+
 «Ну ты же не строитель», EASY/GLOBAL. Дата: 27.10.2026.
 
 ## Реализация

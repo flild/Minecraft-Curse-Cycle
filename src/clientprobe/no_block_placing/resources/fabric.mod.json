@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "no_block_placing_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "preLaunch": ["validation.NoBlockPlacingProbe"] }
+}

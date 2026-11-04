@@ -225,6 +225,179 @@ public class NoBlockPlacingGameTest implements FabricGameTest {
         context.waitAndRun(5, context::complete);
     }
 
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "no_block_placing_packets")
+    public void currentPacketsCannotPlaceOrSpendAndStopRestoresPlacement(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var pos = context.getAbsolutePos(new BlockPos(2, 3, 2));
+            p.teleport(context.getWorld(), pos.getX() + .5, pos.getY(), pos.getZ() + 2.5, 0, 0);
+            s.channel(p).runPendingTasks(); s.channel(p).flush();
+            Object outbound;
+            while ((outbound = s.channel(p).readOutbound()) != null) {
+                if (outbound instanceof net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket teleport)
+                    p.networkHandler.onTeleportConfirm(new net.minecraft.network.packet.c2s.play.TeleportConfirmC2SPacket(teleport.getTeleportId()));
+                io.netty.util.ReferenceCountUtil.release(outbound);
+            }
+            int sequence = 1;
+            for (var item : List.of(Items.STONE, Items.OAK_DOOR, Items.RED_BED, Items.WHEAT_SEEDS,
+                    Items.POWDER_SNOW_BUCKET, Items.FLINT_AND_STEEL, Items.FIRE_CHARGE, Items.DANDELION, Items.CANDLE)) {
+                for (var hand : Hand.values()) {
+                    prepare(context, pos, item);
+                    var target = pos.down();
+                    if (item == Items.DANDELION || item == Items.CANDLE) {
+                        context.getWorld().setBlockState(pos,
+                                (item == Items.CANDLE ? Blocks.CAKE : Blocks.FLOWER_POT).getDefaultState());
+                        target = pos;
+                    }
+                    s.activate(ID);
+                    var stack = new ItemStack(item, item.getMaxCount() > 1 ? 7 : 1);
+                    stack.set(DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal("placement-packet"));
+                    p.setStackInHand(hand, stack);
+                    var original = stack.copy();
+                    var before = snapshot(context, pos);
+                    var hit = new BlockHitResult(Vec3d.ofCenter(target).add(0, .5, 0), Direction.UP, target, false);
+                    int used = p.getStatHandler().getStat(Stats.USED.getOrCreateStat(item));
+                    for (int repeat = 0; repeat < 8; repeat++) {
+                        p.networkHandler.onPlayerInteractBlock(new net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket(hand, hit, sequence++));
+                    }
+                    context.assertEquals(before, snapshot(context, pos), "C2S denies world change " + item + hand);
+                    context.assertTrue(ItemStack.areEqual(original, p.getStackInHand(hand)), "C2S retains resource/components " + item);
+                    context.assertEquals(used, p.getStatHandler().getStat(Stats.USED.getOrCreateStat(item)), "C2S has no success statistic");
+                }
+            }
+            prepare(context, pos, Items.STONE);
+            var hit = new BlockHitResult(Vec3d.ofCenter(pos.down()).add(0, .5, 0), Direction.UP, pos.down(), false);
+            s.activate("no_sprint");
+            p.setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.STONE, 7));
+            p.networkHandler.onPlayerInteractBlock(new net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket(Hand.MAIN_HAND, hit, sequence));
+            context.assertTrue(context.getWorld().getBlockState(pos).isOf(Blocks.STONE), "Same C2S path places after end");
+            context.assertEquals(6, p.getMainHandStack().getCount(), "Vanilla spends exactly one after end");
+            p.setSprinting(true);
+            context.assertFalse(p.isSprinting(), "Other rule remains after end");
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "no_block_placing_disk")
+    public void repeatActivationAndActualPlayerdataDoNotRestoreOldState(TestContext context) throws Exception {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var server = p.getServer();
+            for (int i = 0; i < 32; i++) {
+                long serial = s.state.getActivationSerial();
+                s.activate("double_challenge:no_block_placing,no_block_placing");
+                context.assertTrue(s.state.getActivationSerial() > serial, "Repeat activation advances serial");
+                context.assertEquals(List.of(ID), s.state.getActiveChallengeIds(), "Repeated ID deduplicated");
+                probe(context, p, false);
+                var challenge = ChallengeRegistry.get(ID);
+                challenge.setEnabled(false);
+                try { probe(context, p, true); } finally { challenge.setEnabled(true); }
+                probe(context, p, false);
+                s.activate("no_sprint");
+                probe(context, p, true);
+            }
+            s.activate(ID);
+            p.getInventory().clear();
+            var named = new ItemStack(Items.DIAMOND, 17);
+            named.set(DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal("foreign-resource"));
+            p.getInventory().setStack(8, named.copy());
+            p.experienceLevel = 7; p.experienceProgress = .625F; p.setHealth(17);
+            var uuid = p.getUuid();
+            disconnect(p);
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Save without online players");
+            var loaded = reloadState(context);
+            p = s.player(uuid);
+            assertForeignState(context, p, named); probe(context, p, false);
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            loaded = reloadState(context);
+            p = s.player(uuid);
+            assertForeignState(context, p, named); probe(context, p, true);
+            p.setSprinting(true); context.assertFalse(p.isSprinting(), "Offline end keeps no_sprint");
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, ID);
+            loaded = reloadState(context);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            reloadState(context);
+            p = s.player(uuid);
+            assertForeignState(context, p, named); probe(context, p, true);
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "no_block_placing")
+    public void existingContentsEntitiesAndActualDispenserRemainAllowed(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player(); var world = context.getWorld();
+            var pos = context.getAbsolutePos(new BlockPos(2, 3, 2));
+            prepare(context, pos, Items.STONE);
+            p.teleport(world, pos.getX() + 3.5, pos.getY(), pos.getZ() + 3.5, 0, 0);
+            s.activate(ID);
+            world.setBlockState(pos, Blocks.POTTED_DANDELION.getDefaultState());
+            p.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY);
+            use(p, pos, Hand.MAIN_HAND);
+            context.assertTrue(world.getBlockState(pos).isOf(Blocks.FLOWER_POT), "Plant removal allowed");
+            context.assertTrue(p.getInventory().contains(new ItemStack(Items.DANDELION)), "Removed plant retained");
+            world.setBlockState(pos, Blocks.CAKE.getDefaultState());
+            p.getHungerManager().setFoodLevel(10);
+            p.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY);
+            use(p, pos, Hand.MAIN_HAND);
+            context.assertEquals(1, world.getBlockState(pos).get(CakeBlock.BITES), "Existing cake can be eaten");
+            for (var item : List.of(Items.WATER_BUCKET, Items.LAVA_BUCKET, Items.POWDER_SNOW_BUCKET)) {
+                world.setBlockState(pos, Blocks.CAULDRON.getDefaultState());
+                p.setStackInHand(Hand.MAIN_HAND, new ItemStack(item));
+                use(p, pos, Hand.MAIN_HAND);
+                context.assertFalse(world.getBlockState(pos).isOf(Blocks.CAULDRON), "Existing cauldron fills " + item);
+                context.assertTrue(p.getMainHandStack().isOf(Items.BUCKET), "Cauldron interaction has vanilla cost");
+            }
+            prepare(context, pos, Items.STONE);
+            p.setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.ARMOR_STAND));
+            use(p, pos.down(), Hand.MAIN_HAND);
+            var stands = world.getEntitiesByClass(net.minecraft.entity.decoration.ArmorStandEntity.class, new Box(pos).expand(5), e -> true);
+            context.assertEquals(1, stands.size(), "Armor stand entity allowed");
+            stands.forEach(net.minecraft.entity.Entity::discard);
+            var dispenser = pos.west();
+            var old = world.getBlockState(dispenser);
+            try {
+                world.setBlockState(dispenser, Blocks.DISPENSER.getDefaultState().with(DispenserBlock.FACING, Direction.EAST));
+                world.setBlockState(pos, Blocks.AIR.getDefaultState());
+                var blockEntity = (net.minecraft.block.entity.DispenserBlockEntity) world.getBlockEntity(dispenser);
+                var pointer = new net.minecraft.util.math.BlockPointer(world, dispenser, world.getBlockState(dispenser), blockEntity);
+                var result = DispenserBlock.BEHAVIORS.get(Items.WATER_BUCKET).dispense(pointer, new ItemStack(Items.WATER_BUCKET));
+                context.assertTrue(world.getBlockState(pos).isOf(Blocks.WATER), "Real dispenser behavior places water");
+                context.assertTrue(result.isOf(Items.BUCKET), "Automation consumes filled bucket normally");
+            } finally { world.setBlockState(dispenser, old); world.setBlockState(pos, Blocks.AIR.getDefaultState()); }
+            s.activate("double_challenge:no_block_placing,locked_containers");
+            probe(context, p, false);
+            world.setBlockState(pos, Blocks.CHEST.getDefaultState()); use(p, pos, Hand.MAIN_HAND);
+            context.assertTrue(p.currentScreenHandler == p.playerScreenHandler, "Pair denies chest");
+            s.activate("locked_containers"); probe(context, p, true);
+            world.setBlockState(pos, Blocks.CHEST.getDefaultState()); use(p, pos, Hand.MAIN_HAND);
+            context.assertTrue(p.currentScreenHandler == p.playerScreenHandler, "End placement rule keeps container rule");
+        }
+        context.complete();
+    }
+
+    private static void assertForeignState(TestContext c, ServerPlayerEntity p, ItemStack named) {
+        c.assertTrue(ItemStack.areEqual(named, p.getInventory().getStack(8)), "Actual playerdata retains named foreign resources");
+        c.assertEquals(7, p.experienceLevel, "Foreign XP level retained");
+        c.assertEquals(.625F, p.experienceProgress, "Foreign XP progress retained");
+        c.assertEquals(17F, p.getHealth(), "Foreign HP retained");
+    }
+    private static CurseCycleState reloadState(TestContext c) throws Exception {
+        var manager = c.getWorld().getServer().getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(c.getWorld().getServer()).markDirty(); manager.save();
+        var disk = manager.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+        c.assertFalse(loaded.getChallengeData().contains(ID), "No own inventory/world snapshot persisted");
+        manager.set(CurseCycleState.STATE_KEY, loaded); return loaded;
+    }
+    private static void disconnect(ServerPlayerEntity p) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(p.networkHandler, p.getServer());
+        p.getServer().getPlayerManager().remove(p);
+    }
+
     private static void probe(TestContext context, ServerPlayerEntity p, boolean allowed) {
         var world = p.getServerWorld(); var pos = p.getBlockPos().east(3);
         world.setBlockState(pos.down(), Blocks.STONE.getDefaultState()); world.setBlockState(pos, Blocks.AIR.getDefaultState());
