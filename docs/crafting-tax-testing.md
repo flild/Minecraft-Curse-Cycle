@@ -4,19 +4,53 @@ Minecraft 1.21.1 / Yarn 1.21.1+build.3 / Fabric API 0.102.0+1.21.1,
 Fabric Loader 0.16.0, Java 21. EASY/GLOBAL. Цена — один уровень за
 фактическое исполнение рецепта 2×2/3×3, независимо от размера результата.
 
-## Ревью 2026-11-03
+## Ревью 2026-11-04 — завершение этапа13
 
-Входной HEAD `bb10630f0c18b1d6cb34dfbdb38e312ff9cb0c60`, main.
-Результат: **pass_with_limits**, механика **fixed**, расходы **fixed / static**.
-Изменения подготовлены writer без staging/commit; отдельный commit и индекс
-эстафеты оформляет координатор. Полная матрица — локальный
-[отчёт13](../Промпты/reviews/13-crafting_tax.md).
+Входной и проверенный игровой HEAD `f1be58466cfd22cd4e6410ac244e092717b614ff`,
+main, чистое рабочее дерево. Он уже содержит подготовленное исправление
+feedback-кэша и расширение восьми предметных GameTest. Это обнаружено через
+`git diff bb10630 HEAD`, а не принято из старого описания состояния.
+Новых дефектов в текущем запросе не выявлено; игровой код повторно не менялся.
+Итог **pass_with_limits**, механика **fixed**, расходы **fixed / static**:
+подтверждено ранее внесённое исправление. Полная матрица и все ограничения —
+[отчёт13](../Промпты/reviews/13-crafting_tax.md). Отдельный локальный коммит
+текущего запроса обновляет этот документ; итоговый hash записан в relay-state.
 
-Подтверждён crafting_tax-F01: feedback-кэш сохранял UUID после disable,
-когда общий dispatch больше не вызывает leave, и пустой server bucket после
-последнего stop. Две новые регрессии на старом коде упали; исправление
-`setEnabled(false) → NOTICES.clear()` и удаления пустого bucket в `onStop`
-прошло. Правила оплаты, Mixin, рецепты, общие contracts и зависимости не менялись.
+Свежие команды этого запроса:
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/crafting-tax-review-resume.init.gradle
+.\gradlew.bat processGametestResources --offline --rerun-tasks
+python build/crafting-tax-review-resume-verify.py
+git diff --check
+```
+
+- `build runGametest`: exit0,49s; 149/149 JUnit,54 suites; 11/11 GameTest
+  (8 crafting_tax +3 hotbar_shuffle), failures/errors/skipped0, normal shutdown.
+  Лог `build/crafting-tax-review-resume.log`, XML
+  `build/reports/crafting-tax-review-resume.xml`, JUnit
+  `build/reports/crafting-tax-review-resume-junit/`.
+- Init скопирован из приведённого ниже final с заменой `review-final` на
+  `review-resume` и даты runDir на `20261104`; новый мир
+  `build/gametest-crafting-tax-review-resume-20261104`, отдельные XML/JUnit/resources.
+- Restore exit0; исходные43 entrypoints восстановлены. Verifier exit0:
+  SHA4 постоянных документов+SHA ТЗ, metadata6/6/registration1, свежие XML/JUnit,
+  normal shutdown, source/built metadata equal, два production JAR без тестов/probes.
+  Логи `build/crafting-tax-review-resume-restore.log` и
+  `build/crafting-tax-review-resume-verifier.log`.
+- Свежий `javap -c -p` текущего mapped JAR подтвердил whole-result removal,
+  canTakePartial/capacity guard, отдельные quickMove iterations и C2S checks.
+  `build/crafting-tax-review-resume-vanilla.txt`, `build/crafting-tax-review-resume-network.txt`.
+
+crafting_tax-F01 уже исправлен во входном f1be584: `setEnabled(false)` очищает
+NOTICES; последний `onStop` удаляет пустой server bucket. Свежие T5/T6
+подтвердили отсутствие удержания после disable,32циклов и независимость UUID.
+Нового red-прогона старого кода в этом запросе не было. Общие contracts,
+Mixin, оплата, рецепты и зависимости не менялись; прежние limits сохраняются.
+
+Обычный клиент/HUD/menu/физический ввод, настоящая сеть/кооператив, полный
+restart JVM и MSPT/FPS/allocations/retained-memory profile не выполнялись.
+Disk round trip и EmbeddedChannel подтверждают только описанный серверный путь.
 
 ## Реальные пути
 
@@ -56,12 +90,12 @@ Fabric Loader 0.16.0, Java 21. EASY/GLOBAL. Цена — один уровень
   Runtime отдельно проверена печь; остальные исключения подтверждены областью
   хуков и чтением кода, а их полные игровые процессы остаются ручной проверкой.
 
-Свежий bytecode сохранён в `build/crafting-tax-review-vanilla.txt` и
-`build/crafting-tax-review-network.txt`. Получен через `javap -c -p` из
+Свежий bytecode сохранён в `build/crafting-tax-review-resume-vanilla.txt` и
+`build/crafting-tax-review-resume-network.txt`. Получен через `javap -c -p` из
 текущего mapped Minecraft JAR в `.gradle/loom-cache/minecraftMaven`.
 Клиентских классов/кастомных сетевых пакетов налог не добавляет.
 
-## Воспроизводимая изоляция и свежие результаты
+## Предыдущая подготовка стенда — исторический журнал
 
 Команды из корня репозитория:
 
@@ -93,7 +127,7 @@ allprojects {
 }
 ```
 
-Все результаты ниже новые, со штатным shutdown. Общий префикс файлов:
+Ниже сохранены результаты предыдущей подготовки, не новые запуски текущего запроса. Общий префикс файлов:
 `build/crafting-tax-review-`; XML/JUnit находятся в `build/reports/`.
 
 | Попытка | Команда / изменённый snapshot | Exit | GameTest | JUnit | Лог / XML |
@@ -157,7 +191,7 @@ Verifier проверяет SHA5, неизменность восьми защи
    снятие налога сохраняет locked_containers. blind_hud не меняет server gate;
    визуальное скрытие HUD этим тестом не проверено.
 
-Final также свежо запускает все3 `HotbarShuffleGameTest`: сохранение cursor/input,
+Исторический final запускал все3; текущий resume повторно выполнил все3 `HotbarShuffleGameTest`: сохранение cursor/input,
 крафт до/после shuffle по1уровню, отсутствие потери результата; ранее проверенные
 limits HS сохраняются. Это адресная совместимость, не новый полный аудит HS/LC.
 
