@@ -3,6 +3,7 @@ package com.cursecycle;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.impl.FragileFloorChallenge;
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.state.CycleManager;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.*;
@@ -13,27 +14,96 @@ import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.block.enums.BedPart;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.ExperienceOrbEntity;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.item.ItemUsageContext;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.*;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.GameRules;
 import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class FragileFloorGameTest implements FabricGameTest {
     private static final String ID = FragileFloorChallenge.ID;
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fragile_floor", tickLimit = 550)
     public void supportsTimingLootAndLifecycle(TestContext context) { new Scenario(context).run(); }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fragile_floor_disk", tickLimit = 240)
+    public void diskReloadStartsNewContactAndKeepsWorldConsequences(TestContext context) { new Scenario(context).runDisk(); }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fragile_floor_pairs", tickLimit = 120)
+    public void automaticBreakPreservesPlacementAndMiningRestrictions(TestContext context) { new Scenario(context).runPairs(); }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fragile_floor_ownership")
+    public void disabledAndDepartingPlayersReleaseContacts(TestContext context) throws Exception {
+        var server = context.getWorld().getServer();
+        var challenge = (FragileFloorChallenge) ChallengeRegistry.get(ID);
+        try (var s = new ChallengeScenario(context)) {
+            var first = s.player();
+            var second = s.player();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                s.activate("double_challenge:fragile_floor,no_sprint");
+                long serial = s.state.getActivationSerial();
+                challenge.onTick(server, first);
+                challenge.onTick(server, second);
+                context.assertEquals(2, owned(challenge, server).size(), "Two independent UUID records");
+                challenge.setEnabled(false);
+                context.assertTrue(owned(challenge, server).isEmpty(), "Disable immediately releases all contacts before dispatcher pruning");
+                challenge.setEnabled(true);
+                s.activate(ID);
+                context.assertTrue(s.state.getActivationSerial() > serial, "New activation serial");
+                challenge.onTick(server, first);
+                challenge.onTick(server, first);
+                context.assertEquals(1, owned(challenge, server).size(), "Repeated dispatch does not add owners");
+                challenge.onStart(server, first);
+                context.assertTrue(owned(challenge, server).isEmpty(), "Repeated start clears unfinished contacts");
+                challenge.onTick(server, first);
+                challenge.onTick(server, second);
+                challenge.onStop(server, first);
+                context.assertEquals(1, owned(challenge, server).size(), "Stop removes only its UUID");
+                s.activate("no_sprint");
+                context.assertTrue(ownedServers(challenge).isEmpty(), "Last stop frees the server bucket");
+            }
+            s.activate(ID);
+            challenge.onTick(server, first); challenge.onTick(server, second);
+            disconnect(first);
+            context.assertEquals(1, owned(challenge, server).size(), "Fabric DISCONNECT frees departing UUID");
+            disconnect(second);
+            context.assertTrue(ownedServers(challenge).isEmpty(), "Empty server has no unfinished contacts");
+            s.activate("no_sprint");
+        } finally { challenge.setEnabled(true); challenge.onStop(server, null); }
+        context.complete();
+    }
+
+    // Read-only inspection; gameplay cadence remains covered by actual server ticks in Scenario.
+    private static Map<?, ?> ownedServers(FragileFloorChallenge challenge) throws Exception {
+        var field = FragileFloorChallenge.class.getDeclaredField("standing");
+        field.setAccessible(true);
+        return (Map<?, ?>) field.get(challenge);
+    }
+    private static Map<?, ?> owned(FragileFloorChallenge challenge, net.minecraft.server.MinecraftServer server) throws Exception {
+        var owners = (Map<?, ?>) ownedServers(challenge).get(server);
+        return owners == null ? Map.of() : owners;
+    }
+    private static void disconnect(ServerPlayerEntity player) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(player.networkHandler, player.getServer());
+        player.getServer().getPlayerManager().remove(player);
+    }
 
     private static final class Fixture {
         ServerPlayerEntity player;
@@ -58,6 +128,7 @@ public class FragileFloorGameTest implements FabricGameTest {
         Fixture chest, shulker, ender, shared, creative, spectator, passenger, door, bed;
         Fixture jump, leave, replace, property, edge, mode, late, dead, dimension;
         BoatEntity boat;
+        ItemEntity retainedDrop;
         boolean done;
 
         Scenario(TestContext context) {
@@ -169,7 +240,7 @@ public class FragileFloorGameTest implements FabricGameTest {
             });
             at(179, () -> {
                 dead.player.setHealth(0); dead.player = s.respawn(dead.player, false); dead.position();
-                var uuid = late.player.getUuid(); server().getPlayerManager().remove(late.player); late.player = s.player(uuid); late.position();
+                var uuid = late.player.getUuid(); disconnect(late.player); late.player = s.player(uuid); late.position();
                 var nether = server().getWorld(World.NETHER); var netherPos = dimension.pos.withY(80);
                 c.assertTrue(nether.setBlockState(netherPos, Blocks.STONE.getDefaultState()), "Nether support placed above minimum Y");
                 dimension.pin = false;
@@ -207,7 +278,7 @@ public class FragileFloorGameTest implements FabricGameTest {
             });
             at(349, () -> {
                 intact(late, "Stop at 39"); var uuid = late.player.getUuid();
-                server().getPlayerManager().remove(late.player); s.activate("no_sprint"); late.player = s.player(uuid); late.position();
+                disconnect(late.player); s.activate("no_sprint"); late.player = s.player(uuid); late.position();
             });
             at(390, () -> {
                 intact(late, "Offline completion leaves no delayed task");
@@ -239,6 +310,125 @@ public class FragileFloorGameTest implements FabricGameTest {
                 cleanup(); c.waitAndRun(5, c::complete);
             });
         }
+        void pinEachTick() { c.runAtEveryTick(() -> { if (!done) all.forEach(Fixture::position); }); }
+        void activateCurrent(String id) { CycleManager.activateChallenge(server(), CurseCycleState.getServerState(server()), id); }
+        void reloadState() throws Exception {
+            var manager = server().getOverworld().getPersistentStateManager();
+            CurseCycleState.getServerState(server()).markDirty(); manager.save();
+            var saved = manager.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            var loaded = CurseCycleState.createFromNbt(saved.getCompound("data"), world().getRegistryManager());
+            manager.set(CurseCycleState.STATE_KEY, loaded);
+            c.assertTrue(loaded.getChallengeData().isEmpty(), "Unfinished contacts are absent from actual disk state");
+        }
+        void foreignState(Fixture f) {
+            var named = new ItemStack(Items.DIAMOND, 17);
+            named.set(DataComponentTypes.CUSTOM_NAME, Text.literal("foreign-resource"));
+            c.assertTrue(ItemStack.areEqual(named, f.player.getInventory().getStack(8)), "Actual playerdata retains named foreign inventory");
+            c.assertEquals(7, f.player.experienceLevel, "Foreign XP level retained");
+            c.assertEquals(.625F, f.player.experienceProgress, "Foreign XP progress retained");
+            c.assertEquals(17F, f.player.getHealth(), "Foreign HP retained");
+        }
+        void rejoin(Fixture f) {
+            f.player = s.player(f.player.getUuid()); f.position(); foreignState(f);
+        }
+        void runDisk() {
+            pinEachTick();
+            at(1, () -> {
+                shared = fixture(Blocks.OAK_PLANKS.getDefaultState());
+                shared.player.getInventory().clear();
+                var named = new ItemStack(Items.DIAMOND, 17);
+                named.set(DataComponentTypes.CUSTOM_NAME, Text.literal("foreign-resource"));
+                shared.player.getInventory().setStack(8, named);
+                shared.player.experienceLevel = 7; shared.player.experienceProgress = .625F; shared.player.setHealth(17);
+                activateCurrent("double_challenge:fragile_floor,no_sprint");
+            });
+            at(40, () -> intact(shared, "Initial contact at 39"));
+            at(41, () -> {
+                broken(shared, "Initial contact at 40");
+                c.assertEquals(1, count(shared, Items.OAK_PLANKS), "Permanent world drop once");
+                // Isolate state reload from ordinary item falling/pickup in an empty test structure.
+                retainedDrop = items(shared).stream().filter(it -> it.getStack().isOf(Items.OAK_PLANKS)).findFirst().orElseThrow();
+                retainedDrop.setNoGravity(true); retainedDrop.setVelocity(Vec3d.ZERO); retainedDrop.setPickupDelayInfinite();
+                retainedDrop.refreshPositionAndAngles(shared.pos.getX()+.5, shared.pos.getY()+1.25, shared.pos.getZ()+.5, 0, 0);
+                world().setBlockState(shared.pos, Blocks.STONE.getDefaultState());
+            });
+            at(60, () -> {
+                disconnect(shared.player);
+                c.assertTrue(ownedServers(challenge).isEmpty(), "Disconnect discards unfinished contact");
+                c.assertTrue(server().getPlayerManager().getPlayerList().isEmpty(), "Active save with empty server");
+                reloadState();
+                c.assertTrue(CurseCycleState.getServerState(server()).getActiveChallengeIds().contains(ID), "Active ID loaded from disk");
+                rejoin(shared);
+                intact(shared, "JOIN cannot finish old contact");
+            });
+            at(99, () -> intact(shared, "Disk-loaded JOIN has 39 fresh ticks"));
+            at(100, () -> {
+                broken(shared, "Disk-loaded JOIN has 40 fresh ticks");
+                c.assertEquals(1, count(shared, Items.OAK_PLANKS), "Prior world consequence still exists without replay");
+                c.assertFalse(retainedDrop.isRemoved(), "Original drop identity survives state reload");
+                c.assertEquals(1, count(shared, Items.COBBLESTONE), "New support drops once");
+                activateCurrent("no_sprint");
+                c.assertTrue(ownedServers(challenge).isEmpty(), "End releases server bucket");
+                world().setBlockState(shared.pos, Blocks.STONE.getDefaultState());
+                disconnect(shared.player); reloadState(); rejoin(shared);
+            });
+            at(145, () -> {
+                intact(shared, "Ended disk state cannot schedule a break"); foreignState(shared);
+                shared.player.setSprinting(true); c.assertFalse(shared.player.isSprinting(), "No sprint remains after ending fragile floor");
+                activateCurrent(ID);
+            });
+            at(165, () -> {
+                disconnect(shared.player); reloadState();
+                c.assertTrue(server().getPlayerManager().getPlayerList().isEmpty(), "Offline completion has no player callbacks");
+                activateCurrent("no_sprint"); reloadState(); rejoin(shared);
+            });
+            at(210, () -> {
+                intact(shared, "Offline end never resurrects an old contact"); foreignState(shared);
+                c.assertTrue(ownedServers(challenge).isEmpty(), "Ended JOIN has no stale UUID");
+                shared.player.setSprinting(true); c.assertFalse(shared.player.isSprinting(), "Offline end preserves no sprint");
+                c.assertEquals(1, count(shared, Items.OAK_PLANKS), "World drop survives all state reloads");
+                cleanup(); c.complete();
+            });
+        }
+        void placement(Fixture f, boolean allowed) {
+            var target = f.pos.north();
+            world().setBlockState(target, Blocks.STONE.getDefaultState());
+            world().setBlockState(target.up(), Blocks.AIR.getDefaultState());
+            var stack = new ItemStack(Items.STONE, 7); f.player.setStackInHand(Hand.MAIN_HAND, stack);
+            var hit = new BlockHitResult(Vec3d.ofCenter(target).add(0, .5, 0), Direction.UP, target, false);
+            for (int repeat = 0; repeat < (allowed ? 1 : 8); repeat++) stack.useOnBlock(new ItemUsageContext(f.player, Hand.MAIN_HAND, hit));
+            c.assertEquals(allowed, world().getBlockState(target.up()).isOf(Blocks.STONE), "Real BlockItem placement follows second challenge");
+            c.assertEquals(allowed ? 6 : 7, stack.getCount(), "Placement resource count");
+        }
+        void runPairs() {
+            pinEachTick();
+            at(1, () -> {
+                shared = fixture(Blocks.STONE.getDefaultState()); placement(shared, true);
+                s.activate("double_challenge:fragile_floor,no_block_placing"); placement(shared, false);
+            });
+            at(40, () -> intact(shared, "No placing pair at 39"));
+            at(41, () -> {
+                broken(shared, "Automatic break bypasses placement restriction");
+                s.activate("no_block_placing"); placement(shared, false);
+                c.assertTrue(ownedServers(challenge).isEmpty(), "Stopping floor leaves placement denial and no timers");
+            });
+            at(50, () -> {
+                s.activate("test_easy"); late = fixture(Blocks.GOLD_ORE.getDefaultState());
+                var tool = new ItemStack(Items.IRON_PICKAXE); tool.setDamage(17); late.player.setStackInHand(Hand.MAIN_HAND, tool);
+                s.activate("double_challenge:fragile_floor,no_block_breaking");
+                c.assertEquals(9, late.player.getStatusEffect(StatusEffects.MINING_FATIGUE).getAmplifier(), "Mining fatigue X actually applies");
+            });
+            at(89, () -> intact(late, "Mining pair at 39"));
+            at(90, () -> {
+                broken(late, "Automatic break still works with mining fatigue");
+                c.assertEquals(17, late.player.getMainHandStack().getDamage(), "No automatic tool wear");
+                c.assertEquals(0, world().getEntitiesByClass(ExperienceOrbEntity.class, new Box(late.pos).expand(2), it -> true).size(), "No extra ore XP");
+                s.activate("no_block_breaking");
+                c.assertEquals(9, late.player.getStatusEffect(StatusEffects.MINING_FATIGUE).getAmplifier(), "Ending floor keeps mining fatigue X");
+                c.assertTrue(ownedServers(challenge).isEmpty(), "Ending floor clears all contacts");
+                cleanup(); c.complete();
+            });
+        }
         net.minecraft.server.world.ServerWorld world() { return c.getWorld(); }
         net.minecraft.server.MinecraftServer server() { return world().getServer(); }
         Fixture fixture(BlockState state) {
@@ -259,7 +449,9 @@ public class FragileFloorGameTest implements FabricGameTest {
         }
         void cleanup() {
             if (done) return; done = true; if (boat != null) boat.discard(); challenge.setEnabled(true);
-            world().getGameRules().get(GameRules.DO_TILE_DROPS).set(tileDrops, server()); s.close();
+            world().getGameRules().get(GameRules.DO_TILE_DROPS).set(tileDrops, server());
+            for (var f : all) if (server().getPlayerManager().getPlayerList().contains(f.player)) disconnect(f.player);
+            s.close();
             // Batches reuse the test area. Do not leave our loot/fixtures for later tests.
             for (var f : all) {
                 for (var pos : BlockPos.iterate(f.pos.add(-1, -2, -1), f.pos.add(1, 1, 1)))

@@ -105,6 +105,11 @@ public final class FragileFloorChallenge extends Challenge {
     }
 
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) { onStop(server, player); }
+    @Override public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        // Disabled IDs are pruned before tick/leave dispatch, so those callbacks cannot clean up.
+        if (!enabled) standing.clear();
+    }
     @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
         if (player == null) { standing.remove(server); return; }
         var players = standing.get(server);
