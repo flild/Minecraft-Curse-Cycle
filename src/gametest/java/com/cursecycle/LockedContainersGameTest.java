@@ -14,12 +14,16 @@ import net.minecraft.block.Blocks;
 import net.minecraft.block.ChestBlock;
 import net.minecraft.block.ShulkerBoxBlock;
 import net.minecraft.block.entity.HopperBlockEntity;
+import net.minecraft.block.entity.ChestBlockEntity;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.vehicle.ChestBoatEntity;
 import net.minecraft.entity.vehicle.ChestMinecartEntity;
 import net.minecraft.entity.vehicle.HopperMinecartEntity;
 import net.minecraft.inventory.Inventory;
+import net.minecraft.inventory.EnderChestInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemUsageContext;
 import net.minecraft.item.Items;
@@ -294,6 +298,264 @@ public class LockedContainersGameTest implements FabricGameTest {
             context.assertFalse(returning.isSprinting(), "Offline completion preserves other challenge");
         }
         context.waitAndRun(5, context::complete);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "locked_containers_balance")
+    public void repeatedDenialsBalanceOpenCloseAndPreserveOtherViewer(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var other = s.player();
+            var world = context.getWorld();
+            var pos = context.getAbsolutePos(new BlockPos(1, 2, 1));
+            var original = world.getBlockState(pos);
+            var counted = new EnderChestInventory() {
+                int opens, closes;
+                @Override public void onOpen(PlayerEntity player) { super.onOpen(player); opens++; }
+                @Override public void onClose(PlayerEntity player) { super.onClose(player); closes++; }
+            };
+            var factory = new SimpleNamedScreenHandlerFactory((id, inventory, player) ->
+                    GenericContainerScreenHandler.createGeneric9x3(id, inventory, counted), Text.literal("balance"));
+            try {
+                world.setBlockState(pos, Blocks.CHEST.getDefaultState());
+                other.openHandledScreen((NamedScreenHandlerFactory) world.getBlockEntity(pos));
+                context.assertEquals(1, ChestBlockEntity.getPlayersLookingInChestCount(world, pos), "Control viewer is counted");
+                // PERSONAL activation must not close another player's allowed screen.
+                s.state.getPersonalActiveChallengeIds(p.getUuid()).add(LockedContainersChallenge.ID);
+                var c = ChallengeRegistry.get(LockedContainersChallenge.ID);
+                var otherScreen = other.currentScreenHandler;
+                drain(s.channel(p));
+                for (int i = 0; i < 32; i++) {
+                    context.assertFalse(p.openHandledScreen(factory).isPresent(), "Repeated denial returns no sync id");
+                    context.assertEquals(i + 1, counted.opens, "Constructor opens exactly once");
+                    context.assertEquals(counted.opens, counted.closes, "Denied handler closes exactly once");
+                    p.openHandledScreen((NamedScreenHandlerFactory) world.getBlockEntity(pos));
+                    context.assertEquals(1, ChestBlockEntity.getPlayersLookingInChestCount(world, pos), "Denied viewer does not leak or subtract another viewer");
+                    c.onStart(p.getServer(), p);
+                    c.onStart(p.getServer(), p);
+                    c.onTick(p.getServer(), p);
+                    context.assertTrue(other.currentScreenHandler == otherScreen, "Personal denial preserves other screen");
+                }
+                context.assertEquals(0, drain(s.channel(p)), "Denied handlers emit no OpenScreen packets");
+                other.closeHandledScreen();
+                context.assertEquals(0, ChestBlockEntity.getPlayersLookingInChestCount(world, pos), "Final real viewer closes normally");
+                s.state.getPersonalActiveChallengeIds(p.getUuid()).clear();
+                context.assertTrue(p.openHandledScreen(factory).isPresent(), "End restores vanilla opening");
+                context.assertEquals(counted.closes + 1, counted.opens, "Allowed screen stays open");
+                p.closeHandledScreen();
+                context.assertEquals(counted.opens, counted.closes, "Allowed close also balances");
+            } finally {
+                p.closeHandledScreen();
+                other.closeHandledScreen();
+                world.setBlockState(pos, original);
+            }
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "locked_containers_packets")
+    public void currentScreenPacketsAndStaleScreenCannotAffectAllowedCursor(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var world = context.getWorld();
+            var pos = context.getAbsolutePos(new BlockPos(1, 2, 1));
+            var barrelPos = pos.east();
+            var original = world.getBlockState(pos);
+            var originalBarrel = world.getBlockState(barrelPos);
+            try {
+                p.teleport(world, pos.getX() + .5, pos.getY(), pos.getZ() + 2, 0, 0);
+                world.setBlockState(pos, Blocks.CHEST.getDefaultState());
+                world.setBlockState(barrelPos, Blocks.BARREL.getDefaultState());
+                var chest = (Inventory) world.getBlockEntity(pos);
+                var barrel = (Inventory) world.getBlockEntity(barrelPos);
+                var named = new ItemStack(Items.DIAMOND, 23);
+                named.set(DataComponentTypes.CUSTOM_NAME, Text.literal("cursor-owned"));
+                for (var action : SlotActionType.values()) {
+                    for (int button : List.of(0, 1, 8, 40)) {
+                        s.activate("test_easy");
+                        p.getInventory().clear();
+                        chest.setStack(0, new ItemStack(Items.EMERALD, 9));
+                        chest.setStack(1, named.copy());
+                        use(p, pos, Hand.MAIN_HAND);
+                        var old = p.currentScreenHandler;
+                        old.onSlotClick(1, 0, SlotActionType.PICKUP, p);
+                        // Current sync id and real server packet route, before onStart/onTick.
+                        s.state.getActiveChallengeIds().add(LockedContainersChallenge.ID);
+                        var forgedChanges = new Int2ObjectOpenHashMap<ItemStack>();
+                        forgedChanges.put(0, new ItemStack(Items.NETHERITE_BLOCK, 64));
+                        p.networkHandler.onClickSlot(new ClickSlotC2SPacket(old.syncId, old.getRevision(),
+                                0, button, action, new ItemStack(Items.NETHERITE_BLOCK, 64), forgedChanges));
+                        context.assertTrue(p.currentScreenHandler == p.playerScreenHandler, "Current packet closes denied screen before operation");
+                        context.assertEquals(9, chest.getStack(0).getCount(), "Current packet cannot move storage items");
+                        context.assertEquals(23, p.getInventory().count(Items.DIAMOND), "Packet close returns cursor exactly once");
+                        var returned = p.getInventory().getStack(p.getInventory().getSlotWithStack(named));
+                        context.assertTrue(ItemStack.areEqual(named, returned), "Cursor components and count survive close");
+                        context.assertEquals(0, p.getInventory().count(Items.NETHERITE_BLOCK), "Untrusted packet claims do not become items");
+                        barrel.setStack(0, new ItemStack(Items.GOLD_INGOT, 5));
+                        use(p, barrelPos, Hand.MAIN_HAND);
+                        var allowed = p.currentScreenHandler;
+                        allowed.onSlotClick(0, 0, SlotActionType.PICKUP, p);
+                        old.onSlotClick(0, button, action, p);
+                        p.networkHandler.onClickSlot(new ClickSlotC2SPacket(old.syncId, 0, 0, button,
+                                action, ItemStack.EMPTY, new Int2ObjectOpenHashMap<>()));
+                        context.assertTrue(p.currentScreenHandler == allowed, "Stale forbidden screen does not close allowed screen");
+                        context.assertEquals(5, allowed.getCursorStack().getCount(), "Stale action preserves new cursor");
+                        context.assertTrue(allowed.getCursorStack().isOf(Items.GOLD_INGOT), "New cursor keeps its item");
+                        context.assertEquals(9, chest.getStack(0).getCount(), "Stale action preserves old storage");
+                        p.closeHandledScreen();
+                        context.assertEquals(5, p.getInventory().count(Items.GOLD_INGOT), "Allowed close returns only its own cursor");
+                    }
+                }
+            } finally {
+                p.closeHandledScreen();
+                world.setBlockState(pos, original);
+                world.setBlockState(barrelPos, originalBarrel);
+            }
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "locked_containers_disk")
+    public void repeatedActivationsAndActualPlayerdataKeepCurrentRules(TestContext context) throws Exception {
+        try (var s = new ChallengeScenario(context)) {
+            var p = s.player();
+            var server = p.getServer();
+            for (int i = 0; i < 32; i++) {
+                long previous = s.state.getActivationSerial();
+                s.activate("double_challenge:locked_containers,locked_containers");
+                context.assertTrue(s.state.getActivationSerial() > previous, "Repeat activation advances serial");
+                context.assertEquals(List.of(LockedContainersChallenge.ID), s.state.getActiveChallengeIds(), "Same ID is not multiplied");
+                openProbe(context, p, false);
+                var c = ChallengeRegistry.get(LockedContainersChallenge.ID);
+                c.setEnabled(false);
+                try { openProbe(context, p, true); } finally { c.setEnabled(true); }
+                openProbe(context, p, false);
+                s.activate("no_sprint");
+                openProbe(context, p, true);
+                p.setSprinting(true);
+                context.assertFalse(p.isSprinting(), "Replacing container rule preserves other mechanic");
+            }
+            s.activate(LockedContainersChallenge.ID);
+            p.getInventory().clear();
+            var named = new ItemStack(Items.BLUE_SHULKER_BOX);
+            named.set(DataComponentTypes.CUSTOM_NAME, Text.literal("foreign-shulker"));
+            p.getInventory().setStack(0, named.copy());
+            p.getEnderChestInventory().setStack(3, new ItemStack(Items.DIAMOND, 17));
+            p.experienceLevel = 7;
+            p.experienceProgress = .625F;
+            p.setHealth(17);
+            var uuid = p.getUuid();
+            disconnect(p);
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Saved with no online players");
+            var loaded = reloadState(context);
+            p = s.player(uuid);
+            assertPlayerdata(context, p, named);
+            openProbe(context, p, false);
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            loaded = reloadState(context);
+            p = s.player(uuid);
+            assertPlayerdata(context, p, named);
+            openProbe(context, p, true);
+            p.setSprinting(true);
+            context.assertFalse(p.isSprinting(), "Offline completion preserves no sprint");
+            disconnect(p);
+            CycleManager.activateChallenge(server, loaded, LockedContainersChallenge.ID);
+            loaded = reloadState(context);
+            CycleManager.activateChallenge(server, loaded, "no_sprint");
+            reloadState(context);
+            p = s.player(uuid);
+            assertPlayerdata(context, p, named);
+            openProbe(context, p, true);
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "locked_containers_shuffle", tickLimit = 240)
+    public void shufflePairPreservesAllowedScreenAndCursorAfterEnd(TestContext context) {
+        var s = new ChallengeScenario(context);
+        var p = s.player();
+        var world = context.getWorld();
+        var pos = context.getAbsolutePos(new BlockPos(1, 2, 1));
+        var original = world.getBlockState(pos);
+        Runnable cleanup = () -> {
+            p.closeHandledScreen();
+            disconnect(p);
+            world.setBlockState(pos, original);
+            s.close();
+        };
+        java.util.function.Consumer<Runnable> checked = action -> {
+            try { action.run(); } catch (Throwable failure) { cleanup.run(); throw failure; }
+        };
+        checked.accept(() -> {
+            p.teleport(world, pos.getX() + .5, pos.getY(), pos.getZ() + 2, 0, 0);
+            world.setBlockState(pos, Blocks.BARREL.getDefaultState());
+            p.getInventory().clear();
+            for (int i = 0; i < 9; i++) {
+                var stack = new ItemStack(Items.STONE, i + 1);
+                stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("hotbar-" + i));
+                p.getInventory().setStack(i, stack);
+            }
+            p.getInventory().selectedSlot = 3;
+            var initial = hotbar(p);
+            var cursor = new ItemStack(Items.GOLD_INGOT, 13);
+            cursor.set(DataComponentTypes.CUSTOM_NAME, Text.literal("pair-cursor"));
+            ((Inventory) world.getBlockEntity(pos)).setStack(0, cursor.copy());
+            s.activate("double_challenge:locked_containers,hotbar_shuffle");
+            openProbe(context, p, false);
+            use(p, pos, Hand.MAIN_HAND);
+            var allowed = p.currentScreenHandler;
+            allowed.onSlotClick(0, 0, SlotActionType.PICKUP, p);
+            context.waitAndRun(101, () -> checked.accept(() -> {
+                context.assertTrue(p.currentScreenHandler == allowed, "Shuffle pair keeps allowed barrel open");
+                context.assertTrue(ItemStack.areEqual(cursor, allowed.getCursorStack()), "Shuffle pair preserves cursor components");
+                context.assertFalse(initial.equals(hotbar(p)), "Other mechanic actually shuffled during pair");
+                context.assertEquals(45, p.getInventory().count(Items.STONE), "Pair retains every hotbar item");
+                context.assertEquals(3, p.getInventory().selectedSlot, "Pair retains selected index");
+                s.activate("hotbar_shuffle");
+                context.assertTrue(p.currentScreenHandler == allowed, "Ending only container rule leaves allowed screen open");
+                p.closeHandledScreen();
+                openProbe(context, p, true);
+                var afterEnd = hotbar(p);
+                context.waitAndRun(101, () -> checked.accept(() -> {
+                    context.assertFalse(afterEnd.equals(hotbar(p)), "Shuffle still runs after container rule ends");
+                    context.assertEquals(45, p.getInventory().count(Items.STONE), "No item loss after end");
+                    context.assertEquals(13, p.getInventory().count(Items.GOLD_INGOT), "Cursor returned once after end");
+                    cleanup.run();
+                    context.complete();
+                }));
+            }));
+        });
+    }
+
+    private static List<String> hotbar(ServerPlayerEntity p) {
+        var result = new ArrayList<String>();
+        for (int i = 0; i < 9; i++) result.add(p.getInventory().getStack(i).toString());
+        return result;
+    }
+
+    private static void assertPlayerdata(TestContext c, ServerPlayerEntity p, ItemStack named) {
+        c.assertTrue(ItemStack.areEqual(named, p.getInventory().getStack(0)), "Real playerdata retains foreign item and components");
+        c.assertEquals(17, p.getEnderChestInventory().getStack(3).getCount(), "Real playerdata retains ender contents");
+        c.assertEquals(7, p.experienceLevel, "Foreign XP retained");
+        c.assertEquals(.625F, p.experienceProgress, "Foreign XP progress retained");
+        c.assertEquals(17F, p.getHealth(), "Foreign HP retained");
+    }
+
+    private static CurseCycleState reloadState(TestContext c) throws Exception {
+        var manager = c.getWorld().getServer().getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(c.getWorld().getServer()).markDirty();
+        manager.save();
+        var disk = manager.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(disk.getCompound("data"), c.getWorld().getRegistryManager());
+        c.assertFalse(loaded.getChallengeData().contains(LockedContainersChallenge.ID), "No private storage snapshot or cache persisted");
+        manager.set(CurseCycleState.STATE_KEY, loaded);
+        return loaded;
+    }
+
+    private static void disconnect(ServerPlayerEntity p) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(p.networkHandler, p.getServer());
+        p.getServer().getPlayerManager().remove(p);
     }
 
     private static void use(ServerPlayerEntity p, BlockPos pos, Hand hand) {

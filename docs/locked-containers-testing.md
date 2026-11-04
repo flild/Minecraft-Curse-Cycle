@@ -35,7 +35,107 @@ MEDIUM/GLOBAL. Запрещены обычные, двойные и ловушк
 [Yarn GenericContainerScreenHandler](https://maven.fabricmc.net/docs/yarn-1.21.1+build.3/net/minecraft/screen/GenericContainerScreenHandler.html)
 и [ServerPlayerEntity](https://maven.fabricmc.net/docs/yarn-1.21.1+build.3/net/minecraft/server/network/ServerPlayerEntity.html).
 
-## Автоматическая проверка
+## Ревью этапа 14 — 2026-11-04
+
+Игровой код и общие контракты не менялись. Подтверждённых дефектов не найдено.
+Свежие проверки на входном HEAD `1508c0b285ada63038da51751ce2b4d10e03d4db`
+с расширенным `LockedContainersGameTest`:
+
+| Запуск | Команда | Результат | Лог и отчёты под build |
+|---|---|---|---|
+| baseline | `build runGametest --offline -I build/locked-containers-review-baseline.init.gradle` | exit 0, 27 s; 149 JUnit / 54 suites; 4/4 LC | `locked-containers-review-baseline.log`, `reports/locked-containers-review-baseline.xml`, `reports/locked-containers-review-baseline-junit` |
+| expanded | `build runGametest --offline -I build/locked-containers-review-expanded.init.gradle` | exit 0, 30 s; 149 JUnit / 54 suites; 7/7 LC | те же пути с `expanded` |
+| final | `build runGametest --offline -I build/locked-containers-review-final.init.gradle` | exit 0, 37 s; 149 JUnit / 54 suites; 19/19 GT: 8 LC + 8 CT + 3 HS | те же пути с `final` |
+
+Команды начинаются с `.\gradlew.bat`. Каждый запуск использует отдельный новый
+`build/gametest-locked-containers-review-{baseline,expanded,final}-20261104`.
+В init-script принудительно выполняется JUnit и меняется только список
+GameTest entrypoints, runDir и выходные отчёты. Пример итогового script:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/locked-containers-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.LockedContainersGameTest',
+            'com.cursecycle.CraftingTaxGameTest', 'com.cursecycle.HotbarShuffleGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') {
+            outputs.upToDateWhen { false }
+            reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/locked-containers-review-final-junit')
+        }
+        loom.runs.gametest.runDir = 'build/gametest-locked-containers-review-final-20261104'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/locked-containers-review-final.xml'
+    }
+}
+```
+
+Все три свежих прогона завершили сервер штатно; XML не содержат failure/error/skipped.
+T1–T4 — четыре исходных сценария ниже, выполненные заново. Добавлены:
+
+- T5 `repeatedDenialsBalanceOpenCloseAndPreserveOtherViewer`: 32 отказа через
+  реальный `openHandledScreen` и считающий subclass EnderChestInventory;
+  constructor onOpen и denied onClose строго 1:1. Настоящий сундук сохраняет
+  второго разрешённого viewer при PERSONAL-запрете; затем счётчик возвращается
+  к 0. У отказов нет OpenScreen. Повторные start/tick идемпотентны.
+- T6 `currentScreenPacketsAndStaleScreenCannotAffectAllowedCursor`: каждый
+  SlotActionType × кнопки 0/1/8/40 через настоящий server C2S handler с текущим
+  syncId до start/tick. Даже поддельные cursor/changed-slots из пакета не меняют
+  вещи. Именованный стек 23 алмаза возвращён с компонентами ровно раз.
+  Старый прямой вызов и старый пакет не закрывают новую бочку и не трогают
+  её курсор с пятью золотыми слитками.
+- T7 `repeatedActivationsAndActualPlayerdataKeepCurrentRules`: 32 цикла с новым
+  serial, одинаковым double ID, disable/enable/end/no_sprint. Фактический
+  playerdata + PersistentState disk save/load в одной JVM: active, offline end,
+  start/end при пустом сервере. Именованный шалкер, 17 алмазов эндер-инвентаря,
+  XP 7 + .625 и HP17 сохранены; active блокирует, ended разрешает. Нет своего
+  ключа/снимка в challengeData. DISCONNECT вызывается через Fabric invoker.
+- T8 `shufflePairPreservesAllowedScreenAndCursorAfterEnd`: реальные серверные
+  тики пары LC/HS, наблюдение после 101 тика. Запрет действует, бочка остаётся
+  открытой, именованный курсор и selectedSlot3 сохранены, 45 камней действительно
+  переставлены без потерь. После снятия LC повторное открытие разрешено,
+  через следующие 101 тик HS продолжает работать; 13 слитков курсора возвращены
+  один раз. CT T8 дополнительно проверяет реальный верстак, оплату и LC/end.
+
+Vanilla-порядок проверен свежим `javap -c -p` установленного mapped 1.21.1 JAR:
+`build/locked-containers-review-vanilla.txt`; сигнатуры — `...-api.txt`.
+Для `openHandledScreen` createMenu предшествует packet/install; constructors
+открывают inventory, onClosed закрывает его. C2S проверяет syncId/canUse;
+ограничение ScreenHandler действует до операции. Packet claims обновляют
+remote tracking, не становятся серверными предметами. Клиентских Mixin у LC нет.
+
+Восстановление стандартного стенда:
+`.\gradlew.bat processGametestResources --offline --rerun-tasks`.
+Проверка артефактов/отпечатков/XML:
+`python build/locked-containers-review-verify.py`.
+Их свежие результаты записаны в отчёт этапа 14; прежние результаты ниже
+не используются как доказательство нового ревью.
+
+До Gradle первый PowerShell не запустился из-за sandbox-bin access 5; разрешённые
+escalated вызовы работают. В служебном Python снимке кириллический stdin был
+заменён на `?`; снимок пересоздан PowerShell без изменения исходных файлов.
+Неудачных игровых проверок в этом ревью не было. Locks/зависимости не менялись.
+
+Расходы оценены **static**. `blocks` сначала проверяет применимость O(G+A),
+затем читает до S слотов; stream выделяется только после gate. Активный tick
+стоит O(P×(G+A+S)); неактивные постоянно зарегистрированные open/click hooks
+всё равно имеют цену проверки. S=число слотов текущего handler, G/A=число
+GLOBAL/PERSONAL ID, P=подходящие онлайн-игроки. Нет своего UUID map, NBT,
+world scan, принудительной загрузки чанков, custom packets или feedback spam.
+При отказе остаётся ванильное создание/закрытие handler и его обычные события.
+MSPT/FPS/allocations/retained memory не измерялись; функциональные счётчики
+баланса и пакетов не являются профилем производительности.
+
+Итог ревью: **pass_with_limits**, механика **pass**, расходы
+**no_issue_found / static**. Ограничения `locked_containers-L01..L04`:
+обычный клиент/HUD/menu/физический ввод и lifecycle/торговля/инвентарь существ;
+настоящий dedicated co-op/late join/latency; полностью новые JVM active/ended;
+нагрузочный профиль. Подробные шаги — в локальном отчёте этапа 14 и ниже.
+
+## Исторические проверки реализации — не результат ревью 2026-11-04
 
 - `.\gradlew.bat build --offline` — BUILD SUCCESSFUL, 16 s, после реализации.
 - Итоговая `.\gradlew.bat build runGametest --offline` — BUILD SUCCESSFUL, 45 s.
