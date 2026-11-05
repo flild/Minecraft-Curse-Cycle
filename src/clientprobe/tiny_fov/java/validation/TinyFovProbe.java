@@ -23,6 +23,7 @@ import java.util.List;
 
 /** Calls the transformed vanilla getFov, without an OpenGL window or a live world. */
 public final class TinyFovProbe implements PreLaunchEntrypoint {
+    private static int checks;
     private static boolean alive = true;
     private static GameMode mode = GameMode.SURVIVAL;
     private static CameraSubmersionType submersion = CameraSubmersionType.NONE;
@@ -54,6 +55,7 @@ public final class TinyFovProbe implements PreLaunchEntrypoint {
     }
 
     private static void check(boolean ok, String why) {
+        checks++;
         if (!ok) throw new AssertionError(why);
     }
 
@@ -77,6 +79,70 @@ public final class TinyFovProbe implements PreLaunchEntrypoint {
     private static SimpleOption<Double> scaleOption(double value) {
         return new SimpleOption<>("probe.scale", SimpleOption.emptyTooltip(), (text, v) -> Text.empty(),
                 SimpleOption.DoubleSliderCallbacks.INSTANCE, value, v -> {});
+    }
+
+    public static class Context extends net.minecraft.client.gui.DrawContext {
+        Context(MinecraftClient client) { super(client, null); }
+        @Override public int getScaledWindowWidth() { return 800; }
+        @Override public int getScaledWindowHeight() { return 600; }
+    }
+
+    // Invoke the actual merged production handlers, with no GL or replacement Mixin.
+    // This proves composition at their boundary, not a complete renderWorld/HUD frame.
+    private static void companions(MinecraftClient client) throws Exception {
+        var roll = java.util.Arrays.stream(GameRenderer.class.getDeclaredMethods())
+                .filter(m -> m.getName().contains("cursecycle$rollProjection")).findFirst().orElseThrow();
+        roll.setAccessible(true);
+        var hudClass = net.minecraft.client.gui.hud.InGameHud.class;
+        var unsafeField = Unsafe.class.getDeclaredField("theUnsafe"); unsafeField.setAccessible(true);
+        var hud = ((Unsafe) unsafeField.get(null)).allocateInstance(hudClass);
+        set(hud, hudClass, "client", client);
+        var offset = java.util.Arrays.stream(hudClass.getDeclaredMethods())
+                .filter(m -> m.getName().contains("cursecycle$offsetCrosshair")).findFirst().orElseThrow();
+        offset.setAccessible(true);
+        for (boolean tiny : new boolean[]{true, false}) {
+            for (boolean companion : new boolean[]{true, false}) {
+                sync(tiny ? "tiny_fov" : "no_sprint", companion ? "upside_down_camera" : "no_sprint");
+                double degrees = fov(1, true);
+                same(tiny ? 15 : 80, degrees, "FOV and roll: both independent endings");
+                var projection = new org.joml.Matrix4f().perspective((float)Math.toRadians(degrees), 4f/3, .05f, 128);
+                var expected = new org.joml.Matrix4f(projection);
+                if (companion) expected.rotateZ((float)Math.PI);
+                var actual = (org.joml.Matrix4f)roll.invoke(renderer, projection);
+                check(expected.equals(actual, 1e-6f), "Actual injected roll preserves FOV projection");
+                sync(tiny ? "tiny_fov" : "no_sprint", companion ? "offset_crosshair" : "no_sprint");
+                var context = new Context(client);
+                var originalMatrix = new org.joml.Matrix4f(context.getMatrices().peek().getPositionMatrix());
+                int[] calls = {0};
+                com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> original = args -> {
+                    calls[0]++;
+                    var matrix = context.getMatrices().peek().getPositionMatrix();
+                    same(companion ? 80 : 0, matrix.m30(), "Actual crosshair wrapper X");
+                    same(companion ? 40 : 0, matrix.m31(), "Actual crosshair wrapper Y");
+                    return null;
+                };
+                offset.invoke(hud, context, net.minecraft.client.render.RenderTickCounter.ZERO, original);
+                check(calls[0] == 1, "Crosshair drawn exactly once");
+                check(originalMatrix.equals(context.getMatrices().peek().getPositionMatrix()), "HUD matrix restored");
+                same(tiny ? 15 : 80, fov(1, true), "Crosshair never changes scene FOV");
+            }
+        }
+        for (int cycle = 0; cycle < 32; cycle++) {
+            ClientDataHolder.reset(); same(80, fov(1, true), "Disconnect/reset removes override");
+            sync("no_sprint"); same(80, fov(1, true), "Offline end cannot restore override");
+            optionsForCycle(client, cycle);
+        }
+    }
+
+    private static void optionsForCycle(MinecraftClient client, int cycle) throws Exception {
+        int latest = 70 + cycle;
+        set(client.options, GameOptions.class, "fov", integerOption(latest));
+        for (int duplicate = 0; duplicate < 50; duplicate++) {
+            sync("tiny_fov", "tiny_fov", "no_sprint");
+            same(15, fov(1, true), "Repeated sync never compounds override");
+        }
+        sync("no_sprint"); same(latest, fov(1, true), "Current option used after every end");
+        set(client.options, GameOptions.class, "fov", integerOption(80));
     }
 
     @Override public void onPreLaunch() {
@@ -197,8 +263,10 @@ public final class TinyFovProbe implements PreLaunchEntrypoint {
                 check(options.getPerspective() == forced, "Existing forced perspective still wins");
                 same(15, fov(1, true), "FOV independent of forced perspective");
             }
+            companions(client);
             System.out.println("TINY_FOV_CLIENT_PROBE_PASSED: " + comparisons
-                    + " transformed vanilla getFov comparisons; hand FOV, settings edits, modes, lifecycle, panorama, forced perspectives."
+                    + " transformed vanilla getFov comparisons; checks=" + checks
+                    + "; hand FOV, settings edits, modes, lifecycle, panorama, forced perspectives, actual roll/crosshair handlers, 32 reset cycles."
                     + " Unsafe client/player/world, stub camera accessors and seeded vanilla modifier fields; no live window/network/item use.");
             System.exit(0);
         } catch (Throwable t) {
