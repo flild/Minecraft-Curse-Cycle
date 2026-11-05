@@ -70,6 +70,96 @@
 Первый запуск Gradle из песочницы не получил доступ к общему wrapper zip.lck;
 последующие проверки выполнены с разрешённым доступом к кэшу без удаления lock.
 
+## Ревью этапа 22, 2026-11-05
+
+Reviewed production HEAD: `f7720b12da5643569e36fc35fcd050ed9db74a38`.
+Подтверждённых дефектов игрового кода не найдено; изменены только этот документ,
+GravityTenGameTest и отдельный CLIENT probe. Итог `pass_with_limits`, механика
+`pass`, расходы `no_issue_found / static`. Результаты 2026-10-27 выше исторические.
+
+Свежие проверки:
+
+| Команда | Результат | Доказательство |
+|---|---|---|
+| `build runGametest --offline -I build/gravity-ten-review-baseline.init.gradle` | exit 0, 46s; 149 JUnit / 54 suites, 2/2 gravity GameTest | build/gravity-ten-review-baseline.log; build/reports/gravity-ten-review-baseline.xml и baseline-junit/ |
+| `build runGametest --offline -I build/gravity-ten-review-expanded.init.gradle` | exit 1, 33s; 149 JUnit, 3/4 gravity GameTest | expanded.log/XML: неверное новое ожидание Slow Falling в computeFallDamage |
+| `build runGametest --offline -I build/gravity-ten-review-final.init.gradle` | exit 0, 36s; 149 JUnit, 8/8 GameTest (4 gravity + 4 heavy_body), normal shutdown | final.log/XML и final-junit/ |
+| `runClient --offline -I src/clientprobe/gravity_ten/init.gradle` | attempt1 exit 1/3s: конфликт inherited fluidHeight; attempt2 exit 1/32s: Unsafe fixture не задавал swim-height; attempt3 exit 0/19s | build/gravity-ten-review-client-attempt1..3.log; marker GRAVITY_TEN_REVIEW_CLIENT_PASSED checks=2738 travel=2404 |
+| `processGametestResources --offline` | exit 0, 1s; исходные 43 entrypoints восстановлены | build/gravity-ten-review-restore.log |
+| `python build/gravity-ten-review-verify.py` | exit 0, GRAVITY_TEN_REVIEW_VERIFIED | build/gravity-ten-review-verifier.log; первый verifier exit 1 из-за UTF-16 PowerShell log, исправлено чтение BOM, attempt1.log сохранён |
+
+Все Gradle-команды запускаются через `.\gradlew.bat`. Новые GameTest:
+
+- `scopedSyncRepeatedActivationAndDiskKeepForeignData`: фактический S2C только
+  PERSONAL-владельцу, codec, второй игрок без эффекта, enabled фильтрация;
+  32 serial/duplicate/start/join/pair/end, velocity/fallDistance и no_sprint;
+  Fabric DISCONNECT, playerdata + PersistentStateManager save/read/set,
+  активная загрузка, offline end и пустой сервер. Реальный travel после
+  Nether/End/Overworld, foreign gravity .04, named diamonds17/XP7+.625/HP17/
+  Fire Resistance и чужой challengeData сохранены. Это одна JVM.
+- `automaticAndHeavyJumpsAndFallModifiersCompose`: настоящий auto jump,
+  последующий travel, оба окончания пары auto/gravity и heavy/gravity;
+  safe fall distance 3/5, внешний damage attribute .5/1/1.5, block argument
+  0/.2/.5/1 и distance 2/4.1/7/12. Только положительный округлённый результат
+  ×3, Jump Boost safe distance сохранён. Slow Falling предотвращает накопление
+  fallDistance в ванильном движении, а не обнуляет произвольно переданную
+  computeFallDamage дистанцию: ошибочное ожидание 0 заменено сравнением с
+  контрольным результатом. Production при исправлении fixture не менялся.
+
+Изолированный final init (baseline/expanded используют только GravityTenGameTest
+и свои phase/runDir/XML):
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/gravity-ten-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.GravityTenGameTest', 'com.cursecycle.HeavyBodyGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') {
+            outputs.upToDateWhen { false }
+            reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/gravity-ten-review-final-junit')
+        }
+        loom.runs.gametest.runDir = 'build/gametest-gravity-ten-review-final-20261105'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/gravity-ten-review-final.xml'
+    }
+}
+```
+
+CLIENT probe сохранён в `src/clientprobe/gravity_ten/`, вне production sourceSets.
+Новых test Mixin нет: исполняются настоящие transformed travel/computeFallDamage
+и GravityTenChallenge.active. Unsafe создаёт ClientWorld/ClientPlayerEntity;
+world block/fluid/chunk, logical movement, alive/modes/vehicle/effects/attributes,
+swim-height, velocity и collision/input/limb методы подменены. CLIENT jump impulse
+задаётся начальной скоростью; настоящий jump проверяет SERVER GameTest.
+Матрица g=0/.005/.01/.04/.08/.12 × y=-.7/-.1/0/.2/.42 × Slow Falling × active:
+воздух и horizontal drag, levitation, water/sprint, shallow/deep lava;
+отдельно elytra pitch0, noGravity, positive/nonpositive rounded damage,
+dead/removed/Creative/Spectator/passenger, 32 reset × 50 duplicate sync.
+Sync вызывается вручную, игровое окно, настоящий мир/сеть и collision pipeline
+не запущены. Настоящая передача S2C отдельно проверена EmbeddedChannel на сервере.
+
+Verifier сверил SHA пяти входных документов/ТЗ, 6 metadata fields, multiplier3,
+registration1/commonMixin1, все три XML и JUnit, CLIENT marker, восстановленные
+43 entrypoints/source==built и два production JAR без GameTest/validation/Probe.
+Обычный sandbox exec не создал процесс (ACL error5); разрешённый PowerShell
+запуск работал. Два ошибочных пути чтения найдены через rg; locks не удалялись.
+
+Static расходы: один PlayerEntity check на каждый подходящий travel LivingEntity,
+затем gate O(G+A) server / O(K) client; g×3 O(1). Fall hook вызывается по событию,
+с тем же gate; CallbackInfo/boxing имеют цену. Собственных tick/packet listeners,
+NBT, maps, timers и retained Player/World нет. Shared dispatch/no-op callbacks,
+PersistentState.Type lookup allocation и S2C раз в20ticks/activation/join остаются.
+Время кадра, MSPT, allocations и retained memory не измерялись.
+
+Ограничения ревью gravity_ten-L01..L04: обычный client/HUD/menu/аудио/полная
+физика столкновений и mitigation; dedicated 2clients+late3/RTT/TPS;
+full new-JVM active/ended/offlineend/emptyserver; одинаковый нагрузочный профиль.
+Точные ручные шаги ниже; эти сценарии не объявлены пройденными.
+
 ## Ручные проверки — не выполнены
 
 1. В живом клиенте выполнить `/fdc list`, `/fdc activate gravity_ten`,
