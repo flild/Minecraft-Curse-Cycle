@@ -119,15 +119,18 @@ public class AutoJumpGameTest implements FabricGameTest {
 
     @GameTest(templateName=EMPTY_STRUCTURE, batchId="auto_jump_clock", tickLimit=55)
     public void exactServerTicksManualJumpAndIndependentPlayers(TestContext c) {
-        var s=new ChallengeScenario(c); var p=s.player(); var other=s.player(); var server=p.getServer();
-        s.activate(ID); p.setOnGround(false); other.setOnGround(false); packets(s,p); packets(s,other);
+        var s=new ChallengeScenario(c); var p=s.player(); var other=s.player(); var failed=s.player(); var server=p.getServer();
+        s.activate(ID); p.setOnGround(false); other.setOnGround(false); failed.setOnGround(false);
+        failed.getAttributeInstance(EntityAttributes.GENERIC_JUMP_STRENGTH).setBaseValue(0);
+        packets(s,p); packets(s,other); packets(s,failed);
         int start=server.getTicks(); long time=c.getWorld().getTimeOfDay();
         for(int i=1;i<=24;i++) {
             int tick=i;
             c.waitAndRun(i,()->{
                 try {
                     c.assertEquals(tick,server.getTicks()-start,"Real elapsed ticks");
-                    ground(p); ground(other);
+                    ground(p); ground(other); ground(failed);
+                    if(tick==2) failed.getAttributeInstance(EntityAttributes.GENERIC_JUMP_STRENGTH).setBaseValue(.42);
                     if(tick==13) p.jump();
                     AutoJumpChallenge.tick(server); AutoJumpChallenge.tick(server);
                     boolean one=tick==1||tick==11||tick==13||tick==23, two=tick==1||tick==11||tick==21;
@@ -135,12 +138,96 @@ public class AutoJumpGameTest implements FabricGameTest {
                     near(c,two?.42:0,other.getVelocity().y,"Independent player tick="+tick);
                     c.assertEquals(one&&tick!=13?1:0,packets(s,p).size(),"Automatic packet count");
                     c.assertEquals(two?1:0,packets(s,other).size(),"Independent packet count");
-                    p.setOnGround(false); other.setOnGround(false);
+                    near(c,tick==11||tick==21?.42:0,failed.getVelocity().y,"Failed attempt also consumes exactly ten ticks");
+                    c.assertEquals(tick==11||tick==21?1:0,packets(s,failed).size(),"No success packet for failed attempt");
+                    p.setOnGround(false); other.setOnGround(false); failed.setOnGround(false);
                     if(tick==5) c.getWorld().setTimeOfDay(time+24000);
                     if(tick==24) { c.getWorld().setTimeOfDay(time); s.close(); c.complete(); }
                 } catch(Throwable e) { c.getWorld().setTimeOfDay(time); s.close(); throw e; }
             });
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int sessions(net.minecraft.server.MinecraftServer server) throws Exception {
+        var field=AutoJumpChallenge.class.getDeclaredField("SESSIONS"); field.setAccessible(true);
+        var all=(Map<Object,Map<?,?>>)field.get(null);
+        return all.containsKey(server)?all.get(server).size():0;
+    }
+    private static void disconnect(ServerPlayerEntity p) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(p.networkHandler,p.getServer());
+        p.getServer().getPlayerManager().remove(p);
+    }
+    private static CurseCycleState reload(TestContext c) throws Exception {
+        var manager=c.getWorld().getServer().getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(c.getWorld().getServer()).markDirty(); manager.save();
+        var disk=manager.readNbt(CurseCycleState.STATE_KEY,null,SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded=CurseCycleState.createFromNbt(disk.getCompound("data"),c.getWorld().getRegistryManager());
+        manager.set(CurseCycleState.STATE_KEY,loaded); return loaded;
+    }
+
+    @GameTest(templateName=EMPTY_STRUCTURE, batchId="auto_jump_cleanup", tickLimit=100)
+    public void personalPacketsRepeatedCleanupAndDiskKeepForeignData(TestContext c) throws Exception {
+        var server=c.getWorld().getServer(); var challenge=ChallengeRegistry.get(ID);
+        try(var s=new ChallengeScenario(c)) {
+            var p=s.player(); var other=s.player(); var uuid=p.getUuid();
+            s.state.getPersonalActiveChallengeIds(uuid).add(ID); s.state.markDirty();
+            packets(s,p); packets(s,other); ground(p); ground(other); AutoJumpChallenge.tick(server);
+            near(c,.42,p.getVelocity().y,"PERSONAL owner jumps"); near(c,0,other.getVelocity().y,"Other player unaffected");
+            var sent=packets(s,p); c.assertEquals(1,sent.size(),"One owner packet");
+            c.assertEquals(p.getId(),sent.getFirst().entityId(),"Packet belongs to current object");
+            c.assertEquals(0,packets(s,other).size(),"No broadcast to unrelated player");
+            var buf=new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(),p.getRegistryManager());
+            try { AutoJumpPayload.CODEC.encode(buf,sent.getFirst());
+                c.assertEquals(sent.getFirst(),AutoJumpPayload.CODEC.decode(buf),"Actual server payload codec");
+                c.assertEquals(0,buf.readableBytes(),"Exact codec consumption");
+            } finally { buf.release(); }
+            c.assertEquals(1,sessions(server),"Only affected player retained");
+            s.state.getPersonalActiveChallengeIds(uuid).clear();
+            var cargo=new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND,17);
+            cargo.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,net.minecraft.text.Text.literal("foreign-auto-jump-review"));
+            p.getInventory().clear(); p.getInventory().setStack(8,cargo.copy()); p.experienceLevel=7; p.experienceProgress=.625F;
+            p.setHealth(17); p.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE,1200,0));
+            for(int cycle=0;cycle<32;cycle++) {
+                long serial=s.state.getActivationSerial(); s.activate("double_challenge:auto_jump,auto_jump");
+                c.assertTrue(s.state.getActivationSerial()==serial+1,"One activation serial");
+                c.assertEquals(List.of(ID),s.state.getActiveChallengeIds(),"Duplicate ID deduplicated");
+                packets(s,p); packets(s,other); ground(p); ground(other); AutoJumpChallenge.tick(server);
+                near(c,.42,p.getVelocity().y,"Fresh activation permits first attempt");
+                c.assertEquals(1,packets(s,p).size(),"One jump despite duplicate IDs");
+                c.assertEquals(1,packets(s,other).size(),"Second player has own packet");
+                c.assertEquals(2,sessions(server),"Bounded to online affected objects");
+                challenge.onStart(server,p); challenge.onPlayerJoin(server,p); jump(c,s,p,0);
+                challenge.setEnabled(false); AutoJumpChallenge.tick(server);
+                c.assertEquals(0,sessions(server),"Disabled tick frees all sessions");
+                challenge.setEnabled(true); jump(c,s,p,.42);
+                s.activate("double_challenge:auto_jump,no_sprint"); jump(c,s,p,.42);
+                p.setSprinting(true); c.assertFalse(p.isSprinting(),"Both mechanics active");
+                p.fallDistance=12; p.setVelocity(.2,-.7,.3); s.activate("no_sprint");
+                c.assertEquals(0,sessions(server),"Stop frees server bucket immediately");
+                near(c,-.7,p.getVelocity().y,"End retains flight"); near(c,12,p.fallDistance,"End retains fall distance");
+                p.setSprinting(true); c.assertFalse(p.isSprinting(),"End retains no_sprint");
+                c.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo,p.getInventory().getStack(8)),"Foreign items retained");
+                near(c,7,p.experienceLevel,"Foreign XP retained"); near(c,.625,p.experienceProgress,"Foreign XP progress");
+                near(c,17,p.getHealth(),"Foreign HP retained"); c.assertTrue(p.hasStatusEffect(StatusEffects.FIRE_RESISTANCE),"Foreign effect retained");
+            }
+            s.activate("double_challenge:auto_jump,no_sprint"); jump(c,s,p,.42);
+            disconnect(other); disconnect(p); c.assertEquals(0,sessions(server),"Actual Fabric DISCONNECT frees bucket");
+            s.state.getChallengeData().putString("foreign-auto-jump","preserve"); var loaded=reload(c);
+            c.assertFalse(loaded.getChallengeData().contains(ID),"No own persistent timer");
+            c.assertEquals("preserve",loaded.getChallengeData().getString("foreign-auto-jump"),"Foreign world data retained");
+            p=s.player(uuid); jump(c,s,p,.42);
+            c.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo,p.getInventory().getStack(8)),"Real playerdata read retains cargo");
+            near(c,7,p.experienceLevel,"Playerdata XP"); near(c,17,p.getHealth(),"Playerdata HP");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.FIRE_RESISTANCE),"Playerdata effect");
+            disconnect(p); CycleManager.activateChallenge(server,loaded,"no_sprint"); reload(c);
+            p=s.player(uuid); jump(c,s,p,0); p.setSprinting(true); c.assertFalse(p.isSprinting(),"Offline end keeps companion"); disconnect(p);
+            loaded=reload(c); CycleManager.activateChallenge(server,loaded,ID); reload(c);
+            CycleManager.activateChallenge(server,CurseCycleState.getServerState(server),"no_sprint"); reload(c);
+            p=s.player(uuid); jump(c,s,p,0); c.assertEquals(0,sessions(server),"Empty-server active/end has no stale state");
+        } finally { challenge.setEnabled(true); AutoJumpChallenge.clear(server); }
+        c.complete();
     }
 
     @GameTest(templateName=EMPTY_STRUCTURE, batchId="auto_jump_lifecycle", tickLimit=40)

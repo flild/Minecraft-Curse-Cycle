@@ -32,7 +32,81 @@
   Выход, респаун, завершение, disabled и остановка сервера освобождают сеансы.
   Деактивация не меняет текущую скорость, падение, предметы или чужие эффекты.
 
-## Автоматические проверки
+## Ревью 2026-11-05 — свежие проверки
+
+Reviewed production HEAD: `8907c0dff255f23ded260f962b3e8e4fcc9dcf4b`.
+Production/shared contracts не менялись. Механика: pass; расходы:
+no_issue_found / static; итог: pass_with_limits.
+
+- `.\gradlew.bat build runGametest --offline -I build/auto-jump-review-<phase>.init.gradle`:
+  baseline exit 0, 30s, 149 JUnit / 54 suites и 4/4 auto_jump GameTest;
+  expanded exit 0, 31s, 149 JUnit и 5/5 auto_jump;
+  final exit 0, 34s, 149 JUnit и 13/13 GameTest: 5 auto_jump, 4 heavy_body,
+  4 gravity_ten. Все failure/error/skipped равны 0, normal server shutdown.
+  Логи: `build/auto-jump-review-<phase>.log`; XML:
+  `build/reports/auto-jump-review-<phase>.xml` и `-<phase>-junit/`.
+  Каждый init меняет только GameTest resources/entrypoints, fresh runDir
+  `build/gametest-auto-jump-review-<phase>-20261105`, JUnit/report paths;
+  gameplay settings, зависимости и production source sets прежние.
+- Предметные пути: настоящий PlayerEntity.jump, hunger/stat/sprint/Jump Boost,
+  no_jumping и остальные исключения, collision потолка/пола, fall damage,
+  GUI handler, режимы, смерть/respawn, Nether и disk reload. У Clock-теста
+  теперь три независимых игрока: успешные попытки 1/11/21, ручной прыжок 13
+  и следующая автоматика 23; неудача с нулевой силой на 1 тоже откладывает
+  следующую попытку до 11, даже если сила восстановлена на 2. Проверяются
+  реальные server ticks, повторный callback, изменение day time.
+- Новый `personalPacketsRepeatedCleanupAndDiskKeepForeignData`: фактический
+  адресный S2C и codec, PERSONAL не влияет на второго игрока; 32 активации
+  duplicate ID/serial, повторные start/join, disabled tick, stop/no_sprint,
+  размер session map 1/2/0; реальный Fabric DISCONNECT и playerdata read/write,
+  PersistentStateManager save/read/set active/offline-ended/empty-server end.
+  Named 17 diamonds, XP 7 + .625, HP 17, Fire Resistance и чужие world data
+  не откатываются. Сохранение проверено в одной JVM. Парные GameTest отдельно
+  исполняют actual auto/heavy/gravity jump/travel и оба порядка окончания пары.
+- `.\gradlew.bat runClient --offline -I src/clientprobe/auto_jump/init.gradle`:
+  attempt 1 exit 1, 2s: новый fixture пытался переопределить final isRemoved;
+  исправлен только fixture — реальное поле removalReason задаётся reflection.
+  Attempt 2 exit 0, 19s: `AUTO_JUMP_REVIEW_CLIENT_PASSED checks=2486`.
+  Сохранённый стенд исполняет production receiver/codec и реальные gates,
+  проверяет загрузку обоих common jump Mixin в CLIENT; 32 reset/start/end,
+  знаки motion/ground/manual ascent, 50 повторов approval без сложения,
+  removed/old entity/null/death/modes/fluid/vehicle/flight/no_jumping/no_sprint.
+  Unsafe ClientWorld/ClientPlayer; подменены world, alive/modes, ground,
+  velocity, vehicle/fluid/climbing/flight accessors. Синхронизация вызывается
+  вручную. Нет окна, input sampling, реальной сети, client jump/travel/HUD.
+  Actual jump/travel исполняются SERVER GameTest, не этим probe.
+- Restore `.\gradlew.bat processGametestResources --offline`: exit 0, 1s;
+  штатные 43 entrypoints восстановлены. Verifier:
+  `python build/auto-jump-review-verify.py`, лог `build/auto-jump-review-verifier.log`:
+  hashes/metadata/registration/Mixin/current XML/CLIENT/restored resources/clean JARs.
+  Первая попытка verifier exit 1 искала слово does, разорванное переносом
+  PowerShell-лога; исправлен только поиск, сохранён verifier-attempt1.log.
+- Ошибки подготовки: sandbox helper ACL5 не создал процесс; разрешённый
+  escalated exec работает. Unicode в Python stdin исправлен поиском paths;
+  первый baseline exit 1, 903ms, не нашёл ещё не созданный init и тестов не
+  выполнял (`build/auto-jump-review-baseline-setup-failed.log`). Lock-файлы,
+  кэш и зависимости не менялись. Эти попытки не засчитаны успешными тестами.
+
+Расходы оценены статически. P — online players, S — own sessions <= P,
+G/A — GLOBAL/PERSONAL IDs, K — client effective IDs. Каждый server tick:
+prune O(S*(G+A)) и player loop O(P*(G+A)); собственный Clock O(1).
+Session.matches/active вызывают PersistentState lookup с выделением Type,
+горячие jump Mixin/CallbackInfo, boxing Integer и lambda/removeIf имеют цену.
+При inactive остаётся обход P/gate, пустой bucket удаляется; Player/server
+references удерживаются только до cleanup/следующего tick, SERVER_STOPPED
+освобождает весь bucket. Один S2C на успешную auto attempt, не чаще одного
+в 10 server ticks на UUID; 24 bytes doubles + VarInt entity ID без framing,
+без C2S/tick-broadcast/собственного NBT. CLIENT receive O(K), только по пакету.
+Общие cycle dispatch/sync/HUD и vanilla jump/travel/сеть оцениваются отдельно.
+FPS/MSPT, allocations и retained memory не измерены; функциональные счётчики
+не являются нагрузочным профилем.
+
+Открыты auto_jump-L01 (обычный клиент/физический ввод/HUD/меню/lifecycle/пары),
+L02 (реальные клиенты/сеть/RTT/TPS), L03 (полный новый JVM active/ended/offline),
+L04 (одинаковые inactive/active/load профили). Точные шаги ниже и в локальном
+`Промпты/reviews/23-auto_jump.md`. Прежние результаты не являются fresh evidence.
+
+## Исторические автоматические проверки реализации
 
 Дата: 2026-10-27. Minecraft 1.21.1, Yarn 1.21.1+build.3, Java 21.
 
