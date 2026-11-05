@@ -81,7 +81,7 @@ public class InvertedMouseGameTest implements FabricGameTest {
             assertIds(context, s.channel(second), List.of("no_sprint"));
             second.setSprinting(true);
             context.assertFalse(second.isSprinting(), "Stopping input inversion does not remove no_sprint");
-            var source = server.getCommandSource().withLevel(4);
+            var source = server.getCommandSource().withLevel(2);
             for (var command : List.of("fdc list", "fdc activate inverted_mouse", "fdc active"))
                 context.assertTrue(server.getCommandManager().getDispatcher().execute(command, source) > 0,
                         "Command succeeds: " + command);
@@ -122,6 +122,77 @@ public class InvertedMouseGameTest implements FabricGameTest {
         context.complete();
     }
 
+
+    private static void disconnect(net.minecraft.server.network.ServerPlayerEntity player) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                .onPlayDisconnect(player.networkHandler, player.getServer());
+        player.getServer().getPlayerManager().remove(player);
+    }
+
+    private static CurseCycleState reload(TestContext context) throws Exception {
+        var server = context.getWorld().getServer();
+        var manager = server.getOverworld().getPersistentStateManager();
+        CurseCycleState.getServerState(server).markDirty(); manager.save();
+        var saved = manager.readNbt(CurseCycleState.STATE_KEY, null,
+                SharedConstants.getGameVersion().getSaveVersion().getId());
+        var loaded = CurseCycleState.createFromNbt(saved.getCompound("data"), context.getWorld().getRegistryManager());
+        manager.set(CurseCycleState.STATE_KEY, loaded);
+        return loaded;
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "inverted_mouse_cleanup")
+    public void repeatedActivationCodecAndRealDiskPreserveForeignState(TestContext context) throws Exception {
+        try (var s = new ChallengeScenario(context)) {
+            var server = context.getWorld().getServer();
+            var player = s.player(); var other = s.player(); var uuid = player.getUuid();
+            var cargo = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17);
+            cargo.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                    net.minecraft.text.Text.literal("foreign-inverted-mouse-review"));
+            player.getInventory().clear(); player.getInventory().setStack(8, cargo.copy());
+            player.experienceLevel = 7; player.experienceProgress = .625F; player.setHealth(17);
+            player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 1200, 0));
+            for (int cycle = 0; cycle < 32; cycle++) {
+                long serial = s.state.getActivationSerial(); s.activate("double_challenge:inverted_mouse,inverted_mouse");
+                context.assertTrue(s.state.getActivationSerial() == serial + 1, "One new activation serial");
+                assertIds(context, s.channel(player), List.of(ID)); assertIds(context, s.channel(other), List.of(ID));
+                var challenge = ChallengeRegistry.get(ID);
+                challenge.onStart(server, player); challenge.onPlayerJoin(server, player);
+                challenge.onPlayerLeave(server, player); challenge.onStop(server, player);
+                CycleManager.syncState(server, s.state, CurseCycleMod.getConfig());
+                assertIds(context, s.channel(player), List.of(ID));
+                s.activate("double_challenge:inverted_mouse,no_sprint");
+                assertIds(context, s.channel(player), List.of(ID, "no_sprint"));
+                player.setSprinting(true); context.assertFalse(player.isSprinting(), "Both mechanics active");
+                s.activate("no_sprint"); assertIds(context, s.channel(player), List.of("no_sprint"));
+                player.setSprinting(true); context.assertFalse(player.isSprinting(), "End retains companion");
+                context.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo, player.getInventory().getStack(8)), "Foreign cargo retained");
+                context.assertEquals(7, player.experienceLevel, "Foreign XP retained");
+                context.assertEquals(.625F, player.experienceProgress, "Foreign XP progress retained");
+                context.assertEquals(17F, player.getHealth(), "Foreign HP retained");
+                context.assertTrue(player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE), "Foreign effect retained");
+            }
+            s.activate("double_challenge:inverted_mouse,no_sprint");
+            s.state.getChallengeData().putString("foreign-inverted-mouse", "preserve");
+            disconnect(player); disconnect(other);
+            var loaded = reload(context);
+            context.assertFalse(loaded.getChallengeData().contains(ID), "No mouse settings or snapshot persisted");
+            context.assertEquals("preserve", loaded.getChallengeData().getString("foreign-inverted-mouse"), "Foreign world data retained");
+            player = s.player(uuid); assertIds(context, s.channel(player), List.of(ID, "no_sprint"));
+            context.assertTrue(net.minecraft.item.ItemStack.areEqual(cargo, player.getInventory().getStack(8)), "Actual playerdata cargo read");
+            context.assertEquals(17F, player.getHealth(), "Playerdata HP");
+            context.assertEquals(7, player.experienceLevel, "Playerdata XP");
+            disconnect(player); CycleManager.activateChallenge(server, loaded, "no_sprint"); reload(context);
+            player = s.player(uuid); assertIds(context, s.channel(player), List.of("no_sprint"));
+            player.setSprinting(true); context.assertFalse(player.isSprinting(), "Offline end retains no_sprint");
+            disconnect(player);
+            CycleManager.activateChallenge(server, CurseCycleState.getServerState(server), ID); reload(context);
+            CycleManager.activateChallenge(server, CurseCycleState.getServerState(server), "no_sprint"); reload(context);
+            player = s.player(uuid); assertIds(context, s.channel(player), List.of("no_sprint"));
+        }
+        context.complete();
+    }
+
     private static void assertIds(TestContext context, EmbeddedChannel channel, List<String> expected) {
         channel.runPendingTasks();
         channel.flush();
@@ -133,5 +204,14 @@ public class InvertedMouseGameTest implements FabricGameTest {
         }
         context.assertTrue(last != null, "A real S2C state packet reaches the recipient");
         context.assertEquals(expected, last.activeChallengeIds(), "Client receives only current effective enabled IDs");
+        var buffer = new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(), context.getWorld().getRegistryManager());
+        try {
+            CurseCycleSyncPayload.CODEC.encode(buffer, last);
+            var decoded = CurseCycleSyncPayload.CODEC.decode(buffer);
+            context.assertEquals(expected, decoded.activeChallengeIds(), "Actual S2C codec retains effective IDs");
+            context.assertEquals(last.currentDay(), decoded.currentDay(), "Codec retains day");
+            context.assertEquals(last.ticksUntilNext(), decoded.ticksUntilNext(), "Codec retains deadline");
+            context.assertEquals(0, buffer.readableBytes(), "Codec consumes exact packet");
+        } finally { buffer.release(); }
     }
 }
