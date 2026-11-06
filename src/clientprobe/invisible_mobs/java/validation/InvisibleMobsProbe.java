@@ -39,6 +39,7 @@ public final class InvisibleMobsProbe implements PreLaunchEntrypoint {
     private static final String ID = "invisible_mobs";
     public static int fires, shadows, hitboxes;
     private static int renders, checks;
+    private static int renderCalls;
     private static boolean alive = true;
     private static GameMode mode = GameMode.SURVIVAL;
     private static Unsafe unsafe;
@@ -104,10 +105,13 @@ public final class InvisibleMobsProbe implements PreLaunchEntrypoint {
         return mob;
     }
     private static void render(Mob mob, boolean outline, boolean hidden) throws Exception {
+        renderCalls++;
         set(dispatcher, EntityRenderDispatcher.class, "renderers", Map.of(mob.type, renderer));
         renders = shadows = fires = hitboxes = 0;
         received = null;
         var matrices = new MatrixStack();
+        matrices.translate(7, -11, 3);
+        matrices.multiply(new Quaternionf().rotationXYZ(.2f, -.3f, .4f));
         var before = new org.joml.Matrix4f(matrices.peek().getPositionMatrix());
         var provider = outline ? OUTLINE : NORMAL;
         dispatcher.render(mob, 1, 2, 3, 0, .5f, matrices, provider, 15728880);
@@ -219,8 +223,52 @@ public final class InvisibleMobsProbe implements PreLaunchEntrypoint {
             render(mob, false, false);
             sync("no_sprint");
             render(mob, false, false);
+            // Repeated reset/start/duplicate-sync/end: the very same loaded entity
+            // switches immediately without respawn, cached visibility or option snapshots.
+            for (int cycle = 0; cycle < 32; cycle++) {
+                ClientDataHolder.reset();
+                render(mob, false, false);
+                for (int packet = 0; packet < 50; packet++) sync(ID, ID, "no_sprint");
+                render(mob, true, true);
+                sync("no_sprint");
+                render(mob, true, false);
+                sync(ID);
+                render(mob, false, true);
+            }
+            // Exact renderer boundary is independent of real equipment ownership.
+            sync(ID, "netherite_mobs");
+            render(mob, true, true);
+            sync("netherite_mobs");
+            render(mob, true, false);
+            sync(ID, "netherite_mobs");
+            sync(ID);
+            render(mob, true, true);
+            // Both pair endings keep the other current-frame filter active.
+            sync(ID, "blind_hud");
+            render(mob, true, true);
+            check(com.cursecycle.client.BlindHud.shouldApply(client), "Both filters active");
+            var hud = unsafe.allocateInstance(net.minecraft.client.gui.hud.InGameHud.class);
+            set(hud, net.minecraft.client.gui.hud.InGameHud.class, "client", client);
+            var health = net.minecraft.client.gui.hud.InGameHud.class.getDeclaredMethod("renderStatusBars", net.minecraft.client.gui.DrawContext.class);
+            health.setAccessible(true);
+            health.invoke(hud, new Object[]{null}); // Actual transformed HEAD cancels before DrawContext access.
+            sync(ID);
+            render(mob, true, true);
+            check(!com.cursecycle.client.BlindHud.shouldApply(client), "HUD end leaves mob filter");
+            sync(ID, "blind_hud");
+            sync("blind_hud");
+            render(mob, true, false);
+            check(com.cursecycle.client.BlindHud.shouldApply(client), "Mob end leaves HUD filter");
+            health.invoke(hud, new Object[]{null});
+            // Vanilla bypasses shadow and fire independently of the model gate.
+            sync(ID);
+            mob.burning = false;
+            render(mob, false, true);
+            mob.burning = true;
+            sync("no_sprint");
+            render(mob, false, false);
             check(!options.hudHidden && options.getEntityShadows().getValue() && dispatcher.shouldRenderHitboxes(), "User options unchanged");
-            System.out.println("INVISIBLE_MOBS_CLIENT_PROBE_PASSED checks=" + checks);
+            System.out.println("INVISIBLE_MOBS_CLIENT_PROBE_PASSED checks=" + checks + " renderCalls=" + renderCalls);
             System.exit(0);
         } catch (Throwable error) {
             error.printStackTrace();

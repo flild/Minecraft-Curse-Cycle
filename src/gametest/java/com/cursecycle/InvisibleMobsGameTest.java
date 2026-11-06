@@ -27,32 +27,37 @@ public class InvisibleMobsGameTest implements FabricGameTest {
             for (int i = 0; i < 61; i++) player.tick();
             var zombie = context.spawnEntity(net.minecraft.entity.EntityType.ZOMBIE, new net.minecraft.util.math.BlockPos(1, 2, 1));
             var invisible = context.spawnEntity(net.minecraft.entity.EntityType.ZOMBIE, new net.minecraft.util.math.BlockPos(2, 2, 1));
-            zombie.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
-            zombie.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new net.minecraft.item.ItemStack(net.minecraft.item.Items.NETHERITE_CHESTPLATE));
-            zombie.setTarget(player);
-            zombie.setGlowing(true);
-            invisible.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.INVISIBILITY, 1200));
-            invisible.tick();
-            context.assertTrue(invisible.isInvisible(), "Foreign vanilla invisibility has a positive control");
-            s.activate(ID);
-            context.assertFalse(zombie.isInvisible(), "Challenge does not set a real invisibility flag");
-            context.assertFalse(zombie.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.INVISIBILITY), "No invisibility effect applied");
-            context.assertTrue(zombie.getTarget() == player && zombie.isGlowing(), "Target and glowing state preserved");
-            float before = player.getHealth();
-            player.timeUntilRegen = 0;
-            zombie.tryAttack(player);
-            context.assertTrue(player.getHealth() < before, "Mob attack actually reduces player health");
-            before = zombie.getHealth();
-            zombie.timeUntilRegen = 0;
-            zombie.damage(player.getDamageSources().playerAttack(player), 8);
-            context.assertTrue(zombie.getHealth() < before, "Equipped mob can still receive real damage");
-            float current = zombie.getHealth();
-            s.activate("no_sprint");
-            context.assertEquals(current, zombie.getHealth(), "Ending does not restore mob health");
-            context.assertTrue(zombie.getMainHandStack().isOf(net.minecraft.item.Items.DIAMOND_SWORD)
-                    && zombie.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isOf(net.minecraft.item.Items.NETHERITE_CHESTPLATE), "Equipment retained");
-            context.assertTrue(invisible.isInvisible() && invisible.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.INVISIBILITY), "Foreign invisibility survives cleanup");
-            context.assertFalse(zombie.isInvisible(), "Ordinary mob remains naturally visible");
+            try {
+                zombie.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
+                zombie.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new net.minecraft.item.ItemStack(net.minecraft.item.Items.NETHERITE_CHESTPLATE));
+                zombie.setTarget(player);
+                zombie.setGlowing(true);
+                invisible.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.INVISIBILITY, 1200));
+                invisible.tick();
+                context.assertTrue(invisible.isInvisible(), "Foreign vanilla invisibility has a positive control");
+                s.activate(ID);
+                context.assertFalse(zombie.isInvisible(), "Challenge does not set a real invisibility flag");
+                context.assertFalse(zombie.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.INVISIBILITY), "No invisibility effect applied");
+                context.assertTrue(zombie.getTarget() == player && zombie.isGlowing(), "Target and glowing state preserved");
+                float before = player.getHealth();
+                player.timeUntilRegen = 0;
+                zombie.tryAttack(player);
+                context.assertTrue(player.getHealth() < before, "Mob attack actually reduces player health");
+                before = zombie.getHealth();
+                zombie.timeUntilRegen = 0;
+                zombie.damage(player.getDamageSources().playerAttack(player), 8);
+                context.assertTrue(zombie.getHealth() < before, "Equipped mob can still receive real damage");
+                float current = zombie.getHealth();
+                s.activate("no_sprint");
+                context.assertEquals(current, zombie.getHealth(), "Ending does not restore mob health");
+                context.assertTrue(zombie.getMainHandStack().isOf(net.minecraft.item.Items.DIAMOND_SWORD)
+                        && zombie.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isOf(net.minecraft.item.Items.NETHERITE_CHESTPLATE), "Equipment retained");
+                context.assertTrue(invisible.isInvisible() && invisible.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.INVISIBILITY), "Foreign invisibility survives cleanup");
+                context.assertFalse(zombie.isInvisible(), "Ordinary mob remains naturally visible");
+            } finally {
+                zombie.discard();
+                invisible.discard();
+            }
         }
         context.complete();
     }
@@ -170,5 +175,107 @@ public class InvisibleMobsGameTest implements FabricGameTest {
         }
         context.assertTrue(last != null, "A real S2C state packet reaches the recipient");
         context.assertEquals(expected, last.activeChallengeIds(), "Client receives only current effective enabled IDs");
+        var buffer = new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(), context.getWorld().getRegistryManager());
+        try {
+            CurseCycleSyncPayload.CODEC.encode(buffer, last);
+            var decoded = CurseCycleSyncPayload.CODEC.decode(buffer);
+            context.assertEquals(expected, decoded.activeChallengeIds(), "Wire codec retains effective IDs");
+            context.assertEquals(last.currentDay(), decoded.currentDay(), "Wire codec retains day");
+            context.assertEquals(last.ticksUntilNext(), decoded.ticksUntilNext(), "Wire codec retains deadline");
+            context.assertEquals(last.nextChallengeId(), decoded.nextChallengeId(), "Wire codec retains next ID");
+            context.assertEquals(last.historyChallengeIds(), decoded.historyChallengeIds(), "Wire codec retains history");
+            context.assertEquals(last.blockedDirection(), decoded.blockedDirection(), "Wire codec retains companion data");
+            context.assertEquals(0, buffer.readableBytes(), "Exact packet consumed");
+        } finally { buffer.release(); }
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "invisible_mobs")
+    public void repeatedActivationAndEmptyServerHaveNoEntityOrPlayerSnapshot(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var server = context.getWorld().getServer();
+            var player = s.player();
+            player.getInventory().setStack(8, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17));
+            player.setHealth(17);
+            player.experienceLevel = 7;
+            player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 1000));
+            long serial = s.state.getActivationSerial();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                s.activate("double_challenge:invisible_mobs,invisible_mobs");
+                context.assertTrue(s.state.getActivationSerial() > serial, "Same ID starts a new activation");
+                serial = s.state.getActivationSerial();
+                assertIds(context, s.channel(player), List.of(ID));
+                s.activate("double_challenge:invisible_mobs,no_sprint");
+                assertIds(context, s.channel(player), List.of(ID, "no_sprint"));
+                player.setSprinting(true);
+                context.assertFalse(player.isSprinting(), "Companion works while filtering");
+                s.activate(ID);
+                player.setSprinting(true);
+                context.assertTrue(player.isSprinting(), "Ending companion leaves visual activation independent");
+                s.activate("no_sprint");
+                assertIds(context, s.channel(player), List.of("no_sprint"));
+                player.setSprinting(true);
+                context.assertFalse(player.isSprinting(), "Companion survives visual end");
+                context.assertEquals(17, player.getInventory().getStack(8).getCount(), "Foreign inventory unchanged");
+                context.assertEquals(17F, player.getHealth(), "Health unchanged");
+                context.assertEquals(7, player.experienceLevel, "XP unchanged");
+                context.assertTrue(player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE), "Foreign effect retained");
+                context.assertFalse(s.state.getChallengeData().contains(ID), "No persisted visual snapshot");
+            }
+            var uuid = player.getUuid();
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Empty-server fixture");
+            s.activate(ID);
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of(ID));
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            s.activate("no_sprint");
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of("no_sprint"));
+            context.assertEquals(17, player.getInventory().getStack(8).getCount(), "Actual playerdata preserves inventory on same-UUID join");
+            context.assertEquals(7, player.experienceLevel, "Actual playerdata preserves XP");
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "invisible_mobs")
+    public void issuedArmorPersistsAcrossBothPairEndings(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var player = s.player();
+            s.activate("double_challenge:invisible_mobs,netherite_mobs");
+            assertIds(context, s.channel(player), List.of(ID, "netherite_mobs"));
+            var mob = context.spawnEntity(net.minecraft.entity.EntityType.HUSK, new net.minecraft.util.math.BlockPos(1, 2, 1));
+            try {
+                mob.setAiDisabled(true);
+                context.getWorld().tickEntity(mob);
+                assertIssuedArmor(context, mob);
+                context.assertFalse(mob.isInvisible(), "Issued armor pair does not add real invisibility");
+                s.activate("netherite_mobs");
+                assertIds(context, s.channel(player), List.of("netherite_mobs"));
+                assertIssuedArmor(context, mob);
+                s.activate("double_challenge:invisible_mobs,netherite_mobs");
+                s.activate(ID);
+                assertIds(context, s.channel(player), List.of(ID));
+                assertIssuedArmor(context, mob);
+                var later = context.spawnEntity(net.minecraft.entity.EntityType.HUSK, new net.minecraft.util.math.BlockPos(2, 2, 1));
+                try {
+                    later.setAiDisabled(true);
+                    context.getWorld().tickEntity(later);
+                    for (var slot : net.minecraft.entity.EquipmentSlot.values()) if (slot.isArmorSlot())
+                        context.assertFalse(com.cursecycle.challenge.impl.NetheriteMobsChallenge.isIssued(later.getEquippedStack(slot)), "Ended companion does not issue new armor");
+                } finally { later.discard(); }
+            } finally { mob.discard(); }
+        }
+        context.complete();
+    }
+
+    private static void assertIssuedArmor(TestContext context, net.minecraft.entity.mob.MobEntity mob) {
+        for (var slot : List.of(net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET))
+            context.assertTrue(com.cursecycle.challenge.impl.NetheriteMobsChallenge.isIssued(mob.getEquippedStack(slot)), "Real birth hook issued and retained armor: " + slot);
     }
 }
