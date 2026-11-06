@@ -22,7 +22,63 @@ Frustum при 180° имеет ту же область, его проекци�
 Активность сохраняет общий `CurseCycleState`; включённые GLOBAL/PERSONAL ID
 приходят существующим sync_state. Reset при JOIN/DISCONNECT уже есть.
 
-## Автоматические проверки
+## Ревью 2026-11-06 — свежие проверки этапа 26
+
+Production-код и общие контракты не менялись; подтверждённых дефектов не найдено.
+Расширены только предметный GameTest и изолированный CLIENT probe.
+
+- `.\gradlew.bat build runGametest --offline -I build/upside-down-camera-review-baseline.init.gradle`
+  — exit 0, 1m 1s; 149 JUnit, 2/2 GameTest, штатное завершение сервера.
+- `.\gradlew.bat build runGametest --offline -I build/upside-down-camera-review-final.init.gradle`
+  — exit 0, 48s; 149 JUnit, 3/3 GameTest, штатное завершение сервера.
+  Изоляция: только `UpsideDownCameraGameTest`, отдельные resources/runDir/XML,
+  `build/gametest-upside-down-camera-review-<phase>-20261106`,
+  `build/reports/upside-down-camera-review-<phase>.xml` и `-<phase>-junit/`.
+  Init не меняет production/classpath; после проверки восстановить штатные
+  ресурсы через `.\gradlew.bat processGametestResources --offline` (43 entrypoints).
+- Существующие lifecycle/scopes/enabled/disk/no_sprint тесты исполнены заново.
+  Команды теперь проверяются с OP 2. Реальный S2C payload дополнительно проходит
+  CODEC encode/decode с проверкой полного потребления буфера.
+  Новый тест выполняет 32 цикла duplicate-ID → double с no_sprint → окончание:
+  новый serial, единственный ID, сохранные yaw/pitch/17 предметов/17 HP/7 XP,
+  нет собственного camera/settings NBT. Настоящий Fabric DISCONNECT invoker,
+  пустой сервер, активный и завершённый same-UUID join. EmbeddedChannel и диск
+  одной JVM не заменяют настоящую сеть и полный restart.
+- CLIENT команда: `.\gradlew.bat runClient --offline -I src/clientprobe/upside_down_camera/init.gradle`.
+  Логи `build/upside-down-camera-review-client-baseline.log` и `-client-final.log`.
+  Оба запуска exit 0: baseline 50s, final 51s;
+  `UPSIDE_DOWN_CAMERA_CLIENT_PROBE_PASSED: 810`, final `checks=14189`.
+  Сохранены 810 сравнений при 3 aspect × 3 perspective × 5 FOV × 9 yaw/pitch ×
+  2 hurt/bob fixtures и аудит ровно трёх transformed call sites.
+  Расширение исполняет настоящий transformed getFov и merged roll/offset handlers:
+  оба окончания пар tiny_fov/offset_crosshair/forced front/RPG,
+  HUD translate(+80,+40) без крена, один callback, восстановление GUI matrix
+  при успешной отрисовке и исключении; 32 reset × 50 duplicate sync,
+  актуальные перспектива/yaw/pitch/вектор взгляда после каждого окончания.
+  Gate production, без test Mixin. Unsafe client/options/player/world/window/
+  manager/renderer; alive/mode/camera accessors, заданные размеры окна и матрицы,
+  ручной updateState, recording Operation. Нет полного renderWorld/renderHand,
+  OpenGL, настоящей геометрии рук/map, raycast/выстрела, сети или options.txt.
+- Свежий `javap` текущего mapped GameRenderer:
+  `build/upside-down-camera-review-GameRenderer.javap.txt`.
+  Каждый basic projection создаёт новую матрицу; мир и руки получают отдельные
+  проекции перед vanilla hurt/bob, frustum — отдельную conservative projection.
+  UI использует другой путь; raycast/Camera rotation не переписываются.
+
+Накладные расходы оценены **static**: до gate выполняется вызов handler,
+проверки контекста и alive/mode; contains по K effective IDs — O(K).
+До трёх вызовов за обычный world/hand проход; активный rotateZ меняет свежую
+матрицу на месте, O(1), без собственного кэша/пакетов/таймеров/NBT.
+Общий server tick-dispatch работает каждый тик, sync — каждые 20 ticks;
+списки/история и HUD имеют цену.
+FPS/MSPT/allocations/retained memory не измерены; счётчики probe не профиль.
+Ручные сценарии ниже остаются невыполненными, в том числе реальные транспорт,
+элитры, hurt/bob, culling/lighting и центральное попадание. Полный отчёт и
+точные ограничения: локальный `Промпты/reviews/26-upside_down_camera.md`.
+
+## Исторические автоматические проверки реализации
+
+Следующие результаты относятся к первоначальной реализации, не к ревью 2026-11-06.
 
 - `.\gradlew.bat test compileGametestJava --offline` — BUILD SUCCESSFUL,
   129 JUnit, failures/errors/skipped = 0; три новых теста регистрации,

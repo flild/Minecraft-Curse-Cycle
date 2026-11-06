@@ -30,6 +30,7 @@ import java.util.List;
  * Does not run OpenGL/renderWorld or replace production gates/methods. */
 public final class UpsideDownCameraProbe implements PreLaunchEntrypoint {
     private static final String ID = "upside_down_camera";
+    private static int checks;
     private static boolean alive = true;
     private static GameMode mode = GameMode.SURVIVAL;
     private static GameRenderer renderer;
@@ -52,6 +53,7 @@ public final class UpsideDownCameraProbe implements PreLaunchEntrypoint {
     }
 
     private static void check(boolean ok, String why) {
+        checks++;
         if (!ok) throw new AssertionError(why);
     }
 
@@ -101,6 +103,97 @@ public final class UpsideDownCameraProbe implements PreLaunchEntrypoint {
     private static void inactive(String why) throws Exception {
         var original = renderer.getBasicProjectionMatrix(70);
         same(original, apply(new Matrix4f(original)), why);
+    }
+
+    public static class ProbeCamera extends net.minecraft.client.render.Camera {
+        @Override public Entity getFocusedEntity() { return null; }
+        @Override public net.minecraft.block.enums.CameraSubmersionType getSubmersionType() {
+            return net.minecraft.block.enums.CameraSubmersionType.NONE;
+        }
+    }
+
+    public static class Context extends net.minecraft.client.gui.DrawContext {
+        Context(MinecraftClient client) { super(client, null); }
+        @Override public int getScaledWindowWidth() { return 800; }
+        @Override public int getScaledWindowHeight() { return 600; }
+    }
+
+    private static void companionsAndRepeatedSync(MinecraftClient client, Unsafe unsafe) throws Exception {
+        var fov = GameRenderer.class.getDeclaredMethod("getFov", net.minecraft.client.render.Camera.class, float.class, boolean.class);
+        fov.setAccessible(true);
+        var camera = new ProbeCamera();
+        var option = new net.minecraft.client.option.SimpleOption<Integer>("probe.fov",
+                net.minecraft.client.option.SimpleOption.emptyTooltip(), (text, value) -> net.minecraft.text.Text.empty(),
+                new net.minecraft.client.option.SimpleOption.ValidatingIntSliderCallbacks(0, 120), 80, value -> {});
+        set(client.options, GameOptions.class, "fov", option);
+        set(renderer, GameRenderer.class, "lastFovMultiplier", 1f);
+        set(renderer, GameRenderer.class, "fovMultiplier", 1f);
+        var hudClass = net.minecraft.client.gui.hud.InGameHud.class;
+        var hud = unsafe.allocateInstance(hudClass);
+        set(hud, hudClass, "client", client);
+        var offset = Arrays.stream(hudClass.getDeclaredMethods())
+                .filter(m -> m.getName().contains("cursecycle$offsetCrosshair")).findFirst().orElseThrow();
+        offset.setAccessible(true);
+        for (boolean rolling : new boolean[]{true, false}) {
+            for (boolean companion : new boolean[]{true, false}) {
+                // Real transformed getFov followed by the real merged projection handler.
+                sync(rolling ? ID : "no_sprint", companion ? "tiny_fov" : "no_sprint");
+                double degrees = (double) fov.invoke(renderer, camera, 1f, true);
+                check(degrees == (companion ? 15 : 80), "FOV remains independent on either end of roll/tiny pair");
+                check((double) fov.invoke(renderer, camera, 1f, false) == 70, "Hand FOV stays vanilla");
+                var projection = renderer.getBasicProjectionMatrix(degrees);
+                var expected = new Matrix4f(projection);
+                if (rolling) expected.rotateZ((float) Math.PI);
+                same(expected, apply(projection), "FOV projection receives exactly the current roll");
+
+                sync(rolling ? ID : "no_sprint", companion ? "offset_crosshair" : "no_sprint");
+                for (boolean failDraw : new boolean[]{false, true}) {
+                    var context = new Context(client);
+                    var originalMatrix = new Matrix4f(context.getMatrices().peek().getPositionMatrix());
+                    int[] calls = {0};
+                    var failure = new IllegalStateException("probe draw failure");
+                    com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> original = args -> {
+                        calls[0]++;
+                        var matrix = context.getMatrices().peek().getPositionMatrix();
+                        same(new Matrix4f().translation(companion ? 80 : 0, companion ? 40 : 0, 0),
+                                matrix, "HUD screen translation is not rolled with scene");
+                        if (failDraw) throw failure;
+                        return null;
+                    };
+                    try {
+                        offset.invoke(hud, context, net.minecraft.client.render.RenderTickCounter.ZERO, original);
+                        check(!failDraw, "Original draw failure propagates");
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        check(failDraw && e.getCause() == failure, "Expected original draw exception");
+                    }
+                    check(calls[0] == 1, "Exactly one original HUD callback");
+                    same(originalMatrix, context.getMatrices().peek().getPositionMatrix(), "GUI matrix restored on success/failure");
+                    var vanilla = renderer.getBasicProjectionMatrix(80);
+                    var current = new Matrix4f(vanilla);
+                    if (rolling) current.rotateZ((float) Math.PI);
+                    same(current, apply(vanilla), "HUD end leaves only current scene roll");
+                }
+            }
+        }
+        for (int cycle = 0; cycle < 32; cycle++) {
+            ClientDataHolder.reset();
+            inactive("Reset has no retained projection");
+            var perspective = Perspective.values()[cycle % 3];
+            client.options.setPerspective(perspective);
+            client.player.setYaw(37 + cycle);
+            client.player.setPitch(-23 + cycle);
+            var direction = client.player.getRotationVec(1);
+            for (int duplicate = 0; duplicate < 50; duplicate++) {
+                sync(ID, ID, "no_sprint");
+                var current = renderer.getBasicProjectionMatrix(80 + cycle);
+                same(new Matrix4f(current).rotateZ((float) Math.PI), apply(current), "Duplicate sync never accumulates roll");
+            }
+            sync("no_sprint");
+            inactive("Current projection after every end");
+            check(client.options.getPerspective() == perspective && client.player.getYaw() == 37 + cycle
+                    && client.player.getPitch() == -23 + cycle && client.player.getRotationVec(1).equals(direction),
+                    "Latest perspective/angles/aim vector retained");
+        }
     }
 
     @Override public void onPreLaunch() {
@@ -225,9 +318,16 @@ public final class UpsideDownCameraProbe implements PreLaunchEntrypoint {
                 sync(forced);
                 inactive("Ending roll leaves forced perspective");
                 check(options.getPerspective() == expected, "Forced perspective retained");
+                sync(ID);
+                options.setPerspective(Perspective.FIRST_PERSON);
+                check(options.getPerspective() == Perspective.FIRST_PERSON, "Ending forced perspective leaves free setter");
+                same(new Matrix4f(renderer.getBasicProjectionMatrix(70)).mul(rotation),
+                        apply(renderer.getBasicProjectionMatrix(70)), "Ending forced perspective leaves roll");
             }
+            companionsAndRepeatedSync(client, unsafe);
             System.out.println("UPSIDE_DOWN_CAMERA_CLIENT_PROBE_PASSED: " + comparisons
-                    + " vanilla projection/injected handler comparisons; 3 transformed render call sites audited."
+                    + " vanilla projection/injected handler comparisons; checks=" + checks + "; 3 transformed render call sites audited."
+                    + " Actual getFov/roll/offset handlers, both pair endings, HUD failure cleanup, 32 reset x 50 duplicate sync cycles."
                     + " Unsafe fixtures; no OpenGL, actual renderWorld/renderHand execution, live input or network.");
             System.exit(0);
         } catch (Throwable t) {
