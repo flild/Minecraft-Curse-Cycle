@@ -29,7 +29,7 @@ JOIN/DISCONNECT сбрасывают `ClientDataHolder`. Серверные де
 Сигнатура проверена по локальному байткоду Minecraft 1.21.1 и
 [Yarn 1.21.1+build.3](https://maven.fabricmc.net/docs/yarn-1.21.1+build.3/net/minecraft/client/gui/hud/InGameHud.html#renderCrosshair(net.minecraft.client.gui.DrawContext,net.minecraft.client.render.RenderTickCounter)).
 
-## Автоматические проверки
+## Исторические проверки реализации (не новое ревью)
 
 - 132 JUnit, failures/errors/skipped = 0. Три новых теста проверяют регистрацию,
   точный текст, double, текущую активность, режимы/жизнь/reset и границы координат
@@ -73,6 +73,91 @@ GameTest: `build/reports/gametest.xml`. Gradle использует сущест
 `F:\Programs\GradleCache` с разрешённым доступом; lock-файлы и зависимости
 не менялись. При разработке исправлены неверное ожидаемое число одного JUnit
 и неполный Unsafe fixture удаления игрока в стенде.
+
+## Ревью этапа 27 — 2026-11-06
+
+Production-дефектов не обнаружено. Изменены только предметные GameTest,
+CLIENT probe и этот документ. Механика `pass`, расходы `no_issue_found / static`,
+этап `pass_with_limits`. Отчёт: `Промпты/reviews/27-offset_crosshair.md`.
+Исторические числа выше не используются как новое доказательство.
+
+Свежие команды (все exit 0):
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/offset-crosshair-review-baseline.init.gradle
+.\gradlew.bat runClient --offline -I src/clientprobe/offset_crosshair/init.gradle
+.\gradlew.bat build runGametest --offline -I build/offset-crosshair-review-final.init.gradle
+.\gradlew.bat runClient --offline -I src/clientprobe/offset_crosshair/init.gradle
+.\gradlew.bat processGametestResources --offline
+python build/offset-crosshair-review-verify.py
+```
+
+- Baseline build/GT: 36 s, 149 JUnit / 54 suites, 2/2 предметных GameTest.
+  Final build/GT: 37 s, 149 JUnit / 54 suites, 3/3 предметных GameTest.
+  Failures/errors/skipped = 0; штатное завершение сервера.
+  Логи `build/offset-crosshair-review-<phase>.log`, XML
+  `build/reports/offset-crosshair-review-<phase>.xml` и `-<phase>-junit/`.
+  Init меняет только metadata/resource input, runDir и расположение отчётов;
+  не меняет production/classpath. Мир каждой фазы новый:
+  `build/gametest-offset-crosshair-review-<phase>-20261106`.
+- T1: два embedded игрока и поздний третий; реальные исходящие S2C и codec,
+  режимы, respawn, Nether/End/Overworld, same-UUID reconnect; настоящие
+  `PersistentStateManager.save/readNbt/createFromNbt/set` active/ended/offline end;
+  no_sprint во время пары и после замены; три OP2-команды и регистрация.
+  T2: PERSONAL owner/other, GLOBAL, дубли, disabled/enabled.
+  Новый T3: 32 цикла новой activationSerial, duplicate-ID, double и снятия;
+  инвентарь 17 diamonds, HP 17, XP level 7 и server yaw/pitch 37/-23 сохранны;
+  нет собственного settings NBT; настоящий Fabric DISCONNECT invoker,
+  start/end при пустом сервере и повторный вход с тем же UUID.
+- CLIENT baseline: 31 s, 1443 вызова renderCrosshair. CLIENT final: 25 s,
+  `OFFSET_CROSSHAIR_CLIENT_PROBE_PASSED comparisons=3131 checks=15837`.
+  Логи `build/offset-crosshair-review-client-<phase>.log`, свежий export
+  `build/offset-crosshair-client-probe/run/.mixin.out/`.
+  Исполняется полный настоящий transformed `InGameHud.renderCrosshair`
+  с production gate; ASM проверяет ровно один вызов обёртки только из него.
+  Матрица исходного контекста не единичная; обе матрицы и глубина DrawContext
+  восстановлены. Есть намеренное исключение textured draw для `finally`.
+  Ожидание координат теперь независимо от `OffsetCrosshair.translation`.
+  Сетка: перспективы 3 × режимы 4 × debug 2 × AttackIndicator 3 × cooldown 2
+  × GUI sizes 5 (нечётные, clamp и <16); независимо проверены число текстур,
+  отсутствие дубля и число 3D-вызовов. Дополнительно reducedDebugInfo игрока
+  и options во всех 4 сочетаниях, настоящие два vanilla F1 layer predicates,
+  32 reset/resize × 50 duplicate sync и завершение по актуальному размеру.
+  Реальные merged roll/FOV handlers + полный renderCrosshair проверены
+  для обеих пар и обоих окончаний: FOV 15/80, roll 180/0, HUD +80/+40/0.
+  Это вызовы границ handlers, а не полный renderWorld/getFov/кадр пары.
+- Свежий javap текущего mapped Minecraft: vanilla 3D model-view умножает
+  DrawContext до экранного центра и camera rotation; CROSSHAIR attack textures
+  внутри метода, HOTBAR отдельно; vanilla layer predicates читают hudHidden,
+  InGameHud.render идёт до Screen.renderWithTooltip.
+  Файлы `build/offset-crosshair-review-{InGameHud,GameRenderer}.javap.txt`.
+- Обычный `processGametestResources` возвращает 43 исходных entrypoints.
+  Verifier сверяет SHA5/metadata6/80-40-8/регистрацию/client Mixin, свежие
+  JUnit/GameTest/CLIENT результаты и отсутствие validation/Probe/GameTest
+  в production binary и sources JAR.
+
+Пределы: Unsafe MinecraftClient/world/player/options/renderer и текущие
+mode/alive/debug/cooldown — fixtures; размер GUI задаёт Context. Текстурные
+вызовы записываются Context, GL blend/apply и debug line draw отключены
+отдельным probe JAR. Sync/reset вызываются вручную. Нет настоящего окна,
+OpenGL, полного LayeredDrawer/HUD/GameRenderer кадра, нажатий F1/F5, GUI scale
+через окно, options.txt, настоящей сети или двух процессов клиента. F1 predicates
+не доказывают полный F1 frame. Серверный disk reload в одной JVM не full restart.
+Пары inverted_mouse/forced cameras/blind_hud имеют только статические границы
+и проверки ID/перспектив здесь; их полная совместная игра остаётся ручной.
+
+Стоимость: gate O(K) по текущим synced ID на вызов renderCrosshair (F кадров
+даёт O(F×K)); inactive тоже проверяет контекст/режим/жизнь и вызывает Operation.
+Active добавляет два расчёта O(1), push/copy/translate/pop матриц, Object[]
+вызова Operation; даже при vanilla early return перспективы эта часть выполнена.
+Собственных tick/timer/packet/map/UUID/NBT нет; общий dispatch вызывает пустые
+callbacks, sync каждые 20 server ticks/при активации/входе, HUD/history имеют
+свою стоимость. FPS/MSPT/allocations/retained memory не измерялись. Счётчики
+assertions и повторных вызовов проверяют корректность, не производительность.
+
+Открыты offset_crosshair-L01–L04: ordinary client/render/aim/UI и пары,
+настоящий co-op/сеть, полный JVM restart, профиль FPS/MSPT/памяти.
+Ручные шаги ниже сохранены и в этом ревью **не выполнялись**.
 
 ## Ручные проверки — не выполнены
 

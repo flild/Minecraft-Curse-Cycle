@@ -122,6 +122,55 @@ public class OffsetCrosshairGameTest implements FabricGameTest {
         context.complete();
     }
 
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "offset_crosshair_reactivation")
+    public void repeatedActivationAndEmptyServerDoNotStoreCrosshairSnapshots(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var server = context.getWorld().getServer();
+            var player = s.player();
+            player.getInventory().setStack(8, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17));
+            player.setHealth(17);
+            player.experienceLevel = 7;
+            player.setYaw(37);
+            player.setPitch(-23);
+            long serial = s.state.getActivationSerial();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                s.activate("double_challenge:offset_crosshair,offset_crosshair");
+                context.assertTrue(s.state.getActivationSerial() > serial, "Repeated ID starts a new activation");
+                serial = s.state.getActivationSerial();
+                assertIds(context, s.channel(player), List.of(ID));
+                s.activate("double_challenge:offset_crosshair,no_sprint");
+                assertIds(context, s.channel(player), List.of(ID, "no_sprint"));
+                s.activate("no_sprint");
+                assertIds(context, s.channel(player), List.of("no_sprint"));
+                player.setSprinting(true);
+                context.assertFalse(player.isSprinting(), "Companion remains after every offset end");
+                context.assertEquals(17, player.getInventory().getStack(8).getCount(), "Foreign cargo unchanged");
+                context.assertEquals(17F, player.getHealth(), "Foreign health unchanged");
+                context.assertEquals(7, player.experienceLevel, "Foreign XP unchanged");
+                context.assertEquals(37F, player.getYaw(), "Server yaw unchanged");
+                context.assertEquals(-23F, player.getPitch(), "Server pitch unchanged");
+                context.assertFalse(s.state.getChallengeData().contains(ID), "No persisted crosshair/settings snapshot");
+            }
+            var uuid = player.getUuid();
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Empty-server fixture");
+            s.activate(ID);
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of(ID));
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            s.activate("no_sprint");
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of("no_sprint"));
+            player.setSprinting(true);
+            context.assertFalse(player.isSprinting(), "Offline offset end keeps no_sprint");
+        }
+        context.complete();
+    }
+
     private static void assertIds(TestContext context, EmbeddedChannel channel, List<String> expected) {
         channel.runPendingTasks();
         channel.flush();
@@ -133,5 +182,14 @@ public class OffsetCrosshairGameTest implements FabricGameTest {
         }
         context.assertTrue(last != null, "A real S2C state packet reaches the recipient");
         context.assertEquals(expected, last.activeChallengeIds(), "Client receives only current effective enabled IDs");
+        var buffer = new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(), context.getWorld().getRegistryManager());
+        try {
+            CurseCycleSyncPayload.CODEC.encode(buffer, last);
+            var decoded = CurseCycleSyncPayload.CODEC.decode(buffer);
+            context.assertEquals(expected, decoded.activeChallengeIds(), "Actual S2C codec retains effective IDs");
+            context.assertEquals(last.currentDay(), decoded.currentDay(), "Codec retains day");
+            context.assertEquals(last.ticksUntilNext(), decoded.ticksUntilNext(), "Codec retains deadline");
+            context.assertEquals(0, buffer.readableBytes(), "Codec consumes exact packet");
+        } finally { buffer.release(); }
     }
 }
