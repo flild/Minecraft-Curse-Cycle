@@ -9,7 +9,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /** Test JAR only. The HUD methods and production gates run unmodified. */
 @Mixin(value = RenderSystem.class, remap = false)
 public abstract class RenderSystemProbeMixin {
-    @Inject(method = {"enableBlend", "disableBlend", "defaultBlendFunc"},
+    @Inject(method = {"enableBlend", "disableBlend", "defaultBlendFunc",
+            "blendFuncSeparate(Lcom/mojang/blaze3d/platform/GlStateManager$SrcFactor;Lcom/mojang/blaze3d/platform/GlStateManager$DstFactor;Lcom/mojang/blaze3d/platform/GlStateManager$SrcFactor;Lcom/mojang/blaze3d/platform/GlStateManager$DstFactor;)V"},
             at = @At("HEAD"), cancellable = true)
     private static void skipGl(CallbackInfo ci) { ci.cancel(); }
 }

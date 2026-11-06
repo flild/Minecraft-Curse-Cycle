@@ -2,15 +2,25 @@ package validation;
 
 import com.cursecycle.client.BlindHud;
 import com.cursecycle.client.ClientDataHolder;
+import com.cursecycle.client.HeartbeatInput;
+import com.cursecycle.client.gui.HeartbeatOverlay;
+import com.cursecycle.network.HeartbeatStatePayload;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.RunArgs;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
+import net.minecraft.client.gui.hud.DebugHud;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.option.GameOptions;
+import net.minecraft.client.option.Perspective;
+import net.minecraft.client.option.AttackIndicator;
+import net.minecraft.client.option.SimpleOption;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
@@ -48,6 +58,7 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
     private static boolean alive = true, frozen, hardcore;
     private static float health = 13, absorption = 5;
     private static int armor = 13, air = 120, checks;
+    private static int width = 640, height = 360, renderCalls;
     private static RegistryEntry<StatusEffect> effect;
     private static Client client;
     private static Horse mount;
@@ -77,6 +88,8 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
         @Override public boolean isSubmergedIn(TagKey<Fluid> fluid) { return air < 300; }
         @Override public Entity getVehicle() { return riding ? mount : null; }
         @Override public float getMountJumpStrength() { return .6f; }
+        @Override public float getAttackCooldownProgress(float delta) { return .5f; }
+        @Override public boolean hasReducedDebugInfo() { return false; }
     }
     public static class Horse extends HorseEntity {
         public Horse() { super(null, null); }
@@ -98,20 +111,36 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
         public Font() { super(null, false); }
         @Override public int getWidth(String text) { return text.length() * 6; }
     }
+    public static class Debug extends DebugHud {
+        public Debug() { super(null); }
+        @Override public boolean shouldShowDebugHud() { return false; }
+    }
     public static class Context extends DrawContext {
         final List<String> draws = new ArrayList<>();
+        final List<org.joml.Vector3f> points = new ArrayList<>();
         Context() { super(client, null); }
-        @Override public int getScaledWindowWidth() { return 640; }
-        @Override public int getScaledWindowHeight() { return 360; }
+        @Override public int getScaledWindowWidth() { return width; }
+        @Override public int getScaledWindowHeight() { return height; }
+        private void point(int x, int y) {
+            points.add(getMatrices().peek().getPositionMatrix().transformPosition(new org.joml.Vector3f(x, y, 0)));
+        }
         @Override public void drawGuiTexture(Identifier id, int x, int y, int w, int h) {
+            point(x, y);
             draws.add(id + ":" + x + ":" + y + ":" + w + ":" + h);
         }
         @Override public void drawGuiTexture(Identifier id, int tw, int th, int u, int v, int x, int y, int w, int h) {
+            point(x, y);
             draws.add(id + ":" + x + ":" + y + ":" + w + ":" + h);
         }
         @Override public int drawText(TextRenderer font, String text, int x, int y, int color, boolean shadow) {
             draws.add("text:" + text + ":" + x + ":" + y + ":" + color);
             return 0;
+        }
+        @Override public void fill(int x1, int y1, int x2, int y2, int color) {
+            draws.add("fill:" + x1 + ":" + y1 + ":" + x2 + ":" + y2 + ":" + color);
+        }
+        @Override public void drawCenteredTextWithShadow(TextRenderer font, Text text, int x, int y, int color) {
+            draws.add("label:" + text + ":" + x + ":" + y);
         }
     }
     private static void set(Object target, Class<?> owner, String name, Object value) throws Exception {
@@ -125,6 +154,7 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
     }
     private static void sync(String... ids) { ClientDataHolder.updateState(1, 20, List.of(ids), "", List.of()); }
     private static List<String> draw(String name) throws Exception {
+        renderCalls++;
         var context = new Context();
         Method method;
         switch (name) {
@@ -151,6 +181,85 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
         }
         return context.draws;
     }
+    private static Context crosshair() throws Exception {
+        var context = new Context();
+        context.getMatrices().translate(3, -4, 2);
+        var before = new org.joml.Matrix4f(context.getMatrices().peek().getPositionMatrix());
+        var method = InGameHud.class.getDeclaredMethod("renderCrosshair", DrawContext.class, RenderTickCounter.class);
+        method.setAccessible(true);
+        method.invoke(hud, context, RenderTickCounter.ZERO);
+        renderCalls++;
+        check(before.equals(context.getMatrices().peek().getPositionMatrix()) && context.getMatrices().isEmpty(),
+                "Crosshair restores other HUD matrix and stack");
+        return context;
+    }
+    private static void pairBoundariesAndRepeatedSync(GameOptions options) throws Exception {
+        set(options, GameOptions.class, "perspective", Perspective.FIRST_PERSON);
+        set(options, GameOptions.class, "reducedDebugInfo", SimpleOption.ofBoolean("probe", false));
+        set(options, GameOptions.class, "attackIndicator", new SimpleOption<>("probe", SimpleOption.emptyTooltip(),
+                (text, value) -> text, new SimpleOption.PotentialValuesBasedCallbacks<>(List.of(AttackIndicator.values()),
+                com.mojang.serialization.Codec.INT.xmap(i -> AttackIndicator.values()[i], Enum::ordinal)),
+                AttackIndicator.CROSSHAIR, value -> {}));
+        set(hud, InGameHud.class, "debugHud", unsafe.allocateInstance(Debug.class));
+        riding = false;
+        for (int[] size : new int[][]{{640,360}, {101,73}, {320,180}, {15,15}}) {
+            width = size[0]; height = size[1];
+            sync("no_sprint");
+            var baseline = crosshair();
+            check(baseline.draws.size() == 3, "Positive vanilla crosshair and partial attack indicator");
+            for (var ids : List.of(List.of(ID), List.of(ID,"offset_crosshair"), List.of("offset_crosshair"))) {
+                sync(ids.toArray(String[]::new));
+                var actual = crosshair();
+                check(actual.draws.equals(baseline.draws), "Blind HUD preserves crosshair/attack textures, both pair endings");
+                int dx = ids.contains("offset_crosshair") && width >= 16 ? Math.clamp(width/2+80,8,width-8)-width/2 : 0;
+                int dy = ids.contains("offset_crosshair") && height >= 16 ? Math.clamp(height/2+40,8,height-8)-height/2 : 0;
+                for (int i=0; i<actual.points.size(); i++)
+                    check(new org.joml.Vector3f(baseline.points.get(i)).add(dx,dy,0).equals(actual.points.get(i)),
+                            "Independent screen offset remains exact with hidden resources");
+                check(resources().isEmpty() == ids.contains(ID), "Both pair endings preserve the remaining mechanic");
+            }
+        }
+        width = 640; height = 360;
+        set(null, MinecraftClient.class, "instance", client);
+        HeartbeatInput.key = new KeyBinding("probe.heartbeat", InputUtil.Type.KEYSYM, 66, "probe");
+        for (boolean hidden : new boolean[]{false,true}) {
+            options.hudHidden = hidden;
+            for (long age : new long[]{10,105,110}) {
+                var sample = new HeartbeatStatePayload(1,1,age,110,age==110);
+                sync("heartbeat");
+                HeartbeatInput.receive(client,sample);
+                var baseline = new Context();
+                HeartbeatOverlay.render(baseline);
+                check(hidden ? baseline.draws.isEmpty() : baseline.draws.size()==5, "Positive rhythm/F1 control");
+                sync(ID,"heartbeat");
+                var actual = new Context();
+                HeartbeatOverlay.render(actual);
+                check(actual.draws.equals(baseline.draws) && actual.getMatrices().isEmpty(), "Rhythm survives blind HUD and restores stack");
+                check(resources().isEmpty(), "Rhythm feedback does not reveal personal resources");
+                sync(ID);
+                var ended = new Context();
+                HeartbeatOverlay.render(ended);
+                check(ended.draws.isEmpty() && resources().isEmpty(), "Ending heartbeat leaves resource filter");
+                sync("heartbeat");
+                HeartbeatInput.receive(client,sample);
+                var resumed = new Context();
+                HeartbeatOverlay.render(resumed);
+                check(resumed.draws.equals(baseline.draws) && !resources().isEmpty(), "Ending blind HUD retains heartbeat");
+            }
+        }
+        for (int cycle=0;cycle<32;cycle++) {
+            options.hudHidden = cycle%2==0;
+            ClientDataHolder.reset();
+            check(!resources().isEmpty(), "Reset removes stale filter");
+            for (int repeat=0;repeat<50;repeat++) {
+                sync(ID,ID,"no_sprint");
+                check(resources().isEmpty(), "Duplicate sync is idempotent");
+            }
+            sync("no_sprint");
+            check(!resources().isEmpty() && options.hudHidden==(cycle%2==0), "End keeps latest resources and F1");
+        }
+        options.hudHidden = false;
+    }
     private static List<String> resources() throws Exception {
         var result = new ArrayList<String>();
         for (String name : List.of("renderStatusBars", "renderExperienceBar", "renderExperienceLevel")) result.addAll(draw(name));
@@ -168,6 +277,24 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
             }
         }
         check(calls == 3, "All three render paths transformed exactly once");
+        int predicates = 0;
+        for (var method : node.methods) {
+            boolean readsHidden = false;
+            for (var instruction : method.instructions)
+                if (instruction instanceof org.objectweb.asm.tree.FieldInsnNode field && field.name.equals("hudHidden"))
+                    readsHidden = true;
+            if (!readsHidden || !method.desc.equals("(Lnet/minecraft/client/MinecraftClient;)Z")) continue;
+            var predicate = InGameHud.class.getDeclaredMethod(method.name, MinecraftClient.class);
+            predicate.setAccessible(true);
+            for (boolean hidden : new boolean[]{false,true}) for (String id : List.of(ID,"no_sprint")) {
+                client.options.hudHidden = hidden;
+                sync(id);
+                check((boolean)predicate.invoke(null, client) == !hidden, "Actual vanilla layer F1 predicate remains independent");
+            }
+            predicates++;
+        }
+        check(predicates == 2, "Both vanilla layer F1 predicates found");
+        client.options.hudHidden = false;
     }
     @Override public void onPreLaunch() {
         try {
@@ -275,7 +402,8 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
             sync(ID);
             check(mountHealth.equals(draw("renderMountHealth")) && mountJump.equals(draw("renderMountJumpBar")), "Transport draws unchanged");
             check(resources().isEmpty(), "Own resources still hidden on transport");
-            System.out.println("BLIND_HUD_CLIENT_PROBE_PASSED checks=" + checks);
+            pairBoundariesAndRepeatedSync(options);
+            System.out.println("BLIND_HUD_CLIENT_PROBE_PASSED checks=" + checks + " renderCalls=" + renderCalls);
             System.exit(0);
         } catch (Throwable error) {
             error.printStackTrace();
