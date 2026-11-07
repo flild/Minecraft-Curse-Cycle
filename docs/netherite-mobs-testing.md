@@ -34,7 +34,7 @@
 - Нет клиентского кода, нового HUD, сообщений, ссылок на игроков или глобального
   кэша сущностей. PERSONAL ID сам по себе не включает эту мировую GLOBAL-механику.
 
-## Автоматические проверки
+## Исторические проверки реализации — 2026-10-31
 
 Команды выполняются из корня проекта с существующим кэшем Gradle, без изменения
 зависимостей. Sandbox-запуск компиляции встретил отказ доступа к wrapper
@@ -72,7 +72,7 @@
 урона теста износа: `generic` обходит броню, поэтому заменён реальной атакой
 игрока. Это не повод менять семантику обходящего броню урона.
 
-## Исправление нестабильности GameTest — 2026-11-01
+## Историческое исправление нестабильности GameTest — 2026-11-01
 
 `birthsIncludingPostSpawnInitialization` сохраняет строгие проверки нулевого
 износа, точных чар и отсутствия восстановления. Исправлено окружение теста:
@@ -122,6 +122,100 @@ allprojects {
 `build/reports/netherite-full-b-gametest.xml`: два раза 83/83, failures/errors=0.
 Первый запуск также заново выполнил 149 JUnit, failures/errors/skipped=0.
 Логи: `build/netherite-full-a.log`, `build/netherite-full-b.log`.
+
+## Ревью этапа 32 — 2026-11-07
+
+Production-код не изменён; добавлены три предметных GameTest. Исторические
+результаты выше не засчитываются как доказательство этого ревью.
+
+Изолированный запуск выбирает только `com.cursecycle.NetheriteMobsGameTest`
+в копии `fabric.mod.json`, сохраняет production classpath/Mixin и использует
+новый runDir, отдельные XML и принудительно свежие JUnit. Пример init-script:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        def resources = project.file('build/netherite-mobs-review-final-resources')
+        def metadata = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+        metadata.entrypoints['fabric-gametest'] = ['com.cursecycle.NetheriteMobsGameTest']
+        resources.mkdirs()
+        new File(resources, 'fabric.mod.json').text = groovy.json.JsonOutput.toJson(metadata)
+        sourceSets.gametest.resources.setSrcDirs([resources])
+        tasks.named('processGametestResources') { outputs.upToDateWhen { false } }
+        tasks.named('test') {
+            outputs.upToDateWhen { false }
+            reports.junitXml.outputLocation = layout.buildDirectory.dir('reports/netherite-mobs-review-final-junit')
+        }
+        loom.runs.gametest.runDir = 'build/gametest-netherite-mobs-review-final-20261107'
+        loom.runs.gametest.vmArg '-Dfabric-api.gametest.report-file=../reports/netherite-mobs-review-final.xml'
+    }
+}
+```
+
+При повторе заменить имя phase/runDir на новое. Команды из корня проекта:
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/netherite-mobs-review-baseline.init.gradle
+.\gradlew.bat build runGametest --offline -I build/netherite-mobs-review-expanded-attempt1.init.gradle
+.\gradlew.bat build runGametest --offline -I build/netherite-mobs-review-final.init.gradle
+.\gradlew.bat runClient --offline -I src/clientprobe/invisible_mobs/init.gradle
+.\gradlew.bat processGametestResources --offline
+python build/netherite-mobs-review-verify.py
+```
+
+Baseline: exit 0, 1m28s, 149 JUnit/54 suites и 3/3 target GameTest.
+Расширенный первый запуск: exit 0, 50s, 149 JUnit/54 suites и 6/6 target GameTest.
+Финальный запуск: exit 0, 47s, 149 JUnit/54 suites и 6/6 target GameTest.
+В каждом прогоне failures/errors/skipped=0, сервер завершился штатно.
+Клиентская проверка пары: exit 0, 31s,
+`INVISIBLE_MOBS_CLIENT_PROBE_PASSED checks=10318 renderCalls=1696`, лог
+`build/netherite-mobs-review-invisible-pair.log`. Восстановление ресурсов:
+exit 0, 2s, исходные и собранные metadata совпадают, 43 entrypoint.
+Verifier: exit 0, SHA5/metadata6/registration1/serverMixins4/freshXML-JUnit/
+CLIENT marker/43/два чистых production JAR.
+Финальные результаты и пути перечислены в локальном отчёте
+`Промпты/reviews/32-netherite_mobs.md`; logs/XML —
+`build/netherite-mobs-review-<phase>.log`,
+`build/reports/netherite-mobs-review-<phase>.xml` и
+`build/reports/netherite-mobs-review-<phase>-junit/`.
+
+Новые сценарии:
+
+- `repeatedActivationsKeepOnlyBirthConsequences`: пустой сервер, фиксация
+  eligibility до смены активации; 32 цикла duplicate ID/same ID/double/no_sprint
+  для двух EmbeddedChannel игроков; оба окончания пары, сохранение damage=13,
+  отсутствующего предмета, HP=17/items=17 и запрета дропа; новые inactive без
+  комплекта, собственный challengeData пуст. Это не замер памяти или CPU.
+- `dimensionTransferRejectedBirthAndConversionBeforeTick`: настоящий отказ
+  дублирующего UUID без birth flags; реальные `Entity.teleportTo` в Nether/End/
+  Overworld для старой и выданной брони, без новой выдачи/ремонта; pending birth
+  перед `convertTo`, оба keepEquipment, перенос без клонирования и с damage=23;
+  стойка для брони/обычный дроп исключены. Ночной fixture восстанавливает время
+  и ambient darkness; это не физическое прохождение портала.
+- `actualRaidWaveAndIndependentPlayerEffects`: настоящий приватный ванильный
+  `Raid.spawnNextWave` вызван через reflection для трёх волн. Новые участники
+  получают точный комплект только при активном мировом правиле; оба окончания
+  пары с endless_raid сохраняют соседнюю механику, проверен BAD_OMEN игрока.
+  Raid создан напрямую: village search/countdown/ownership/repeated raids этим
+  тестом не доказаны. Следующее испытание отдельно здесь не ревьюится.
+  Дополнительно armor_disabled обнуляет броню игрока, сохраняя защиту моба.
+
+Клиентский existing probe invisible_mobs проверяет actual transformed dispatcher
+и production gate, в том числе оба окончания пары с netherite_mobs. Он использует
+Unsafe-контекст/recording renderer/подмену terminal GL и ручную синхронизацию;
+это не обычный клиент с отрисованной сценой и сетевой передачей экипировки.
+Серверные шесть сценариев исполняют реальные production Mixin без подмены gate.
+
+Статически: spawn — O(G), где G число GLOBAL IDs; обычный tick каждого моба —
+проверка одного pending boolean, комплект строится однократно (4 предмета,
+22 добавления чар). Damage/drop/pickup/conversion — фиксированное число слотов
+с проверкой происхождения. `isIssued` копирует CUSTOM_DATA: O(B) по размеру NBT
+предмета, а не безусловное O(1); свои новые предметы имеют одну boolean-метку.
+Даже inactive остаются callbacks, проверки и два сериализуемых boolean на моба;
+это нужно для постоянных последствий. Нет обхода мира, таймера, глобального
+UUID map, собственного пакета, player/world refs или повторной регистрации.
+Общие sync/HUD/history и ванильные броня/чары/AI имеют отдельную стоимость.
+FPS/MSPT/CPU/allocations/retained memory не измерялись.
 
 ## Не выполненные ручные проверки
 

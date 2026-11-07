@@ -23,6 +23,10 @@ import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.World;
+import net.minecraft.world.TeleportTarget;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.village.raid.Raid;
 import java.util.*;
 
 public class NetheriteMobsGameTest implements FabricGameTest {
@@ -284,6 +288,202 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             } finally { challenge.setEnabled(true); }
         } finally { cleanup.forEach(Entity::discard); }
         c.waitAndRun(5, c::complete);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
+    public void repeatedActivationsKeepOnlyBirthConsequences(TestContext c) {
+        var cleanup = new ArrayList<Entity>();
+        try (var s = new ChallengeScenario(c)) {
+            var w = c.getWorld();
+            // An empty server must capture eligibility at birth, not at first tick.
+            c.assertTrue(w.getServer().getPlayerManager().getPlayerList().isEmpty(), "Empty server fixture");
+            var before = spawn(c, w, EntityType.COW, cleanup);
+            s.activate(ID);
+            finish(w, before);
+            c.assertTrue(before.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Inactive birth stays vanilla");
+            var pending = spawn(c, w, EntityType.COW, cleanup);
+            s.activate("no_sprint");
+            finish(w, pending);
+            kit(c, pending);
+            pending.discard(); before.discard();
+            var first = s.player();
+            var second = s.player();
+            first.getInventory().setStack(0, new ItemStack(Items.DIAMOND, 17));
+            first.setHealth(17);
+            for (int cycle = 0; cycle < 32; cycle++) {
+                long serial = s.state.getActivationSerial();
+                s.activate("double_challenge:netherite_mobs,netherite_mobs");
+                c.assertTrue(s.state.getActivationSerial() > serial, "Fresh activation serial");
+                var mob = spawn(c, w, EntityType.COW, cleanup);
+                finish(w, mob);
+                kit(c, mob);
+                var chest = mob.getEquippedStack(EquipmentSlot.CHEST);
+                chest.setDamage(13);
+                mob.equipStack(EquipmentSlot.FEET, ItemStack.EMPTY);
+                s.activate(ID); // Same ID must not refill an already completed birth.
+                finish(w, mob);
+                c.assertTrue(mob.getEquippedStack(EquipmentSlot.CHEST) == chest, "Same item after reactivation");
+                c.assertEquals(13, chest.getDamage(), "No reactivation repair");
+                c.assertTrue(mob.getEquippedStack(EquipmentSlot.FEET).isEmpty(), "No replacement for lost piece");
+                s.activate("double_challenge:netherite_mobs,no_sprint");
+                for (var player : List.of(first, second)) {
+                    player.setSprinting(true);
+                    c.assertFalse(player.isSprinting(), "Both players retain no_sprint");
+                }
+                s.activate("no_sprint");
+                finish(w, mob);
+                c.assertTrue(mob.getEquippedStack(EquipmentSlot.CHEST) == chest, "Ending preserves permanent gear");
+                c.assertTrue(mob.dropStack(chest.copy()) == null, "Ending preserves no-drop");
+                var fresh = spawn(c, w, EntityType.COW, cleanup);
+                finish(w, fresh);
+                c.assertTrue(fresh.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "No grants after ending");
+                first.setSprinting(true);
+                c.assertFalse(first.isSprinting(), "Companion survives netherite ending");
+                s.activate("double_challenge:netherite_mobs,no_sprint");
+                s.activate(ID);
+                first.setSprinting(true);
+                c.assertTrue(first.isSprinting(), "Removing companion restores sprint");
+                first.setSprinting(false);
+                c.assertTrue(NetheriteMobsChallenge.active(w), "World rule survives companion ending");
+                c.assertEquals(17F, first.getHealth(), "Foreign HP preserved");
+                c.assertEquals(17, first.getInventory().getStack(0).getCount(), "Foreign items preserved");
+                mob.discard(); fresh.discard();
+            }
+            c.assertTrue(s.state.getChallengeData().isEmpty(), "No own activation state or growing cache");
+        } finally { cleanup.forEach(Entity::discard); }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
+    public void dimensionTransferRejectedBirthAndConversionBeforeTick(TestContext c) {
+        var cleanup = new ArrayList<Entity>();
+        var w = c.getWorld();
+        long originalTimeOfDay = w.getTimeOfDay();
+        try (var s = new ChallengeScenario(c)) {
+            w.setTimeOfDay(18000);
+            w.calculateAmbientDarkness();
+            var legacy = spawn(c, w, EntityType.COW, cleanup);
+            finish(w, legacy);
+            s.activate(ID);
+            // A duplicate UUID is rejected by vanilla. A rejected spawn must not become eligible.
+            var rejected = EntityType.COW.create(w);
+            rejected.setUuid(legacy.getUuid());
+            cleanup.add(rejected);
+            c.assertFalse(w.spawnEntity(rejected), "Duplicate UUID rejected");
+            var rejectedNbt = new NbtCompound(); rejected.saveNbt(rejectedNbt);
+            c.assertFalse(rejectedNbt.getBoolean("cursecycle:mob_birth_recorded"), "Rejected birth not recorded");
+            c.assertFalse(rejectedNbt.getBoolean("cursecycle:netherite_armor_pending"), "Rejected birth has no entitlement");
+            var issued = spawn(c, w, EntityType.COW, cleanup);
+            finish(w, issued);
+            issued.getEquippedStack(EquipmentSlot.CHEST).setDamage(19);
+            for (var dimension : List.of(World.NETHER, World.END, World.OVERWORLD)) {
+                var destination = w.getServer().getWorld(dimension);
+                var target = new TeleportTarget(destination, new Vec3d(2.5, 80, 2.5), Vec3d.ZERO, 0, 0, TeleportTarget.NO_OP);
+                var oldUuid = legacy.getUuid();
+                legacy = (net.minecraft.entity.passive.CowEntity) legacy.teleportTo(target);
+                c.assertTrue(legacy != null, "Real entity dimension transfer");
+                cleanup.add(legacy);
+                finish(destination, legacy);
+                c.assertEquals(oldUuid, legacy.getUuid(), "Transfer keeps UUID");
+                c.assertTrue(legacy.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Transfer is not new birth");
+                issued = (net.minecraft.entity.passive.CowEntity) issued.teleportTo(target);
+                c.assertTrue(issued != null, "Issued owner transfers");
+                cleanup.add(issued);
+                finish(destination, issued);
+                var chest = issued.getEquippedStack(EquipmentSlot.CHEST);
+                c.assertTrue(NetheriteMobsChallenge.isIssued(chest), "Origin survives dimension NBT copy");
+                c.assertEquals(19, chest.getDamage(), "Transfer never repairs armor");
+            }
+            var source = spawn(c, w, EntityType.ZOMBIE, cleanup);
+            s.activate("no_sprint");
+            // HEAD convertTo must complete the pending source before vanilla copies its equipment.
+            var converted = source.convertTo(EntityType.DROWNED, true);
+            cleanup.add(converted);
+            finish(w, converted);
+            kit(c, converted);
+            c.assertTrue(source.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Conversion moves, never clones");
+            var originalChest = converted.getEquippedStack(EquipmentSlot.CHEST);
+            originalChest.setDamage(23);
+            var next = converted.convertTo(EntityType.ZOMBIE, false);
+            cleanup.add(next);
+            finish(w, next);
+            c.assertTrue(converted.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "False conversion clears source too");
+            c.assertEquals(23, next.getEquippedStack(EquipmentSlot.CHEST).getDamage(), "False conversion preserves wear");
+            c.assertTrue(next.dropStack(next.getEquippedStack(EquipmentSlot.CHEST).copy()) == null, "Converted gear stays no-drop");
+            s.activate(ID);
+            var stand = new net.minecraft.entity.decoration.ArmorStandEntity(w, 2, 80, 2);
+            cleanup.add(stand);
+            c.assertTrue(w.spawnEntity(stand), "Non-mob spawn succeeds");
+            w.tickEntity(stand);
+            c.assertTrue(stand.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Armor stand excluded");
+            var foreign = stand.dropStack(new ItemStack(Items.IRON_CHESTPLATE));
+            cleanup.add(foreign);
+            c.assertTrue(foreign != null, "Non-mob ordinary drop preserved");
+        } finally {
+            cleanup.stream().filter(Objects::nonNull).forEach(Entity::discard);
+            w.setTimeOfDay(originalTimeOfDay);
+            w.calculateAmbientDarkness();
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
+    public void actualRaidWaveAndIndependentPlayerEffects(TestContext c) throws Exception {
+        var cleanup = new ArrayList<Entity>();
+        var raids = new ArrayList<Raid>();
+        var w = c.getWorld();
+        var difficulty = w.getDifficulty();
+        boolean disabled = w.getGameRules().getBoolean(net.minecraft.world.GameRules.DISABLE_RAIDS);
+        try (var s = new ChallengeScenario(c)) {
+            w.getServer().setDifficulty(net.minecraft.world.Difficulty.NORMAL, true);
+            w.getGameRules().get(net.minecraft.world.GameRules.DISABLE_RAIDS).set(false, w.getServer());
+            var player = s.player();
+            s.activate("double_challenge:netherite_mobs,endless_raid");
+            c.assertTrue(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Raid companion actually applies omen");
+            var wave = Raid.class.getDeclaredMethod("spawnNextWave", BlockPos.class);
+            wave.setAccessible(true);
+            // Invoke the real wave builder without waiting for village search/countdown.
+            // This is the spawn/equipment boundary, not a review of raid ownership or scheduling.
+            for (int phase = 0; phase < 3; phase++) {
+                var raid = new Raid(9000 + phase, w, c.getAbsolutePos(new BlockPos(2, 2, 2)));
+                raids.add(raid);
+                wave.invoke(raid, raid.getCenter());
+                c.assertFalse(raid.getAllRaiders().isEmpty(), "Vanilla wave creates actual raiders");
+                cleanup.addAll(raid.getAllRaiders());
+                for (var raider : raid.getAllRaiders()) {
+                    raider.setAiDisabled(true);
+                    finish(w, raider);
+                    if (phase == 1) {
+                        for (var slot : ARMOR)
+                            c.assertFalse(NetheriteMobsChallenge.isIssued(raider.getEquippedStack(slot)), "Ended rule leaves new raiders vanilla");
+                    } else kit(c, raider);
+                }
+                if (phase == 0) {
+                    s.activate("endless_raid");
+                    c.assertTrue(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Raid companion survives netherite ending");
+                    for (var raider : raid.getAllRaiders()) kit(c, raider);
+                } else if (phase == 1) {
+                    s.activate("double_challenge:netherite_mobs,endless_raid");
+                    s.activate(ID);
+                    c.assertFalse(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Ending companion removes its omen");
+                    c.assertTrue(NetheriteMobsChallenge.active(w), "Netherite remains active");
+                }
+            }
+            s.activate("double_challenge:netherite_mobs,armor_disabled");
+            player.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.NETHERITE_CHESTPLATE));
+            c.assertEquals(0, player.getArmor(), "armor_disabled still affects player");
+            var cow = spawn(c, w, EntityType.COW, cleanup);
+            finish(w, cow);
+            kit(c, cow);
+            c.assertTrue(cow.getArmor() > 0, "Player armor challenge never disables mob armor");
+            c.assertFalse(cow.hasStatusEffect(StatusEffects.BAD_OMEN), "Player effect not copied to mob");
+        } finally {
+            raids.forEach(Raid::invalidate);
+            cleanup.forEach(Entity::discard);
+            w.getServer().setDifficulty(difficulty, true);
+            w.getGameRules().get(net.minecraft.world.GameRules.DISABLE_RAIDS).set(disabled, w.getServer());
+        }
+        c.complete();
     }
 
     private static <T extends MobEntity> T spawn(TestContext c, ServerWorld w, EntityType<T> type, List<Entity> cleanup) {
