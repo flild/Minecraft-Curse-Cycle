@@ -21,6 +21,9 @@ allprojects {
         }
         loom.runs.client {
             vmArg '-Dmixin.debug.export=true'
+            // Opt out only when reproducing the pre-review production code.
+            if (!project.hasProperty('silentWorldExpectUncachedRefresh'))
+                vmArg '-Dsilent_world.expectCachedRefresh=true'
             runDir 'build/silent-world-client-probe/run'
             vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
         }

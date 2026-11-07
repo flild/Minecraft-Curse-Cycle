@@ -133,5 +133,96 @@ public class SilentWorldGameTest implements FabricGameTest {
         }
         context.assertTrue(last != null, "A real S2C state packet reaches the recipient");
         context.assertEquals(expected, last.activeChallengeIds(), "Client receives only current effective enabled IDs");
+        var buffer = new net.minecraft.network.RegistryByteBuf(io.netty.buffer.Unpooled.buffer(), context.getWorld().getRegistryManager());
+        try {
+            CurseCycleSyncPayload.CODEC.encode(buffer, last);
+            var decoded = CurseCycleSyncPayload.CODEC.decode(buffer);
+            context.assertEquals(expected, decoded.activeChallengeIds(), "Wire codec retains effective IDs");
+            context.assertEquals(last.currentDay(), decoded.currentDay(), "Wire codec retains day");
+            context.assertEquals(last.ticksUntilNext(), decoded.ticksUntilNext(), "Wire codec retains deadline");
+            context.assertEquals(last.nextChallengeId(), decoded.nextChallengeId(), "Wire codec retains next ID");
+            context.assertEquals(last.historyChallengeIds(), decoded.historyChallengeIds(), "Wire codec retains history");
+            context.assertEquals(0, buffer.readableBytes(), "Exact packet consumed");
+        } finally { buffer.release(); }
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "silent_world")
+    public void repeatedActivationAndEmptyServerPreserveForeignState(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var server = context.getWorld().getServer();
+            var player = s.player();
+            player.getInventory().setStack(8, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND, 17));
+            player.setHealth(17);
+            player.experienceLevel = 7;
+            player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 1000));
+            long serial = s.state.getActivationSerial();
+            for (int cycle = 0; cycle < 32; cycle++) {
+                s.activate("double_challenge:silent_world,silent_world");
+                context.assertTrue(s.state.getActivationSerial() > serial, "Same ID starts a new activation");
+                serial = s.state.getActivationSerial();
+                assertIds(context, s.channel(player), List.of(ID));
+                s.activate("double_challenge:silent_world,no_sprint");
+                assertIds(context, s.channel(player), List.of(ID, "no_sprint"));
+                player.setSprinting(true);
+                context.assertFalse(player.isSprinting(), "Companion works while muted");
+                s.activate(ID);
+                player.setSprinting(true);
+                context.assertTrue(player.isSprinting(), "Ending companion leaves mute independent");
+                s.activate("no_sprint");
+                assertIds(context, s.channel(player), List.of("no_sprint"));
+                player.setSprinting(true);
+                context.assertFalse(player.isSprinting(), "Companion survives mute end");
+                context.assertEquals(17, player.getInventory().getStack(8).getCount(), "Foreign inventory unchanged");
+                context.assertEquals(17F, player.getHealth(), "Health unchanged");
+                context.assertEquals(7, player.experienceLevel, "XP unchanged");
+                context.assertTrue(player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE), "Foreign effect retained");
+                context.assertFalse(s.state.getChallengeData().contains(ID), "No persisted volume snapshot");
+            }
+            var uuid = player.getUuid();
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            context.assertTrue(server.getPlayerManager().getPlayerList().isEmpty(), "Empty-server fixture");
+            s.activate(ID);
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of(ID));
+            net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.invoker()
+                    .onPlayDisconnect(player.networkHandler, server);
+            server.getPlayerManager().remove(player);
+            s.activate("no_sprint");
+            player = s.player(uuid);
+            assertIds(context, s.channel(player), List.of("no_sprint"));
+            context.assertEquals(17, player.getInventory().getStack(8).getCount(), "Actual playerdata preserves inventory");
+            context.assertEquals(7, player.experienceLevel, "Actual playerdata preserves XP");
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "silent_world")
+    public void heavyBodyJumpRemainsIndependentAcrossBothEndings(TestContext context) {
+        try (var s = new ChallengeScenario(context)) {
+            var player = s.player();
+            player.setOnGround(true);
+            player.setVelocity(net.minecraft.util.math.Vec3d.ZERO);
+            player.jump();
+            double normal = player.getVelocity().y;
+            context.assertTrue(normal > 0, "Positive vanilla jump control");
+            for (var id : List.of("double_challenge:silent_world,heavy_body", "heavy_body")) {
+                s.activate(id);
+                player.setVelocity(net.minecraft.util.math.Vec3d.ZERO);
+                player.jump();
+                context.assertTrue(Math.abs(player.getVelocity().y - normal * .6) < .00001,
+                        "Real transformed jump remains heavy with or without mute");
+            }
+            s.activate("double_challenge:silent_world,heavy_body");
+            s.activate(ID);
+            player.setVelocity(net.minecraft.util.math.Vec3d.ZERO);
+            player.jump();
+            context.assertTrue(Math.abs(player.getVelocity().y - normal) < .00001,
+                    "Ending heavy_body leaves audio-only activation and vanilla jump");
+            assertIds(context, s.channel(player), List.of(ID));
+        }
+        context.complete();
     }
 }

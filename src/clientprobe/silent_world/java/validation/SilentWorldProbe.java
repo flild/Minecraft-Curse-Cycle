@@ -39,6 +39,7 @@ public final class SilentWorldProbe implements PreLaunchEntrypoint {
     private static SoundListener listener;
     private static GameOptions options;
     private static int checks;
+    public static int volumeCalls;
     private static boolean alive = true;
     private static GameMode mode = GameMode.SURVIVAL;
     private static final List<StaticSound> buffers = new ArrayList<>();
@@ -66,6 +67,7 @@ public final class SilentWorldProbe implements PreLaunchEntrypoint {
     }
     private static final class Tone extends AbstractSoundInstance {
         private final WeightedSoundSet set;
+        private boolean playable = true;
         Tone(SoundCategory category, boolean loop, String label) {
             super(Identifier.of("probe", label), category, SoundInstance.createRandom());
             sound = new Sound(id, ConstantFloatProvider.create(1), ConstantFloatProvider.create(1), 1,
@@ -77,6 +79,7 @@ public final class SilentWorldProbe implements PreLaunchEntrypoint {
             relative = true;
         }
         @Override public WeightedSoundSet getSoundSet(SoundManager manager) { return set; }
+        @Override public boolean canPlay() { return playable; }
     }
     private static Object get(Object target, Class<?> owner, String name) throws Exception {
         var field = owner.getDeclaredField(name);
@@ -129,7 +132,9 @@ public final class SilentWorldProbe implements PreLaunchEntrypoint {
         new ClassReader(Files.readAllBytes(Path.of(".mixin.out/class/net/minecraft/client/sound/SoundSystem.class"))).accept(node, 0);
         var sites = new HashSet<String>();
         for (var method : node.methods) for (var instruction : method.instructions) {
-            if (instruction instanceof MethodInsnNode call && call.name.contains("cursecycle$refreshOutput"))
+            if (instruction instanceof MethodInsnNode call && call.owner.equals(node.name)
+                    && call.desc.equals("(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V")
+                    && call.name.contains("cursecycle$refreshOutput"))
                 sites.add(method.name + method.desc);
         }
         check(sites.equals(Set.of("tick(Z)V", "play(Lnet/minecraft/client/sound/SoundInstance;)V",
@@ -260,11 +265,84 @@ public final class SilentWorldProbe implements PreLaunchEntrypoint {
         system.updateListenerPosition(new net.minecraft.client.render.Camera()); gain(.25F, "Unsynced menu restores current gain");
         check(!SilentWorld.shouldMute(null), "No client cannot mute");
     }
+    private static void refreshCalls() {
+        // Same 200 tick/frame/play triplets, no source allocation or real-frame scheduling.
+        var skipped = new Tone(SoundCategory.MASTER, false, "cannot_play");
+        skipped.playable = false;
+        int expected = Boolean.getBoolean("silent_world.expectCachedRefresh") ? 0 : 600;
+        for (var ids : List.of(List.of("no_sprint"), List.of(ID), List.of(ID, "no_sprint"))) {
+            sync(ids.toArray(String[]::new));
+            refresh(ids.contains(ID) ? 0 : .25F);
+            int before = volumeCalls;
+            for (int i = 0; i < 200; i++) {
+                system.tick(true);
+                system.updateListenerPosition(new net.minecraft.client.render.Camera());
+                system.play(skipped);
+            }
+            int calls = volumeCalls - before;
+            check(calls == expected, "Unchanged tick/frame/play native gain calls: " + ids + " = " + calls);
+            gain(ids.contains(ID) ? 0 : .25F, "Repeated callbacks preserve gain");
+            System.out.println("SILENT_WORLD_REFRESH_CALLS ids=" + ids + " callbacks=600 setVolume=" + calls);
+        }
+        // A user slider during a brief transition must update the last submitted mute state.
+        sync("no_sprint"); level(SoundCategory.MASTER, .45);
+        gain(.45F, "Unmuted slider writes latest MASTER immediately");
+        sync(ID); system.tick(true); gain(0, "Reactivation after a slider cannot reuse stale mute state");
+        sync("no_sprint"); system.tick(true); gain(.45F, "Final end restores latest MASTER");
+        // Device restart invokes the real vanilla start -> listener.init -> setVolume path.
+        system.stopAll();
+        for (var buffer : buffers) buffer.close();
+        buffers.clear();
+        system.stop();
+        try {
+            var start = SoundSystem.class.getDeclaredMethod("start");
+            start.setAccessible(true);
+            sync(ID); start.invoke(system); gain(0, "New OpenAL context starts muted");
+            sync("no_sprint"); system.tick(true); gain(.45F, "Restarted context unmutes");
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+        ClientDataHolder.reset();
+    }
+    private static void repeatedSyncAndHeartbeatBoundary() {
+        for (int cycle = 0; cycle < 32; cycle++) {
+            ClientDataHolder.reset(); refresh(.45F);
+            sync(ID, ID, "no_sprint");
+            int before = volumeCalls;
+            refresh(0);
+            check(volumeCalls == before + 1, "One gain write on activation");
+            for (int repeat = 0; repeat < 50; repeat++) {
+                sync(ID, ID, "no_sprint");
+                refresh(0);
+            }
+            check(volumeCalls == before + 1, "Duplicate sync never repeats native gain writes");
+            sync("no_sprint"); refresh(.45F);
+            check(volumeCalls == before + 2, "One gain write on ending");
+            check(ClientDataHolder.getActiveChallengeIds().equals(List.of("no_sprint")), "Companion ID retained");
+        }
+        // Only the audio/phase boundary; real keyboard/overlay/network belong to their own review.
+        var phase = new com.cursecycle.network.HeartbeatStatePayload(42, 7, 83, 90, true);
+        sync(ID, "heartbeat");
+        com.cursecycle.client.HeartbeatInput.receive(client, phase);
+        check(com.cursecycle.client.HeartbeatInput.valid(client), "Companion phase is valid");
+        refresh(0);
+        system.play(new Tone(SoundCategory.MASTER, false, "wheel_ui")); gain(0, "Mod UI is muted");
+        check(com.cursecycle.client.HeartbeatInput.state() == phase
+                && com.cursecycle.client.HeartbeatInput.age() == 83, "Audio does not alter rhythm state");
+        sync("heartbeat"); refresh(.45F);
+        check(com.cursecycle.client.HeartbeatInput.valid(client)
+                && com.cursecycle.client.HeartbeatInput.state() == phase, "Ending mute preserves rhythm state");
+        sync(ID, "heartbeat"); refresh(0);
+        sync(ID); refresh(0);
+        check(com.cursecycle.client.HeartbeatInput.state() == null, "Ending companion clears its phase only");
+        sync("no_sprint"); refresh(.45F);
+        ClientDataHolder.reset();
+    }
     @Override public void onPreLaunch() {
         try {
             prepare();
             audio();
             lifecycle();
+            refreshCalls();
+            repeatedSyncAndHeartbeatBoundary();
             audit();
             system.stopAll();
             for (var buffer : buffers) buffer.close();

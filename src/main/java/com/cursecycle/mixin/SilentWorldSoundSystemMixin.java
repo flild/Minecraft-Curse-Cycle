@@ -1,5 +1,6 @@
 package com.cursecycle.mixin;
 
+import com.cursecycle.client.SilentWorldOutput;
 import net.minecraft.client.sound.SoundListener;
 import net.minecraft.client.sound.SoundSystem;
 import org.spongepowered.asm.mixin.Final;
@@ -19,6 +20,6 @@ public abstract class SilentWorldSoundSystemMixin {
     @Inject(method = {"tick(Z)V", "play(Lnet/minecraft/client/sound/SoundInstance;)V",
             "updateListenerPosition(Lnet/minecraft/client/render/Camera;)V"}, at = @At("HEAD"))
     private void cursecycle$refreshOutput(CallbackInfo ci) {
-        if (started) listener.setVolume(listener.getVolume());
+        if (started) ((SilentWorldOutput) listener).cursecycle$refreshOutput();
     }
 }

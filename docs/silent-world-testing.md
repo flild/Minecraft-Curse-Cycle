@@ -16,10 +16,14 @@ JOIN/DISCONNECT очищают клиентскую синхронизацию.
 - `SilentWorldSoundListenerMixin` меняет только аргумент gain вызова
   `AL10.alListenerf(AL_GAIN, volume)` внутри `SoundListener.setVolume`.
   Поле `SoundListener.volume` и его getter сохраняют логическую громкость.
-- `SilentWorldSoundSystemMixin` повторно применяет текущую логическую громкость
+- `SilentWorldSoundSystemMixin` согласует текущую логическую громкость
   на HEAD `SoundSystem.tick(boolean)`, `play(SoundInstance)` и
   `updateListenerPosition(Camera)`, только при запущенном движке. Это охватывает
   уже звучащие источники, паузу, новые звуки и смену контекста между тиками.
+  Через `SilentWorldOutput` listener сравнивает требуемое подавление с последним
+  действительно отправленным состоянием; при совпадении не вызывает setVolume
+  и OpenAL. Каждый обычный setVolume, включая ползунок и запуск устройства,
+  обновляет этот boolean в финальном фильтре. Снимка громкости/игрока нет.
 
 Байткод Yarn 1.21.1 проверен локально. `SoundSystem.play` уведомляет
 `SoundInstanceListener`/`SubtitlesHud`, затем читает `SoundListener.getVolume`
@@ -30,7 +34,7 @@ RECORDS, VOICE, UI и звуки мода. Таймеры/изображение
 Настройки и `options.txt` не записываются. После снятия используются последние
 пользовательские громкости, завершившиеся звуки не запускаются повторно.
 
-## Автоматические проверки
+## Историческая проверка реализации
 
 ```powershell
 .\gradlew.bat test compileGametestJava --offline
@@ -110,3 +114,86 @@ restart JVM. Disk reload не равен перезапуску процесса
    закончить, сохранить, перезапустить и вернуть офлайн-игрока. Сверить
    сохранённую активность, очистку подавления и отсутствие отката настроек.
    Голос вне звукового движка Minecraft и внешние приложения не затрагиваются.
+
+## Ревью этапа 30 — 2026-11-07
+
+Исходный HEAD `1dec570dd1171cec965524e88d0af254c4a82e83`, main, clean.
+Результаты выше относятся к реализации и не засчитаны как новое подтверждение.
+В ревью исправлен подтверждённый расход: раньше каждый tick/play/frame даже
+без silent_world повторно отправлял неизменный AL_GAIN. Игровая семантика
+подавления сохранена; общая синхронизация/другие испытания не менялись.
+
+Свежие команды (PowerShell; полные логи под build):
+
+```powershell
+.\gradlew.bat build runGametest --offline -I build/silent-world-review-baseline.init.gradle
+.\gradlew.bat runClient --offline -I src/clientprobe/silent_world/init.gradle
+.\gradlew.bat build runGametest --offline -I build/silent-world-review-final.init.gradle
+.\gradlew.bat processGametestResources --offline
+python build/silent-world-review-verify.py
+```
+
+Baseline до исправления: build exit 0/45s, 149 JUnit/54 suites и 2/2 subject
+GameTest; исходный CLIENT exit 0/23s, 175 assertions. Расширенный счётчик до
+исправления: exit 0/22s, 203 assertions. После исправления: build exit 0/37s,
+149 JUnit/54 suites и 4/4 subject GameTest; CLIENT exit 0/24s, 5440 assertions.
+XML failures/errors/skipped=0. Общий набор GameTest не запускался: init заменяет
+только metadata entrypoints на SilentWorldGameTest, задаёт отдельные отчёты
+и новые runDir `build/gametest-silent-world-review-{baseline,final}-20261107`.
+После предметного запуска стандартные 43 entrypoints восстановлены.
+
+Счётчик — test-only HEAD injection в настоящий SoundListener.setVolume без
+подмены gate/native call. По текущему vanilla байткоду один setter = один
+alListenerf. В одинаковом OpenAL Soft No Output fixture выполнены по 200
+paused tick/frame/cannot-play triplets для inactive/active/double. Каждая серия
+из 600 callbacks давала до исправления 600 native gain writes, после — 0.
+Изменение подавления даёт ровно один write; ползунки сохраняют обычный путь.
+Это измерение числа вызовов, без прогрева и временного окна; не FPS/MSPT,
+не стоимость драйвера и не нагрузочный профиль. До исправления для повтора
+счётчика на старых production Mixin использовать `-PsilentWorldExpectUncachedRefresh`.
+Флаг меняет только ожидание счётчика; последующие регрессии повторного sync
+в текущем probe требуют исправленного production-кода.
+Обычный запуск текущего probe по умолчанию требует исправленного поведения.
+
+CLIENT дополнительно исполняет 32 reset/start/end × 50 duplicate sync,
+текущий MASTER после промежуточного unmute/slider/reactivation, настоящее
+пересоздание OpenAL context и vanilla start/setVolume. Audio/phase boundary
+heartbeat проверена receive/valid/state/age с обоими окончаниями: звук не
+меняет фазу. Отрисовка overlay/физический ввод не исполняются. GameTest
+добавляет 32 активации, activationSerial/dedup, оба окончания no_sprint,
+чужие inventory/HP/XP/effect, пустой сервер, Fabric DISCONNECT и actual
+same-UUID playerdata; настоящий wire codec. Пара heavy_body проверена
+реальным transformed Player.jump: 60% при обоих, 60% после mute end,
+vanilla после heavy_body end. Реальная отдышка/OGG остаётся ручной.
+
+Сохранены промежуточные попытки: счётчик baseline exit 0/21s с ошибкой cleanup
+fixture (синтетические буферы закрывались после уничтожения контекста); исправлен
+порядок close до stop, чистый повтор указан выше. Первый cached CLIENT exit
+1/26s: audio/counters прошли, но ASM-аудит ошибочно посчитал вызов интерфейса
+внутри merged handler дополнительным injection site. Аудит теперь различает
+владельца/дескриптор CallbackInfo и подтверждает ровно три реальные точки.
+Production ради этих fixture ошибок не ослаблялся.
+Проверка обычной команды без дополнительных флагов: exit 0/23s, те же 5440
+assertions; `build/silent-world-review-client-default.log`. Restore exit 0/1s,
+verifier exit 0: свежие XML/счётчики, metadata/SHA и оба production JAR чистые.
+
+Логи: `build/silent-world-review-{baseline,final}.log`,
+`build/silent-world-review-client-{baseline,count-baseline,count-baseline-clean,cached,final}.log`.
+XML: `build/reports/silent-world-review-{baseline,final}.xml` и
+`build/reports/silent-world-review-{baseline,final}-junit/TEST-*.xml`.
+Свежий javap: `build/silent-world-review-{SoundSystem,SoundListener,SoundManager,SoundEngine,SubtitlesHud}.javap.txt`.
+
+Вердикт: pass_with_limits; механика pass; расходы fixed / static+measured
+(measured = только точное число native gain writes). Нет собственных таймеров,
+NBT, пакетов, коллекций или сохранённых Player/World; один boolean на listener.
+Для T tick, F frame, S play и K effective IDs проверка стоит O((T+F+S)×K),
+menu/null context выходит до contains; неизменный контекст не обращается к AL.
+Shared sync/HUD/history и vanilla sound/source work имеют отдельную стоимость.
+
+Открыты silent_world-L01..L04: обычный клиент/физический звук/HUD/subtitles/
+options.txt/streaming-OGG/resource reload/смена устройства; настоящая сеть и
+два клиента с поздним третьим; полный новый JVM active/ended/offline end;
+FPS/MSPT/allocations/память и долгий reconnect/load. Шаги 1–5 выше остаются
+невыполненными ручными сценариями, дополнительно проверить heartbeat overlay
+и обе очередности окончания пар heavy_body/heartbeat. Static и синтетический
+No Output fixture не доказывают эти сценарии. Foundation-L02 остаётся открыт.
