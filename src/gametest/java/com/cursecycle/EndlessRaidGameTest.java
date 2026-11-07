@@ -7,6 +7,8 @@ import com.cursecycle.challenge.impl.NetheriteMobsChallenge;
 import com.cursecycle.state.CurseCycleState;
 import com.cursecycle.state.EndlessRaidState;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.SharedConstants;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
@@ -261,6 +263,216 @@ public class EndlessRaidGameTest implements FabricGameTest {
             p.setSprinting(true); c.assertFalse(p.isSprinting(), "Remaining companion still works");
         }
         c.waitAndRun(5, c::complete);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "endless_raid", tickLimit = 100)
+    public void vanillaVictoryLossCelebrationAndNextPreparation(TestContext c) throws Exception {
+        for (boolean victory : List.of(true, false)) {
+            try (var fixture = new Village(c); var s = new ChallengeScenario(c)) {
+                var p = s.player(); fixture.place(p);
+                s.activate(ID);
+                var raid = prepare(c, fixture, p);
+                // Seed the end-of-combat boundary only; vanilla performs the transition,
+                // reward and all 600 celebration ticks. This does not simulate a full fight.
+                setRaidField(raid, "started", true);
+                setRaidField(raid, "wavesSpawned", raid.getMaxWaves(Difficulty.NORMAL));
+                raid.addHero(p);
+                if (!victory) {
+                    fixture.world.getPointOfInterestStorage().remove(fixture.pos);
+                    fixture.world.getPointOfInterestStorage().tick(() -> true);
+                    c.assertFalse(fixture.world.isNearOccupiedPointOfInterest(fixture.pos), "Loss fixture has no village");
+                }
+                for (int i = 0; i < 41 && !raid.isFinished(); i++) fixture.world.getRaidManager().tick();
+                c.assertEquals(victory, raid.hasWon(), "Vanilla victory boundary");
+                c.assertEquals(!victory, raid.hasLost(), "Vanilla village-loss boundary");
+                c.assertEquals(victory, p.hasStatusEffect(StatusEffects.HERO_OF_THE_VILLAGE), "Only vanilla victory awards hero");
+                if (!victory) fixture.addPoi(fixture.pos);
+                for (int i = 0; i < 599; i++) {
+                    fixture.world.getRaidManager().tick();
+                    EndlessRaidChallenge.check(p);
+                    c.assertFalse(p.hasStatusEffect(StatusEffects.BAD_OMEN), "No restart during celebration " + i);
+                }
+                c.assertFalse(raid.hasStopped(), "All 599 celebration ticks preserved");
+                fixture.world.getRaidManager().tick();
+                c.assertTrue(raid.hasStopped(), "Vanilla 600th tick ends celebration");
+                EndlessRaidChallenge.check(p);
+                var next = prepare(c, fixture, p);
+                c.assertTrue(next.getRaidId() != raid.getRaidId(), "New raid after vanilla finished event");
+                s.activate("no_sprint");
+                c.assertTrue(next.hasStopped() && !next.hasWon(), "Next unfinished raid stops without victory");
+                c.assertEquals(victory, p.hasStatusEffect(StatusEffects.HERO_OF_THE_VILLAGE), "Earned reward is not rolled back");
+            }
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "endless_raid", tickLimit = 100)
+    public void cadenceSerialCleanupAndIndependentPairs(TestContext c) throws Exception {
+        try (var fixture = new Village(c); var s = new ChallengeScenario(c)) {
+            var p = s.player(); var second = s.player(); fixture.place(p); fixture.place(second);
+            p.getInventory().setStack(0, new ItemStack(Items.DIAMOND, 17)); p.setHealth(17);
+            var server = fixture.world.getServer();
+            var ticks = MinecraftServer.class.getDeclaredField("ticks"); ticks.setAccessible(true);
+            int originalTicks = server.getTicks();
+            try {
+                s.activate(ID);
+                p.clearStatusEffects();
+                for (int i = 1; i < 20; i++) {
+                    ticks.setInt(server, i); EndlessRaidChallenge.tick(server);
+                    c.assertFalse(p.hasStatusEffect(StatusEffects.BAD_OMEN), "No issuance before tick20");
+                }
+                ticks.setInt(server, 20); EndlessRaidChallenge.tick(server);
+                c.assertTrue(p.hasStatusEffect(StatusEffects.BAD_OMEN), "Tick20 issues omen");
+                tickEffects(p); tickEffects(p);
+                int duration = p.getStatusEffect(StatusEffects.RAID_OMEN).getDuration();
+                for (int i = 0; i < 50; i++) EndlessRaidChallenge.tick(server);
+                c.assertEquals(duration, p.getStatusEffect(StatusEffects.RAID_OMEN).getDuration(), "Repeated same tick does not refresh countdown");
+            } finally { ticks.setInt(server, originalTicks); }
+            for (int i = 0; i < 32; i++) {
+                s.activate("double_challenge:endless_raid,no_sprint");
+                var raid = prepare(c, fixture, p);
+                tickEffects(second);
+                c.assertEquals(1, fixture.raids().size(), "One raid for two players in cycle " + i);
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "Control companion active");
+                var state = EndlessRaidState.get(server);
+                state.setDirty(false);
+                for (int j = 0; j < 50; j++) state.reconcile(fixture.world);
+                c.assertFalse(state.isDirty(), "Unchanged ownership never marks dirty");
+                c.assertEquals(1, owned(c).getList("raids", 10).size(), "One ownership entry");
+                s.activate(i % 2 == 0 ? "no_sprint" : ID);
+                c.assertTrue(raid.hasStopped() && !raid.hasWon(), "Each prior serial cleaned");
+                c.assertEquals(0, owned(c).getList("raids", 10).size(), "No accumulated ownership entries");
+                p.setSprinting(true);
+                c.assertEquals(i % 2 != 0, p.isSprinting(), "Both companion endings");
+                c.assertEquals(17, p.getInventory().getStack(0).getCount(), "No inventory rollback");
+                c.assertEquals(17.0F, p.getHealth(), "No health rollback");
+            }
+            s.activate("double_challenge:endless_raid,all_debuffs");
+            var debuffs = ChallengeRegistry.get("all_debuffs");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON), "Debuff companion active");
+            c.assertTrue(EffectLedger.of(p).exclusivelyOwns(ID, StatusEffects.BAD_OMEN), "Vanilla omen is outside the harmful companion set");
+            ChallengeRegistry.get(ID).onStop(server, p);
+            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON), "Ending raids preserves companion effects");
+            c.assertFalse(p.hasStatusEffect(StatusEffects.BAD_OMEN), "Only raid omen contribution removed");
+            s.activate("double_challenge:endless_raid,all_debuffs");
+            debuffs.onStop(server, p);
+            c.assertFalse(p.hasStatusEffect(StatusEffects.POISON), "Ending companion removes its poison");
+            EndlessRaidChallenge.check(p);
+            c.assertTrue(EffectLedger.of(p).exclusivelyOwns(ID, StatusEffects.BAD_OMEN), "Raid rule resumes independently");
+            var own = prepare(c, fixture, p);
+            c.assertEquals(1, owned(c).getList("raids", 10).size(), "Only exclusive raid omen can claim a raid");
+            s.activate("no_sprint");
+            c.assertTrue(own.hasStopped(), "Independent raid cleanup");
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "endless_raid", tickLimit = 100)
+    public void sameUuidDiskRejoinAndEmptyServerSameId(TestContext c) throws Exception {
+        try (var fixture = new Village(c); var s = new ChallengeScenario(c)) {
+            var server = fixture.world.getServer(); var persistence = server.getOverworld().getPersistentStateManager();
+            var p = s.player(); fixture.place(p); var uuid = p.getUuid();
+            s.activate(ID); tickEffects(p);
+            for (int i = 0; i < 200; i++) tickEffects(p);
+            int remaining = p.getStatusEffect(StatusEffects.RAID_OMEN).getDuration();
+            ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, server);
+            server.getPlayerManager().remove(p);
+            p = s.player(uuid); fixture.place(p);
+            c.assertEquals(remaining, p.getStatusEffect(StatusEffects.RAID_OMEN).getDuration(), "Real playerdata same UUID preserves countdown");
+            c.assertTrue(EffectLedger.of(p).exclusivelyOwns(ID, StatusEffects.RAID_OMEN), "Join preserves provenance");
+            for (int i = 0; i < remaining + 1; i++) tickEffects(p);
+            var own = fixture.raids().getFirst();
+            persistence.save();
+            var disk = persistence.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            var cycle = CurseCycleState.createFromNbt(disk.getCompound("data"), fixture.world.getRegistryManager());
+            persistence.set(CurseCycleState.STATE_KEY, cycle);
+            disk = persistence.readNbt(EndlessRaidState.KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            persistence.set(EndlessRaidState.KEY, EndlessRaidState.fromNbt(disk.getCompound("data"), fixture.world.getRegistryManager()));
+            fixture.world.getRaidManager().tick();
+            c.assertFalse(own.hasStopped(), "Loaded current cycle/ownership keeps raid");
+            ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, server);
+            for (var online : new ArrayList<>(server.getPlayerManager().getPlayerList())) server.getPlayerManager().remove(online);
+            long oldSerial = cycle.getActivationSerial();
+            com.cursecycle.state.CycleManager.activateChallenge(server, cycle, ID);
+            c.assertTrue(cycle.getActivationSerial() > oldSerial, "Same ID on empty server changes serial");
+            c.assertFalse(own.hasStopped(), "Empty server did not call onStop");
+            fixture.world.getRaidManager().tick();
+            c.assertTrue(own.hasStopped() && !own.hasWon(), "Manager tick cleans stale serial even with same ID active");
+            c.assertEquals(0, owned(c).getList("raids", 10).size(), "Stale ownership pruned");
+            p = s.player(uuid); fixture.place(p);
+            c.assertTrue(p.hasStatusEffect(StatusEffects.BAD_OMEN), "New activation rejoin starts fresh omen");
+            tickEffects(p);
+            ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, server);
+            server.getPlayerManager().remove(p);
+            com.cursecycle.state.CycleManager.activateChallenge(server, cycle, "no_sprint");
+            persistence.save();
+            disk = persistence.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
+            persistence.set(CurseCycleState.STATE_KEY, CurseCycleState.createFromNbt(disk.getCompound("data"), fixture.world.getRegistryManager()));
+            p = s.player(uuid); fixture.place(p);
+            c.assertFalse(p.hasStatusEffect(StatusEffects.BAD_OMEN) || p.hasStatusEffect(StatusEffects.RAID_OMEN), "Actual JOIN cleans offline-ended playerdata");
+        }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "endless_raid", tickLimit = 100)
+    public void actualOwnedWavesAndBothNetheriteEndings(TestContext c) throws Exception {
+        try (var fixture = new Village(c); var s = new ChallengeScenario(c)) {
+            var p = s.player(); fixture.place(p);
+            var wave = Raid.class.getDeclaredMethod("spawnNextWave", BlockPos.class); wave.setAccessible(true);
+            var cleanup = new ArrayList<net.minecraft.entity.raid.RaiderEntity>();
+            try {
+                for (boolean endRaids : List.of(true, false)) {
+                    s.activate("double_challenge:endless_raid,netherite_mobs");
+                    var raid = prepare(c, fixture, p);
+                    wave.invoke(raid, fixture.pos);
+                    var members = new ArrayList<>(raid.getAllRaiders()); cleanup.addAll(members);
+                    c.assertFalse(members.isEmpty(), "Owned vanilla raid actually spawns a wave");
+                    for (var raider : members) {
+                        raider.setAiDisabled(true); fixture.world.tickEntity(raider);
+                        for (var slot : List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET))
+                            c.assertTrue(NetheriteMobsChallenge.isIssued(raider.getEquippedStack(slot)), "Actual wave receives issued armor");
+                    }
+                    s.activate(endRaids ? "netherite_mobs" : ID);
+                    c.assertTrue(raid.hasStopped() && !raid.hasWon(), "Prior activation's unfinished raid stops");
+                    for (var raider : members) {
+                        c.assertTrue(raider.isAlive() && !raider.isRemoved(), "Spawned raider remains alive");
+                        c.assertTrue(NetheriteMobsChallenge.isIssued(raider.getEquippedStack(EquipmentSlot.CHEST)), "Issued equipment remains");
+                    }
+                    if (endRaids) {
+                        c.assertFalse(p.hasStatusEffect(StatusEffects.BAD_OMEN), "Ending raid rule removes only own omen");
+                        var fresh = EntityType.PILLAGER.create(fixture.world); cleanup.add(fresh);
+                        fresh.refreshPositionAndAngles(fixture.pos, 0, 0); fresh.setAiDisabled(true);
+                        fixture.world.spawnEntity(fresh); fixture.world.tickEntity(fresh);
+                        c.assertTrue(NetheriteMobsChallenge.isIssued(fresh.getEquippedStack(EquipmentSlot.CHEST)), "Remaining armor rule equips new mobs");
+                    } else {
+                        c.assertTrue(p.hasStatusEffect(StatusEffects.BAD_OMEN), "Remaining raid rule starts fresh preparation");
+                        var next = prepare(c, fixture, p); wave.invoke(next, fixture.pos);
+                        var fresh = new ArrayList<>(next.getAllRaiders()); cleanup.addAll(fresh);
+                        c.assertFalse(fresh.isEmpty(), "Remaining raid rule spawns actual next wave");
+                        for (var raider : fresh) {
+                            raider.setAiDisabled(true); fixture.world.tickEntity(raider);
+                            c.assertFalse(NetheriteMobsChallenge.isIssued(raider.getEquippedStack(EquipmentSlot.CHEST)), "Ended armor rule does not equip new wave");
+                        }
+                    }
+                    cleanup.forEach(net.minecraft.entity.Entity::discard);
+                }
+            } finally { cleanup.forEach(net.minecraft.entity.Entity::discard); }
+        }
+        c.complete();
+    }
+
+    private static Raid prepare(TestContext c, Village fixture, ServerPlayerEntity player) throws Exception {
+        EndlessRaidChallenge.check(player); tickEffects(player);
+        c.assertTrue(player.hasStatusEffect(StatusEffects.RAID_OMEN), "Real village begins preparation");
+        int remaining = player.getStatusEffect(StatusEffects.RAID_OMEN).getDuration();
+        for (int i = 0; i < remaining + 1; i++) tickEffects(player);
+        var raid = fixture.world.getRaidAt(player.getBlockPos());
+        c.assertTrue(raid != null && !raid.hasStopped(), "Vanilla countdown creates current raid");
+        return raid;
+    }
+
+    private static void setRaidField(Raid raid, String name, Object value) throws Exception {
+        var field = Raid.class.getDeclaredField(name); field.setAccessible(true); field.set(raid, value);
     }
 
     private static void tickEffects(ServerPlayerEntity player) throws Exception {
