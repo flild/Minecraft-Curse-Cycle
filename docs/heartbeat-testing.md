@@ -1,7 +1,76 @@
-# heartbeat — проверка реализации
+# heartbeat — проверка реализации и ревью
 
 Дата: 2026-10-31. Minecraft 1.21.1, Yarn 1.21.1+build.3, Fabric API
 0.102.0+1.21.1, Loader 0.16.0, Java 21.
+
+## Ревью 2026-11-07 — свежие проверки
+
+Исходный HEAD `0cbb9703882fe8b79417977c7dea16f85c57e160`, main. Подтверждённых
+дефектов production-кода не найдено; игровой код и общие контракты не менялись.
+Итог: `pass_with_limits`, механика `pass`, расходы `no_issue_found / static`.
+Старые результаты ниже относятся к реализации и не являются доказательствами
+этого ревью. Полная матрица ТЗ и ограничения: локальный
+`Промпты/reviews/31-heartbeat.md`.
+
+- `./gradlew.bat build runGametest --offline -I build/heartbeat-review-baseline.init.gradle`:
+  exit 0, 149 JUnit / 54 suites, 2/2 предметных GameTest, без failures/errors/skipped.
+- `./gradlew.bat -I src/clientprobe/heartbeat/init.gradle runClient --offline`:
+  исходный probe exit 0, `HEARTBEAT_CLIENT_PROBE_PASSED checks=337`;
+  после расширения exit 0, `checks=422`.
+- `./gradlew.bat build runGametest --offline -I build/heartbeat-review-final.init.gradle`:
+  exit 0, 149 JUnit / 54 suites, 4/4 предметных GameTest, без failures/errors/skipped.
+  Два добавленных сценария: повторное исполнение существующей пары one_heart
+  с настоящим пропуском, тотемом и смертью; 32 цикла double heartbeat/no_sprint
+  для двух игроков, ранние 100 C2S за цикл, новые токены, отсутствие штрафов
+  и освобождение всех серверных сеансов после завершения. Reflection только
+  наблюдает карту SESSIONS; время, authority и active gates не подменяются.
+- Повторные `runClient --offline` с отдельными `-I src/clientprobe/blind_hud/init.gradle`
+  и `-I src/clientprobe/silent_world/init.gradle` проверяют соответствующие
+  предметные пары и оба окончания. Blind HUD исполняет production overlay с
+  захватом рисования; silent_world проверяет реальный OpenAL output и сохранение
+  heartbeat state/age, без полного ритм-input/render/network цикла.
+
+Расширенный heartbeat probe проверяет чужой window handle, потерю/возврат
+фокуса, отсутствие доступного C2S, отсутствие искусственного PRESS при возврате
+фокуса/канала, поздний S2C после завершения, unsynced connection, освобождение
+удержания после disconnect и 32 цикла inactive/active с точным числом пакетов.
+Настоящие transformed Keyboard/Mouse исполняются до test-only отмены vanilla
+dispatch; canSend/send заменены управляемым fixture/capture. DrawContext и
+игровые объекты по-прежнему fixtures. Это не проверка GLFW, framebuffer, реальной
+сети или полного запуска обычного клиента.
+
+Изоляция сервера: init-script копирует `src/gametest/resources/fabric.mod.json`
+в `build/heartbeat-review-<phase>-resources`, оставляет entrypoint только
+`com.cursecycle.HeartbeatGameTest`, принудительно обновляет resources/JUnit,
+задаёт отдельные `build/gametest-heartbeat-review-<phase>-20261107` и
+`build/reports/heartbeat-review-<phase>.xml`; production/classpath не меняются.
+Вариант final получается заменой `baseline` на `final` в baseline-script.
+Для воспроизведения baseline именно с 2 тестами нужен исходный HEAD; текущий
+класс содержит 4 теста. После запуска восстановить обычные resources:
+`./gradlew.bat processGametestResources --offline`; сравнить все 43 entrypoints
+с исходным JSON. Binary/sources JAR не должны содержать validation/GameTest/Probe.
+
+Логи ревью: `build/heartbeat-review-{baseline,final}.log`,
+`build/heartbeat-review-client-{baseline,final}.log`,
+`build/heartbeat-review-blind-hud-pair.log`, `build/heartbeat-review-silent-world-pair.log`.
+JUnit: `build/reports/heartbeat-review-{baseline,final}-junit/TEST-*.xml`.
+Финальная сверка: `python build/heartbeat-review-verify.py`; после передачи
+тот же script с `--handoff`. Build-файлы локальные и в production не включаются.
+
+Статический анализ: постоянный server tick проходит текущих игроков и сеансы,
+включая inactive gates; active copy списка сеансов ограничена online players.
+Входящий C2S не создаёт сеанса, не содержит клиентского времени и отправляет ack
+не более одного на принятое окно. Образец отправляется каждые 5 тиков, при
+переходе цели, принятии и общем sync. Ввод отслеживает физические keys даже
+неактивным, чтобы активация не превращала удержание в нажатие. Render проверяет
+active до рисования; text focus обходит дерево виджетов только при нужном пути.
+Сканирований мира, собственных сохранений и очереди штрафов нет. FPS/MSPT,
+allocation rate, retained memory и настоящая нагрузка не измерялись.
+
+Ручные пункты в конце документа остаются невыполненными: heartbeat-L01 —
+обычный ввод/GUI/визуализация/физический lifecycle и пары; L02 — два настоящих
+клиента, транспорт/RTT/низкий TPS; L03 — полный новый JVM active/ended/offline;
+L04 — сравнимый профиль inactive/active/double и повторных жизненных циклов.
 
 ## Поведение и технические решения
 
@@ -45,7 +114,7 @@
   без компенсации сетевой задержки; integrated pause останавливает предсказание.
   CLIENT-стенд не доказывает удобство этого отображения при реальной задержке.
 
-## Автоматически выполнено
+## Автоматически выполнено при реализации 2026-10-31 — история
 
 1. `.\gradlew.bat compileJava compileGametestJava --offline` — BUILD SUCCESSFUL.
 2. `.\gradlew.bat build runGametest --offline` — BUILD SUCCESSFUL; 144 JUnit,

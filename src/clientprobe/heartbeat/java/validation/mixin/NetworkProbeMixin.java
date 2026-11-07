@@ -13,7 +13,7 @@ import validation.HeartbeatProbe;
 @Mixin(value = ClientPlayNetworking.class, remap = false)
 public class NetworkProbeMixin {
     @Inject(method = "canSend(Lnet/minecraft/network/packet/CustomPayload$Id;)Z", at = @At("HEAD"), cancellable = true)
-    private static void probe$canSend(CustomPayload.Id<?> id, CallbackInfoReturnable<Boolean> ci) { ci.setReturnValue(true); }
+    private static void probe$canSend(CustomPayload.Id<?> id, CallbackInfoReturnable<Boolean> ci) { ci.setReturnValue(HeartbeatProbe.canSend); }
     @Inject(method = "send", at = @At("HEAD"), cancellable = true)
     private static void probe$send(CustomPayload payload, CallbackInfo ci) { HeartbeatProbe.sent.add(payload); ci.cancel(); }
 }

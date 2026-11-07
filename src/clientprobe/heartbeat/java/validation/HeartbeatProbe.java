@@ -49,6 +49,7 @@ import java.util.List;
 /** Isolated fixtures, real transformed raw input and production drawing; no OpenGL/network transport. */
 public final class HeartbeatProbe implements PreLaunchEntrypoint {
     public static final List<CustomPayload> sent = new ArrayList<>();
+    public static boolean canSend = true;
     private static Unsafe unsafe;
     private static MinecraftClient client;
     private static Keyboard keyboard;
@@ -180,6 +181,32 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
         sync(); ClientDataHolder.reset(); draw(false, false);
         ClientDataHolder.updateState(1, 20, List.of("no_sprint"), "", List.of("heartbeat")); draw(false, false);
     }
+    private static void focusTransportAndInactiveControl() throws Exception {
+        HeartbeatInput.disconnect(); sent.clear(); sync();
+        HeartbeatInput.key.setBoundKey(InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_B));
+        keyboard.onKey(999, GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS, 0);
+        count(0, "Another window cannot submit input or latch this window's key");
+        tap(); count(1, "Correct window remains usable");
+        set(client, MinecraftClient.class, "windowFocused", false);
+        key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS); count(1, "Unfocused window cannot submit");
+        set(client, MinecraftClient.class, "windowFocused", true);
+        key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS); count(1, "Regaining focus does not turn a hold into a new press");
+        key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_RELEASE); tap(); count(2, "Release after focus loss restores input");
+        canSend = false; key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS); count(2, "Unsupported transport cannot submit");
+        canSend = true; key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS); count(2, "Transport availability does not manufacture an edge");
+        key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_RELEASE); tap(); count(3, "New edge uses available transport");
+        ClientDataHolder.updateState(1, 20, List.of("no_sprint"), "", List.of());
+        HeartbeatInput.receive(client, new HeartbeatStatePayload(7, 11, 120, 120, true));
+        tap(); count(3, "Late phase sample cannot revive ended heartbeat"); draw(false, false);
+        ClientDataHolder.reset(); tap(); count(3, "Unsynced connection cannot submit");
+        sync(); key(GLFW.GLFW_KEY_B, 48, GLFW.GLFW_PRESS); count(4, "Reconnected phase accepts input");
+        HeartbeatInput.disconnect(); sync(); tap(); count(5, "Disconnect clears the previous connection's held key");
+        for (int i = 0; i < 32; i++) {
+            ClientDataHolder.updateState(1, 20, List.of("no_sprint"), "", List.of());
+            tap(); count(5 + i, "Inactive control has no heartbeat packet");
+            sync(); tap(); count(6 + i, "Reactivation accepts exactly one physical edge");
+        }
+    }
     private static void audit() throws Exception {
         for (var pair : List.of(new String[]{"Keyboard", "onKey"}, new String[]{"Mouse", "onMouseButton"})) {
             var node = new ClassNode();
@@ -226,7 +253,7 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
             renderer = (GameRenderer) unsafe.allocateInstance(GameRenderer.class);
             render = java.util.Arrays.stream(GameRenderer.class.getDeclaredMethods()).filter(m -> m.getName().contains("cursecycle$heartbeat")).findFirst().orElseThrow();
             render.setAccessible(true);
-            input(); lifecycleAndRendering(); audit();
+            input(); lifecycleAndRendering(); focusTransportAndInactiveControl(); audit();
             System.out.println("HEARTBEAT_CLIENT_PROBE_PASSED checks=" + checks); System.exit(0);
         } catch (Throwable failure) { failure.printStackTrace(); System.exit(1); }
     }

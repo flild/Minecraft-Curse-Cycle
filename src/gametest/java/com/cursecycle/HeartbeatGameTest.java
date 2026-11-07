@@ -239,6 +239,40 @@ public class HeartbeatGameTest implements FabricGameTest {
         c.assertEquals(120L, fresh.target(), "First target after preparation");
         c.assertFalse(fresh.accepted(), "No inherited accepted beat");
     }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heartbeat_one_heart_review", tickLimit = 180)
+    public void realMissWithOneHeartAndIndependentCleanup(TestContext c) {
+        // Reuse the existing real-tick pair scenario rather than its historical result.
+        new OneHeartGameTest().realMissedHeartbeatAndIndependentCleanup(c);
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heartbeat_repeated_review")
+    public void repeatedActivationRejectsStaleTokensAndReleasesSessions(TestContext c) throws Exception {
+        var server = c.getWorld().getServer();
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); var q = ready(s);
+            long lastToken = 0;
+            for (int i = 0; i < 32; i++) {
+                s.activate("double_challenge:heartbeat,no_sprint");
+                var phase = sample(s, p);
+                c.assertTrue(phase.session() != lastToken, "Reactivation replaces previous token");
+                lastToken = phase.session();
+                var other = sample(s, q);
+                p.setSprinting(true); q.setSprinting(true);
+                c.assertFalse(p.isSprinting() || q.isSprinting(), "Both players retain companion restriction");
+                for (int j = 0; j < 100; j++) press(s, p, phase);
+                c.assertFalse(sample(s, p).accepted(), "Early packet flood cannot reserve future window");
+                s.activate("no_sprint");
+                packets(s.channel(p)); press(s, p, phase); press(s, q, other);
+                HeartbeatChallenge.tick(server);
+                c.assertTrue(packets(s.channel(p)).isEmpty(), "Ended phase cannot acknowledge stale presses");
+                p.setSprinting(true); c.assertFalse(p.isSprinting(), "Ending heartbeat leaves no_sprint active");
+                c.assertEquals(20F, p.getHealth(), "Start/stop and early presses never damage or heal");
+                var field = HeartbeatChallenge.class.getDeclaredField("SESSIONS"); field.setAccessible(true);
+                c.assertFalse(((Map<?, ?>) field.get(null)).containsKey(server), "All session/player/world references released");
+            }
+        } finally { HeartbeatChallenge.clear(server); REQUESTS.clear(); }
+        c.complete();
+    }
     private static void cleanup(ChallengeScenario s) {
         HeartbeatChallenge.clear(s.context.getWorld().getServer()); REQUESTS.clear(); s.close();
     }
