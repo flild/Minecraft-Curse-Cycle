@@ -1,0 +1,32 @@
+// Optional real OpenGL screenshots and interaction checks. Never packaged in the production mod.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/visual')
+        def probeOutput = project.file('build/visual-client-probe')
+        tasks.register('compileVisualProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('visualProbeJar', Jar) {
+            dependsOn tasks.named('compileVisualProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/visual-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+            programArg '--width'
+            programArg '1280'
+            programArg '--height'
+            programArg '800'
+        }
+        tasks.named('runClient') { dependsOn tasks.named('visualProbeJar') }
+    }
+}

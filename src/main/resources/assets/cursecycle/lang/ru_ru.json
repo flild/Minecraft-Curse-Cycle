@@ -30,5 +30,22 @@
   "challenge.cursecycle.no_sprint.name": "Без бега",
   "challenge.cursecycle.no_sprint.desc": "Запрещает бегать на спринте",
   "challenge.cursecycle.no_jumping.name": "Прикованные к земле",
-  "challenge.cursecycle.no_jumping.desc": "Прыжки полностью заблокированы."
+  "challenge.cursecycle.no_jumping.desc": "Прыжки полностью заблокированы.",
+  "text.cursecycle.wheel.heading": "КОЛЕСО ПРОКЛЯТИЙ",
+  "text.cursecycle.wheel.selecting": "Следующее испытание",
+  "text.cursecycle.wheel.selected": "Испытание выбрано",
+  "text.cursecycle.wheel.close": "ЛКМ — закрыть     Esc — закрыть",
+  "text.cursecycle.wheel.skip": "Esc — пропустить анимацию",
+  "text.cursecycle.wheel.result": "Выбрано испытание: %s",
+  "text.cursecycle.hud.next": "Следующее",
+  "text.cursecycle.menu.journal": "Журнал испытаний",
+  "text.cursecycle.menu.rules": "Правила",
+  "text.cursecycle.menu.older": "Раньше",
+  "text.cursecycle.menu.newer": "Позже",
+  "text.cursecycle.menu.no_next": "Следующее испытание ещё не выбрано.",
+  "text.cursecycle.menu.no_history": "История пока пуста.",
+  "text.cursecycle.menu.setting.hud": "HUD испытаний",
+  "text.cursecycle.menu.setting.hud_x": "Положение X",
+  "text.cursecycle.menu.setting.hud_y": "Положение Y",
+  "text.cursecycle.menu.setting.wheel": "Анимация и звук"
 }

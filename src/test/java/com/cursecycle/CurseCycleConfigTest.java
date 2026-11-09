@@ -23,8 +23,8 @@ class CurseCycleConfigTest {
         assertEquals(5, config.noticeLeadTimeDays);
         assertEquals(List.of(3, 2, 1), config.getWeightsForDay(1));
         assertNotNull(config.challengeToggles);
-        assertEquals("minecraft:ui.button.click", config.wheelSoundPath);
-        assertEquals("minecraft:entity.player.levelup", config.wheelFinishSoundPath);
+        assertEquals("minecraft:block.amethyst_block.hit", config.wheelSoundPath);
+        assertEquals("minecraft:block.respawn_anchor.charge", config.wheelFinishSoundPath);
     }
 
     @Test

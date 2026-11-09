@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "cursecycle_visual_probe",
+  "version": "1.0.0",
+  "environment": "client",
+  "entrypoints": {"client": ["validation.VisualProbe"]},
+  "depends": {"fabricloader": ">=0.16.0", "minecraft": "1.21.1", "cursecycle": "*"}
+}

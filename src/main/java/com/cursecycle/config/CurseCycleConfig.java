@@ -27,8 +27,8 @@ public class CurseCycleConfig {
     public boolean enableHudOverlay = true;
     public int hudPositionX = 10;
     public int hudPositionY = 10;
-    public String wheelSoundPath = "minecraft:ui.button.click";
-    public String wheelFinishSoundPath = "minecraft:entity.player.levelup";
+    public String wheelSoundPath = "minecraft:block.amethyst_block.hit";
+    public String wheelFinishSoundPath = "minecraft:block.respawn_anchor.charge";
 
     // Difficulty progression stages: key = min day, value = weights [easy, medium, hard]
     public Map<String, List<Integer>> difficultyWeightsByDay = new LinkedHashMap<>();
@@ -98,10 +98,10 @@ public class CurseCycleConfig {
         difficultyWeightsByDay = validStages.isEmpty()
                 ? new CurseCycleConfig().difficultyWeightsByDay : validStages;
         if (wheelSoundPath == null || Identifier.tryParse(wheelSoundPath) == null) {
-            wheelSoundPath = "minecraft:ui.button.click";
+            wheelSoundPath = "minecraft:block.amethyst_block.hit";
         }
         if (wheelFinishSoundPath == null || Identifier.tryParse(wheelFinishSoundPath) == null) {
-            wheelFinishSoundPath = "minecraft:entity.player.levelup";
+            wheelFinishSoundPath = "minecraft:block.respawn_anchor.charge";
         }
     }
 
