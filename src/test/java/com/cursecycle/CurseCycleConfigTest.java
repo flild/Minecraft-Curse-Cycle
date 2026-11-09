@@ -63,9 +63,46 @@ class CurseCycleConfigTest {
         config.applyChallengeToggles();
         assertFalse(ChallengeRegistry.get("no_sprint").isEnabled());
         assertFalse(ChallengeRegistry.get("no_jumping").isEnabled());
-        assertTrue(ChallengeRegistry.get("test_easy").isEnabled());
+        assertFalse(ChallengeRegistry.get("test_easy").isEnabled());
+        assertTrue(ChallengeRegistry.get("gills").isEnabled());
         config.challengeToggles.clear();
         config.applyChallengeToggles();
         assertTrue(ChallengeRegistry.get("no_sprint").isEnabled());
     }
+    @Test
+    void newAndLegacyConfigsDisableEveryPlaceholderButKeepGameplayChallengesEnabled() {
+        for (String json : List.of("{}", "{\"challengeToggles\":{}}", "{\"challengeToggles\":null}")) {
+            ChallengeRegistry.clear();
+            ModChallenges.registerAll();
+            var config = new Gson().fromJson(json, CurseCycleConfig.class);
+            config.validate();
+            config.applyChallengeToggles();
+            int placeholders = 0;
+            for (var challenge : ChallengeRegistry.getAll()) {
+                boolean placeholder = challenge.getClass().getPackageName().equals("com.cursecycle.challenge.test");
+                assertEquals(!placeholder, challenge.isEnabled(), challenge.getId() + " in " + json);
+                if (placeholder) {
+                    placeholders++;
+                    assertEquals(Boolean.FALSE, config.challengeToggles.get(challenge.getId()));
+                }
+            }
+            assertEquals(6, placeholders);
+        }
+    }
+
+    @Test
+    void explicitDebugOptInAndGameplayOptOutArePreserved() {
+        ChallengeRegistry.clear();
+        ModChallenges.registerAll();
+        var config = new CurseCycleConfig();
+        config.challengeToggles.put("test_easy", true);
+        config.challengeToggles.put("no_sprint", false);
+        config.validate();
+        config.applyChallengeToggles();
+        assertTrue(ChallengeRegistry.get("test_easy").isEnabled());
+        assertFalse(ChallengeRegistry.get("test_easy_2").isEnabled());
+        assertFalse(ChallengeRegistry.get("no_sprint").isEnabled());
+        assertTrue(ChallengeRegistry.get("gills").isEnabled());
+    }
+
 }

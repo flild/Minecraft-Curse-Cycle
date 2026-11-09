@@ -15,6 +15,9 @@ import java.util.*;
 
 public class CurseCycleConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Set<String> TEST_CHALLENGES = Set.of(
+            "test_easy", "test_easy_2", "test_easy_3",
+            "test_medium", "test_medium_2", "test_hard");
     private static File configFile() {
         return FabricLoader.getInstance().getConfigDir().resolve("cursecycle.json").toFile();
     }
@@ -37,6 +40,7 @@ public class CurseCycleConfig {
     public Map<String, Boolean> challengeToggles = new HashMap<>();
 
     public CurseCycleConfig() {
+        TEST_CHALLENGES.forEach(id -> challengeToggles.put(id, false));
         // Default stages:
         // Day 1+: 3 Easy, 2 Medium, 1 Hard
         difficultyWeightsByDay.put("1", List.of(3, 2, 1));
@@ -85,6 +89,8 @@ public class CurseCycleConfig {
         hudPositionX = Math.max(0, hudPositionX);
         hudPositionY = Math.max(0, hudPositionY);
         if (challengeToggles == null) challengeToggles = new HashMap<>();
+        // Older configs contain an empty map: placeholder challenges must remain opt-in.
+        TEST_CHALLENGES.forEach(id -> challengeToggles.putIfAbsent(id, false));
         Map<String, List<Integer>> validStages = new LinkedHashMap<>();
         if (difficultyWeightsByDay != null) {
             difficultyWeightsByDay.forEach((day, weights) -> {
@@ -112,9 +118,10 @@ public class CurseCycleConfig {
     }
 
     public void applyChallengeToggles() {
-        ChallengeRegistry.getAll().forEach(challenge ->
-                challenge.setEnabled(challengeToggles == null
-                        || !Boolean.FALSE.equals(challengeToggles.get(challenge.getId()))));
+        ChallengeRegistry.getAll().forEach(challenge -> {
+            Boolean enabled = challengeToggles == null ? null : challengeToggles.get(challenge.getId());
+            challenge.setEnabled(enabled != null ? enabled : !TEST_CHALLENGES.contains(challenge.getId()));
+        });
     }
 
     public List<Integer> getWeightsForDay(long currentDay) {

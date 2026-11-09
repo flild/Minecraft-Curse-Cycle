@@ -134,4 +134,20 @@ class CycleManagerTest {
         assertFalse(state.getActiveChallengeIds().isEmpty());
         assertNull(state.getNextChallengeId());
     }
+    @Test
+    void playableDefaultsReplaceSavedTestAssignmentsWithoutResettingTheWorldClock() {
+        config.applyChallengeToggles();
+        state.getActiveChallengeIds().add("test_easy");
+        state.getPersonalActiveChallengeIds(UUID.randomUUID()).add("test_medium");
+        state.setNextChallengeId("test_hard");
+        state.setLastActivatedCycle(0);
+        advance(1000);
+        assertFalse(state.getActiveChallengeIds().isEmpty());
+        assertTrue(state.getActiveChallengeIds().stream().allMatch(id -> !id.startsWith("test_")));
+        assertTrue(state.getPersonalActiveChallenges().isEmpty());
+        assertNull(state.getNextChallengeId());
+        assertEquals(1000, state.getTotalInGameTicks());
+        assertEquals(1, events.size());
+    }
+
 }

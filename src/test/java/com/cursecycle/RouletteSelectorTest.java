@@ -97,4 +97,28 @@ class RouletteSelectorTest {
         assertFalse(children.contains("no_sprint"));
         assertEquals(children, ChallengeUtils.resolveToActiveIds(result.getEncodedWinnerId()));
     }
+    @Test
+    void playableDefaultsRemoveOldPlaceholderPoolEntriesAndExcludeThemFromDoubleChallenges() {
+        config.challengeToggles.clear(); // A config saved by the previous build.
+        config.validate();
+        config.applyChallengeToggles();
+        for (var challenge : ChallengeRegistry.getAll()) {
+            if (!challenge.isEnabled()) state.getCurrentPool().add(challenge.getId());
+        }
+        var result = RouletteSelector.selectNextChallenge(config, state);
+        assertNotNull(result);
+        assertTrue(result.wheelItems.stream().allMatch(c -> c.isEnabled()
+                && !c.getClass().getPackageName().equals("com.cursecycle.challenge.test")));
+        assertTrue(state.getCurrentPool().stream().allMatch(id -> ChallengeRegistry.get(id).isEnabled()));
+
+        state.getCurrentPool().clear();
+        state.getCurrentPool().add("double_challenge");
+        state.setLastDrawnChallengeId(null);
+        result = RouletteSelector.selectNextChallenge(config, state);
+        assertEquals("double_challenge", result.winner.getId());
+        assertEquals(2, result.subChallenges.size());
+        assertTrue(result.subChallenges.stream().allMatch(c -> c.isEnabled()
+                && !c.getClass().getPackageName().equals("com.cursecycle.challenge.test")));
+    }
+
 }
