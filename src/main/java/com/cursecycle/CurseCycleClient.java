@@ -93,10 +93,12 @@ public class CurseCycleClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(TriggerWheelPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
-                if (!CurseCycleMod.getConfig().enableWheelAnimation) return;
-                if (context.client().currentScreen == null || !(context.client().currentScreen instanceof WheelScreen)) {
-                    context.client().setScreen(new WheelScreen(payload.candidateIds(), payload.winnerId()));
+                if (!CurseCycleMod.getConfig().enableWheelAnimation) {
+                    if (context.client().currentScreen instanceof WheelScreen) context.client().setScreen(null);
+                    WheelScreen.announceResult(payload.winnerId());
+                    return;
                 }
+                context.client().setScreen(new WheelScreen(payload.candidateIds(), payload.winnerId()));
             });
         });
 

@@ -104,7 +104,7 @@ public class CurseCycleCommand {
         NetworkHandler.triggerWheelForAll(source.getServer(), candidateIds, encodedWinner);
         CycleManager.syncState(source.getServer(), state, CurseCycleMod.getConfig());
 
-        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Принудительно запущено колесо фортуны! Победитель: " + result.winner.getName()).formatted(Formatting.GREEN), true);
+        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Принудительно запущено колесо фортуны!").formatted(Formatting.GREEN), true);
         return 1;
     }
 

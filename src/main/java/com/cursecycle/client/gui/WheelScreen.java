@@ -13,6 +13,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
@@ -56,7 +57,7 @@ public class WheelScreen extends Screen {
         double previous = animation.angle(ticks);
         ticks++;
         if (!finished && ticks >= WheelAnimation.DURATION) {
-            finished = true;
+            revealResult();
             sound(CurseCycleMod.getConfig().wheelFinishSoundPath,
                     SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE, .75f, .7f);
             narrateScreenIfNarrationEnabled(true);
@@ -66,6 +67,26 @@ public class WheelScreen extends Screen {
             sound(CurseCycleMod.getConfig().wheelSoundPath,
                     SoundEvents.BLOCK_AMETHYST_BLOCK_HIT, .8f + .3f * ticks / WheelAnimation.DURATION, .35f);
         }
+    }
+
+    public static void announceResult(String winnerId) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+        client.inGameHud.getChatHud().addMessage(Text.literal("[Curse-Cycle] ")
+                .append(Text.translatable("text.cursecycle.wheel.result",
+                        ChallengeUtils.getFormattedDisplayName(winnerId)))
+                .formatted(Formatting.GREEN));
+    }
+
+    private void revealResult() {
+        if (finished) return;
+        finished = true;
+        announceResult(winnerId);
+    }
+
+    @Override public void removed() {
+        // Esc skips the animation; replacing the screen also completes this wheel locally.
+        revealResult();
     }
 
     private void sound(String path, SoundEvent fallback, float pitch, float volume) {
