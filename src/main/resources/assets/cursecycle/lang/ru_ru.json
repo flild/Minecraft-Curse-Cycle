@@ -47,5 +47,9 @@
   "text.cursecycle.menu.setting.hud": "HUD испытаний",
   "text.cursecycle.menu.setting.hud_x": "Положение X",
   "text.cursecycle.menu.setting.hud_y": "Положение Y",
-  "text.cursecycle.menu.setting.wheel": "Анимация и звук"
+  "text.cursecycle.menu.setting.wheel": "Анимация и звук",
+  "text.cursecycle.hud.countdown": "До смены",
+  "text.cursecycle.hud.days.one": "%s день",
+  "text.cursecycle.hud.days.few": "%s дня",
+  "text.cursecycle.hud.days.many": "%s дней"
 }

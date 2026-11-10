@@ -106,7 +106,6 @@ public class CurseCycleClient implements ClientModInitializer {
             CurseCycleHudOverlay.render(
                 drawContext,
                 CurseCycleMod.getConfig(),
-                ClientDataHolder.getCurrentDay(),
                 ClientDataHolder.getTicksUntilNext(),
                 ClientDataHolder.getActiveChallengeIds(),
                 ClientDataHolder.getNextChallengeId()

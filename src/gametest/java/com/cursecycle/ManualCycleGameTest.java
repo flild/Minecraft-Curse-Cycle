@@ -176,6 +176,69 @@ public class ManualCycleGameTest implements FabricGameTest {
         c.complete();
     }
 
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "manual_controls")
+    public void configuredGameDaysAnnounceThenReplaceTheHudStateOnEveryAutomaticChange(TestContext c) {
+        var server = c.getWorld().getServer();
+        var config = CurseCycleMod.getConfig();
+        int oldInterval = config.challengeIntervalDays;
+        int oldNotice = config.noticeLeadTimeDays;
+        long oldTime = server.getOverworld().getTimeOfDay();
+        try (var scenario = new ChallengeScenario(c)) {
+            config.challengeIntervalDays = 3;
+            config.noticeLeadTimeDays = 1;
+            long origin = 1234;
+            server.getOverworld().setTimeOfDay(origin);
+            scenario.state.restartCycleAt(origin);
+            var player = scenario.player();
+            scenario.activate("no_sprint");
+            for (int cycle = 0; cycle < 2; cycle++) {
+                String current = cycle == 0 ? "no_sprint" : "no_jumping";
+                String upcoming = cycle == 0 ? "no_jumping" : "no_sprint";
+                scenario.state.getCurrentPool().clear();
+                scenario.state.getCurrentPool().add(upcoming);
+                long finalDay = origin + (cycle * 3L + 2) * 24_000L;
+                server.getOverworld().setTimeOfDay(finalDay - 1);
+                CycleManager.updateSchedule(server, config);
+                c.assertTrue(scenario.state.getNextChallengeId() == null, "No wheel before the final game day");
+                server.getOverworld().setTimeOfDay(finalDay);
+                CycleManager.updateSchedule(server, config);
+                c.assertEquals(upcoming, scenario.state.getNextChallengeId(), "Wheel picks the next challenge one day early");
+                CycleManager.syncState(server, scenario.state, config);
+                var preview = latestSync(scenario, player);
+                c.assertEquals(List.of(current), preview.activeChallengeIds(), "Current challenge remains active until the change");
+                c.assertEquals(upcoming, preview.nextChallengeId(), "HUD shows the upcoming challenge");
+                c.assertEquals(1L, com.cursecycle.client.gui.ChallengeCountdown.daysRemaining(preview.ticksUntilNext()),
+                        "HUD has one game day remaining");
+
+                long boundary = origin + (cycle + 1L) * 3 * 24_000L;
+                server.getOverworld().setTimeOfDay(boundary);
+                CycleManager.updateSchedule(server, config);
+                // Read activation's own packet, without a follow-up sync that could hide stale previews.
+                var refreshed = latestSync(scenario, player);
+                c.assertEquals(List.of(upcoming), refreshed.activeChallengeIds(), "Replace the old challenge rather than appending");
+                c.assertEquals("", refreshed.nextChallengeId(), "Consumed preview disappears in the same packet");
+                c.assertEquals(72_000L, refreshed.ticksUntilNext(), "Fresh configured interval instead of an accumulated timer");
+                c.assertEquals(3L, com.cursecycle.client.gui.ChallengeCountdown.daysRemaining(refreshed.ticksUntilNext()),
+                        "Counter refreshes to three days on both changes");
+            }
+        } finally {
+            config.challengeIntervalDays = oldInterval;
+            config.noticeLeadTimeDays = oldNotice;
+            server.getOverworld().setTimeOfDay(oldTime);
+        }
+        c.complete();
+    }
+
+    private static CurseCycleSyncPayload latestSync(ChallengeScenario scenario, ServerPlayerEntity player) {
+        scenario.channel(player).runPendingTasks();
+        var payloads = scenario.channel(player).outboundMessages().stream()
+                .filter(CustomPayloadS2CPacket.class::isInstance).map(CustomPayloadS2CPacket.class::cast)
+                .map(CustomPayloadS2CPacket::payload).filter(CurseCycleSyncPayload.class::isInstance)
+                .map(CurseCycleSyncPayload.class::cast).toList();
+        if (payloads.isEmpty()) throw new AssertionError("HUD state was not sent");
+        return payloads.getLast();
+    }
+
     private static final class StopProbe extends Challenge {
         final Map<UUID, Integer> stops = new HashMap<>();
         StopProbe() { super("test_easy", "manual cleanup probe", "", "", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL); }

@@ -27,6 +27,22 @@ allprojects {
             programArg '--height'
             programArg '800'
         }
-        tasks.named('runClient') { dependsOn tasks.named('visualProbeJar') }
+        tasks.register('prepareVisualProbeOptions') {
+            doLast {
+                def options = new File(probeOutput, 'run/options.txt')
+                def settings = [
+                    lang: 'ru_ru', guiScale: '2', pauseOnLostFocus: 'false',
+                    maxFps: '60', onboardAccessibility: 'false', fullscreen: 'false'
+                ]
+                def lines = options.exists() ? options.readLines('UTF-8') : []
+                lines = lines.findAll { line -> !settings.keySet().any { key -> line.startsWith(key + ':') } }
+                lines.addAll(settings.collect { key, value -> key + ':' + value })
+                options.parentFile.mkdirs()
+                options.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+            }
+        }
+        tasks.named('runClient') {
+            dependsOn tasks.named('visualProbeJar'), tasks.named('prepareVisualProbeOptions')
+        }
     }
 }

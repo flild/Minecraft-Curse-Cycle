@@ -47,5 +47,9 @@
   "challenge.cursecycle.no_sprint.name": "No sprinting",
   "challenge.cursecycle.no_sprint.desc": "Sprinting is disabled",
   "challenge.cursecycle.no_jumping.name": "Grounded",
-  "challenge.cursecycle.no_jumping.desc": "Jumping is disabled."
+  "challenge.cursecycle.no_jumping.desc": "Jumping is disabled.",
+  "text.cursecycle.hud.countdown": "Changes in",
+  "text.cursecycle.hud.days.one": "%s day",
+  "text.cursecycle.hud.days.few": "%s days",
+  "text.cursecycle.hud.days.many": "%s days"
 }

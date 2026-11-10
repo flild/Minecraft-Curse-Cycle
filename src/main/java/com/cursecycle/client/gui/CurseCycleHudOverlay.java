@@ -15,7 +15,7 @@ import java.util.List;
 public final class CurseCycleHudOverlay {
     private CurseCycleHudOverlay() {}
 
-    public static void render(DrawContext context, CurseCycleConfig config, long day, long ticksUntilNext,
+    public static void render(DrawContext context, CurseCycleConfig config, long ticksUntilNext,
                               List<String> activeIds, String nextId) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!config.enableHudOverlay || client.options.hudHidden) return;
@@ -45,12 +45,12 @@ public final class CurseCycleHudOverlay {
         int visibleHeight = Math.min(height, context.getScaledWindowHeight() - y - 6);
         CurseStyle.panel(context, x, y, width, visibleHeight);
         context.enableScissor(x + 1, y + 1, x + width - 1, y + visibleHeight - 1);
-        context.drawTextWithShadow(renderer, Text.translatable("text.cursecycle.day", day),
+        context.drawTextWithShadow(renderer, Text.translatable("text.cursecycle.hud.countdown"),
                 x + 9, y + 9, CurseStyle.BRONZE);
-        long seconds = Math.max(0, ticksUntilNext) / 20;
-        String timer = String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
+        long days = ChallengeCountdown.daysRemaining(ticksUntilNext);
+        Text timer = Text.translatable(ChallengeCountdown.daysKey(days, client.getLanguageManager().getLanguage()), days);
         context.drawTextWithShadow(renderer, timer, x + width - renderer.getWidth(timer) - 9, y + 9,
-                ticksUntilNext <= 1200 ? CurseStyle.PURPLE : CurseStyle.TEXT);
+                days <= 1 ? CurseStyle.PURPLE : CurseStyle.TEXT);
         context.fill(x + 9, y + 23, x + width - 9, y + 24, CurseStyle.EDGE);
         int currentY = y + 31;
         if (entries.isEmpty()) {

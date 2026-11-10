@@ -9,7 +9,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.text.Text;
@@ -32,7 +31,7 @@ public final class VisualProbe implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             try {
                 if (!started) {
-                    if (client.getOverlay() != null || !(client.currentScreen instanceof TitleScreen)) return;
+                    if (client.getOverlay() != null || client.currentScreen == null) return;
                     started = true;
                     client.options.pauseOnLostFocus = false;
                     client.options.getMaxFps().setValue(60);
@@ -88,12 +87,20 @@ public final class VisualProbe implements ClientModInitializer {
                         client.setScreen(new Screen(Text.literal("HUD fixture")) {
                             @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
                                 context.fill(0, 0, width, height, 0xFF25252E);
-                                CurseCycleHudOverlay.render(context, new CurseCycleConfig(), 26, 7600,
+                                CurseCycleHudOverlay.render(context, new CurseCycleConfig(), 24_000,
                                         List.of("heartbeat", "blocked_direction"), DOUBLE);
                             }
                         });
                     }
                     case 295 -> capture(client, "hud");
+                    case 296 -> client.setScreen(new Screen(Text.literal("HUD reset fixture")) {
+                        @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+                            context.fill(0, 0, width, height, 0xFF25252E);
+                            CurseCycleHudOverlay.render(context, new CurseCycleConfig(), 120_000,
+                                    List.of("no_sprint"), "");
+                        }
+                    });
+                    case 299 -> capture(client, "hud-reset");
                     case 300 -> {
                         client.getWindow().setWindowedSize(854, 480);
                         client.options.getGuiScale().setValue(2);

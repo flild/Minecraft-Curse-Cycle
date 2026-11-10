@@ -206,4 +206,38 @@ class CycleManagerTest {
         assertNotNull(state.getNextChallengeId());
     }
 
+    @Test
+    void gameDayCountdownRepeatsConfiguredDurationAndAnnouncesOneDayBeforeEachChange() {
+        for (int duration : new int[]{1, 3, 5, 7}) {
+            state = new CurseCycleState();
+            config.challengeIntervalDays = duration;
+            config.noticeLeadTimeDays = 1;
+            state.getActiveChallengeIds().add("no_sprint");
+            long start = 1234;
+            state.restartCycleAt(start);
+            events.clear();
+            for (int cycle = 0; cycle < 3; cycle++) {
+                for (int elapsed = 0; elapsed < duration; elapsed++) {
+                    long now = start + (cycle * duration + elapsed) * 24_000L;
+                    advance(now);
+                    assertEquals(duration - elapsed,
+                            com.cursecycle.client.gui.ChallengeCountdown.daysRemaining(
+                                    CycleManager.ticksUntilNext(state, config, now)));
+                    assertEquals(cycle, state.getHistory().size(), "No activation before the countdown finishes");
+                    assertEquals(elapsed == duration - 1, state.getNextChallengeId() != null,
+                            "Only the final day has an upcoming challenge for duration=" + duration);
+                }
+                String promised = state.getNextChallengeId();
+                long boundary = start + (cycle + 1L) * duration * 24_000L;
+                advance(boundary);
+                assertEquals(com.cursecycle.challenge.ChallengeUtils.resolveToActiveIds(promised),
+                        state.getActiveChallengeIds(), "Replace the current challenge with the promised one");
+                assertEquals(duration, com.cursecycle.client.gui.ChallengeCountdown.daysRemaining(
+                        CycleManager.ticksUntilNext(state, config, boundary)), "Refresh the counter, never add duration");
+                assertEquals(cycle + 1, state.getHistory().size());
+                if (duration > 1) assertNull(state.getNextChallengeId(), "Consumed preview removed");
+            }
+        }
+    }
+
 }

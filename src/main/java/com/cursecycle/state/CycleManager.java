@@ -95,8 +95,9 @@ public class CycleManager {
                     RouletteSelector.WheelResult result = RouletteSelector.selectNextChallenge(config, state);
                     nextId = result == null ? null : result.getEncodedWinnerId();
                 }
-                if (nextId != null) activate.accept(nextId);
+                // Activation immediately synchronizes the HUD: consume the preview before broadcasting.
                 state.setNextChallengeId(null);
+                if (nextId != null) activate.accept(nextId);
             }
             state.setLastActivatedCycle(currentCycle);
             state.setSpinTriggeredForCurrentCycle(false);
