@@ -26,6 +26,7 @@ public class CurseCycleState extends PersistentState {
     public NbtCompound getChallengeData() { return challengeData; }
 
     private long totalInGameTicks = 0;
+    private long cycleOriginTicks = 0;
     private long currentDay = 1;
     private final List<String> activeChallengeIds = new ArrayList<>();
     private String nextChallengeId = null;
@@ -70,6 +71,7 @@ public class CurseCycleState extends PersistentState {
     public void reset() {
         beginActivation();
         totalInGameTicks = 0;
+        cycleOriginTicks = 0;
         currentDay = 1;
         activeChallengeIds.clear();
         nextChallengeId = null;
@@ -102,6 +104,7 @@ public class CurseCycleState extends PersistentState {
         state.activationSerial = tag.getLong("activationSerial");
         state.challengeData = tag.getCompound("challengeData").copy();
         state.totalInGameTicks = tag.getLong("totalInGameTicks");
+        state.cycleOriginTicks = Math.max(0, tag.getLong("cycleOriginTicks"));
         state.currentDay = tag.getLong("currentDay");
         if (state.currentDay < 1) state.currentDay = 1;
 
@@ -165,6 +168,7 @@ public class CurseCycleState extends PersistentState {
         tag.putLong("activationSerial", activationSerial);
         tag.put("challengeData", challengeData.copy());
         tag.putLong("totalInGameTicks", totalInGameTicks);
+        tag.putLong("cycleOriginTicks", cycleOriginTicks);
         tag.putLong("currentDay", currentDay);
 
         NbtList activeList = new NbtList();
@@ -209,6 +213,20 @@ public class CurseCycleState extends PersistentState {
 
         return tag;
     }
+
+    /** Restart only the challenge schedule; world time, history and remaining pool are retained. */
+    public void restartCycleAt(long timeOfDay) {
+        cycleOriginTicks = Math.max(0, timeOfDay);
+        totalInGameTicks = cycleOriginTicks;
+        currentDay = cycleOriginTicks / 24000L + 1;
+        nextChallengeId = null;
+        spinTriggeredForCurrentCycle = false;
+        lastActivatedCycle = 0;
+        lastSpinCycle = -1;
+        markDirty();
+    }
+
+    public long getCycleOriginTicks() { return cycleOriginTicks; }
 
     // Getters and setters
     public long getTotalInGameTicks() { return totalInGameTicks; }

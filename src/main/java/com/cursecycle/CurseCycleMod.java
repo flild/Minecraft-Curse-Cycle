@@ -75,10 +75,8 @@ public class CurseCycleMod implements ModInitializer {
             com.cursecycle.challenge.effect.EffectLedger.of(player).reconcile();
             CurseCycleState state = CurseCycleState.getServerState(server);
 
-            long intervalTicks = config.challengeIntervalDays * 24000L;
-            long timeOfDay = server.getOverworld().getTimeOfDay();
-            long ticksInCycle = timeOfDay % intervalTicks;
-            long ticksUntilNext = intervalTicks - ticksInCycle;
+            long timeOfDay = Math.max(0, server.getOverworld().getTimeOfDay());
+            long ticksUntilNext = CycleManager.ticksUntilNext(state, config, timeOfDay);
 
             NetworkHandler.syncToPlayer(
                 player,

@@ -32,4 +32,27 @@ class CurseCycleStateTest {
         assertTrue(state.findPersonalActiveChallengeIds(uuid).isEmpty());
         assertEquals(List.of("no_sprint"), restored.findPersonalActiveChallengeIds(uuid));
     }
+    @Test
+    void manualSchedulePersistsWithoutClearingHistoryOrBagAndLegacyNbtKeepsZeroOrigin() {
+        var state = new CurseCycleState();
+        state.addHistory("gills", 4);
+        state.getCurrentPool().add("no_jumping");
+        state.setNextChallengeId("all_debuffs");
+        state.restartCycleAt(119_999);
+        assertEquals(5, state.getCurrentDay());
+        assertEquals(119_999, state.getTotalInGameTicks());
+        assertEquals(1, state.getHistory().size());
+        assertEquals(List.of("no_jumping"), state.getCurrentPool());
+        assertNull(state.getNextChallengeId());
+        assertFalse(state.isSpinTriggeredForCurrentCycle());
+        assertEquals(0, state.getLastActivatedCycle());
+        assertEquals(-1, state.getLastSpinCycle());
+        assertTrue(state.isDirty());
+        var tag = state.writeNbt(new NbtCompound(), null);
+        var restored = CurseCycleState.createFromNbt(tag, null);
+        assertEquals(119_999, restored.getCycleOriginTicks());
+        tag.remove("cycleOriginTicks");
+        assertEquals(0, CurseCycleState.createFromNbt(tag, null).getCycleOriginTicks());
+    }
+
 }

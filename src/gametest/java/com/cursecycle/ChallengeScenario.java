@@ -23,11 +23,19 @@ public final class ChallengeScenario implements AutoCloseable {
     public final CurseCycleState state;
     private final NbtCompound original;
     private final List<ServerPlayerEntity> players = new ArrayList<>();
+    private final Map<com.cursecycle.challenge.Challenge, Boolean> placeholderFlags = new IdentityHashMap<>();
     private final Map<ServerPlayerEntity, EmbeddedChannel> channels = new IdentityHashMap<>();
     public ChallengeScenario(TestContext context) {
         this.context = context;
         state = CurseCycleState.getServerState(context.getWorld().getServer());
         original = state.writeNbt(new NbtCompound(), context.getWorld().getRegistryManager());
+        // Production placeholders are opt-in. Only fixtures enable them for neutral scenarios.
+        for (var challenge : com.cursecycle.challenge.ChallengeRegistry.getAll()) {
+            if (challenge.getClass().getPackageName().equals("com.cursecycle.challenge.test")) {
+                placeholderFlags.put(challenge, challenge.isEnabled());
+                challenge.setEnabled(true);
+            }
+        }
         // The roulette may select any newly registered mechanic before tests start.
         activate("test_easy");
     }
@@ -66,6 +74,7 @@ public final class ChallengeScenario implements AutoCloseable {
         var manager = context.getWorld().getServer().getPlayerManager();
         for (var player : players) if (manager.getPlayerList().contains(player)) manager.remove(player);
         channels.values().forEach(EmbeddedChannel::finishAndReleaseAll);
+        placeholderFlags.forEach(com.cursecycle.challenge.Challenge::setEnabled);
         context.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY,
                 CurseCycleState.createFromNbt(original, context.getWorld().getRegistryManager()));
     }

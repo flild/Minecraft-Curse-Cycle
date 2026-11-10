@@ -150,4 +150,60 @@ class CycleManagerTest {
         assertEquals(1, events.size());
     }
 
+    @Test
+    void manualCycleGetsAFullIntervalAcrossTheOldWorldBoundaryAndNbtReload() {
+        long start = 119_999;
+        state.getActiveChallengeIds().add("no_sprint");
+        state.setNextChallengeId("no_jumping");
+        state.restartCycleAt(start);
+        assertEquals(120_000, CycleManager.ticksUntilNext(state, config, start));
+        assertEquals(119_999, CycleManager.ticksUntilNext(state, config, 120_000));
+        advance(120_000);
+        assertTrue(events.isEmpty(), "Old global boundary must not replace the manual activation");
+        state = CurseCycleState.createFromNbt(state.writeNbt(new net.minecraft.nbt.NbtCompound(), null), null);
+        advance(start + 95_999);
+        assertTrue(events.isEmpty());
+        advance(start + 96_000);
+        String promised = state.getNextChallengeId();
+        assertEquals(List.of("announce:" + promised), events);
+        assertEquals(1, state.getLastSpinCycle());
+        events.clear();
+        advance(start + 120_000);
+        assertEquals(List.of("activate:" + promised), events);
+        assertNull(state.getNextChallengeId());
+        assertEquals(120_000, CycleManager.ticksUntilNext(state, config, start + 120_000));
+    }
+
+    @Test
+    void manualWheelAndRepeatedManualStartsUseTheRebasedSchedule() {
+        state.getActiveChallengeIds().add("no_sprint");
+        state.restartCycleAt(119_999);
+        var draw = CycleManager.selectUpcomingChallenge(state, config, 120_001);
+        assertNotNull(draw);
+        assertEquals(1, state.getLastSpinCycle(), "Origin, not absolute world day, determines the target cycle");
+        advance(215_999);
+        assertTrue(events.isEmpty(), "A manual wheel suppresses the matching automatic draw");
+        assertEquals(draw.getEncodedWinnerId(), state.getNextChallengeId());
+
+        state.restartCycleAt(216_001);
+        assertNull(state.getNextChallengeId());
+        assertEquals(120_000, CycleManager.ticksUntilNext(state, config, 216_001));
+        advance(239_999);
+        assertTrue(events.isEmpty());
+        advance(312_001);
+        assertEquals(1, events.size(), "A new manual start permits the next automatic announcement");
+    }
+
+    @Test
+    void resetReturnsToTheOriginalWorldScheduleAfterAManualStart() {
+        state.restartCycleAt(119_999);
+        state.reset();
+        assertEquals(0, state.getCycleOriginTicks());
+        advance(0);
+        events.clear();
+        advance(96_000);
+        assertEquals(1, events.size());
+        assertNotNull(state.getNextChallengeId());
+    }
+
 }

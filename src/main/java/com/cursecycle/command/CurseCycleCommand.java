@@ -32,8 +32,18 @@ public class CurseCycleCommand {
             .then(CommandManager.literal("active").executes(ctx -> showActive(ctx.getSource())))
             .then(CommandManager.literal("next").executes(ctx -> showNext(ctx.getSource())))
             .then(adminCommand("trigger_spin").executes(ctx -> triggerSpin(ctx.getSource())))
+            .then(adminCommand("activate_next").executes(ctx -> activateNext(ctx.getSource())))
             .then(adminCommand("activate")
                 .then(CommandManager.argument("id", StringArgumentType.string())
+                    .suggests((ctx, builder) -> {
+                        String prefix = builder.getRemaining().toLowerCase(java.util.Locale.ROOT);
+                        for (Challenge challenge : ChallengeRegistry.getAll()) {
+                            if (challenge.isEnabled() && challenge.getId().startsWith(prefix)) {
+                                builder.suggest(challenge.getId());
+                            }
+                        }
+                        return builder.buildFuture();
+                    })
                     .executes(ctx -> activateChallenge(ctx.getSource(), StringArgumentType.getString(ctx, "id")))))
             .then(CommandManager.literal("list").executes(ctx -> listChallenges(ctx.getSource())))
             .then(CommandManager.literal("history").executes(ctx -> showHistory(ctx.getSource())))
@@ -98,23 +108,31 @@ public class CurseCycleCommand {
         return 1;
     }
 
+    private static int activateNext(ServerCommandSource source) {
+        CurseCycleState state = CurseCycleState.getServerState(source.getServer());
+        String nextId = state.getNextChallengeId();
+        if (nextId == null || nextId.isEmpty()) {
+            source.sendError(Text.literal("[Curse-Cycle] Следующее испытание не выбрано. Сначала: /fdc trigger_spin"));
+            return 0;
+        }
+        if (!CycleManager.activateManually(source.getServer(), state, nextId)) {
+            source.sendError(Text.literal("[Curse-Cycle] Выбранное испытание недоступно. Запустите /fdc trigger_spin заново."));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание активировано. Предыдущее завершено, отсчёт начат заново.")
+                .formatted(Formatting.GREEN), true);
+        return 1;
+    }
+
     private static int activateChallenge(ServerCommandSource source, String id) {
-        Challenge challenge = ChallengeRegistry.get(ChallengeUtils.getBaseChallengeId(id));
-        List<String> subIds = ChallengeUtils.parseSubChallengeIds(id);
-        boolean invalidChildren = id != null && id.startsWith(ChallengeUtils.DOUBLE_CHALLENGE_PREFIX)
-                && (subIds.isEmpty() || subIds.stream().anyMatch(subId -> {
-                    Challenge child = ChallengeRegistry.get(subId);
-                    return child == null || !child.isEnabled() || ChallengeUtils.isDoubleChallenge(subId);
-                }));
-        if (challenge == null || !challenge.isEnabled() || invalidChildren) {
+        CurseCycleState state = CurseCycleState.getServerState(source.getServer());
+        if (!CycleManager.activateManually(source.getServer(), state, id)) {
             source.sendError(Text.literal("[Curse-Cycle] Неизвестное или отключённое испытание: " + id));
             return 0;
         }
-
-        CurseCycleState state = CurseCycleState.getServerState(source.getServer());
-        CycleManager.activateChallenge(source.getServer(), state, id);
-
-        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Команда активации выполнена для ID: " + id).formatted(Formatting.GREEN), true);
+        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Испытание активировано: "
+                + ChallengeUtils.getFormattedDisplayName(id) + ". Отсчёт начат заново.")
+                .formatted(Formatting.GREEN), true);
         return 1;
     }
 

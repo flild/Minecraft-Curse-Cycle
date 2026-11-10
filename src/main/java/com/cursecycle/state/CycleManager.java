@@ -70,8 +70,9 @@ public class CycleManager {
         state.setCurrentDay(timeOfDay / 24000L + 1);
         state.setTotalInGameTicks(timeOfDay);
         long intervalTicks = config.challengeIntervalDays * 24000L;
-        long currentCycle = timeOfDay / intervalTicks;
-        long ticksInCycle = timeOfDay % intervalTicks;
+        long cycleTicks = cycleTicks(state, timeOfDay);
+        long currentCycle = cycleTicks / intervalTicks;
+        long ticksInCycle = cycleTicks % intervalTicks;
 
         // Saved selections can reference challenges disabled since the last server session.
         boolean removed = state.getActiveChallengeIds().removeIf(id -> !isEnabled(id));
@@ -117,7 +118,8 @@ public class CycleManager {
         if (id == null || !isEnabled(ChallengeUtils.getBaseChallengeId(id))) return false;
         if (!id.startsWith(ChallengeUtils.DOUBLE_CHALLENGE_PREFIX)) return true;
         List<String> subIds = ChallengeUtils.parseSubChallengeIds(id);
-        return !subIds.isEmpty() && subIds.stream().allMatch(CycleManager::isEnabled);
+        return !subIds.isEmpty() && subIds.stream().noneMatch(ChallengeUtils::isDoubleChallenge)
+                && subIds.stream().allMatch(CycleManager::isEnabled);
     }
 
     public static RouletteSelector.WheelResult selectUpcomingChallenge(CurseCycleState state,
@@ -125,7 +127,7 @@ public class CycleManager {
         RouletteSelector.WheelResult result = RouletteSelector.selectNextChallenge(config, state);
         if (result != null) {
             state.setNextChallengeId(result.getEncodedWinnerId());
-            state.setLastSpinCycle(Math.max(0, timeOfDay) / (config.challengeIntervalDays * 24000L) + 1);
+            state.setLastSpinCycle(cycleTicks(state, timeOfDay) / (config.challengeIntervalDays * 24000L) + 1);
             state.setSpinTriggeredForCurrentCycle(true);
         }
         return result;
@@ -133,10 +135,49 @@ public class CycleManager {
 
     public static void syncState(MinecraftServer server, CurseCycleState state, CurseCycleConfig config) {
         long timeOfDay = Math.max(0, server.getOverworld().getTimeOfDay());
-        long intervalTicks = config.challengeIntervalDays * 24000L;
-        NetworkHandler.syncToAll(server, timeOfDay / 24000L + 1, intervalTicks - timeOfDay % intervalTicks,
+        NetworkHandler.syncToAll(server, timeOfDay / 24000L + 1, ticksUntilNext(state, config, timeOfDay),
                 state.getActiveChallengeIds(), state.getNextChallengeId(),
                 state.getHistory().stream().map(h -> h.challengeId).toList());
+    }
+
+    private static long cycleTicks(CurseCycleState state, long timeOfDay) {
+        return Math.max(0, Math.max(0, timeOfDay) - state.getCycleOriginTicks());
+    }
+
+    public static long ticksUntilNext(CurseCycleState state, CurseCycleConfig config, long timeOfDay) {
+        long intervalTicks = config.challengeIntervalDays * 24000L;
+        return intervalTicks - cycleTicks(state, timeOfDay) % intervalTicks;
+    }
+
+    /** Resolve and validate before stopping anything; failures leave the current cycle intact. */
+    public static boolean activateManually(MinecraftServer server, CurseCycleState state, String challengeId) {
+        if (!isSelectable(challengeId)) return false;
+        String resolved = challengeId;
+        if (ChallengeUtils.isDoubleChallenge(challengeId)
+                && !challengeId.startsWith(ChallengeUtils.DOUBLE_CHALLENGE_PREFIX)) {
+            List<String> children = ChallengeUtils.resolveToActiveIds(challengeId);
+            if (children.isEmpty()) return false;
+            resolved = ChallengeUtils.encodeDoubleChallenge(children);
+        }
+        if (!isSelectable(resolved)) return false;
+
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            var oldIds = new java.util.LinkedHashSet<>(state.getActiveChallengeIds());
+            oldIds.addAll(state.findPersonalActiveChallengeIds(player.getUuid()));
+            for (String oldId : oldIds) {
+                Challenge old = ChallengeRegistry.get(oldId);
+                if (old != null) old.onStop(server, player);
+            }
+        }
+        state.getActiveChallengeIds().clear();
+        state.getPersonalActiveChallenges().clear();
+        state.restartCycleAt(server.getOverworld().getTimeOfDay());
+        // Direct activation also counts as a draw without emptying the remaining bag.
+        String baseId = ChallengeUtils.getBaseChallengeId(resolved);
+        state.getCurrentPool().removeIf(baseId::equals);
+        state.setLastDrawnChallengeId(baseId);
+        activateChallenge(server, state, resolved);
+        return true;
     }
 
     public static void activateChallenge(MinecraftServer server, CurseCycleState state, String challengeId) {

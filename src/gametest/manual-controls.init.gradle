@@ -1,0 +1,26 @@
+// Use isolated server data and a small generated entrypoint list; source metadata stays complete.
+allprojects {
+    afterEvaluate {
+        def isolated = project.file('build/manual-controls-gametest')
+        def metadata = new File(isolated, 'resources/fabric.mod.json')
+        sourceSets.gametest.resources.setSrcDirs([new File(isolated, 'resources')])
+        tasks.register('prepareManualControlsMetadata') {
+            inputs.file project.file('src/gametest/resources/fabric.mod.json')
+            outputs.file metadata
+            doLast {
+                def data = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+                data.entrypoints['fabric-gametest'] = [
+                    'com.cursecycle.ManualCycleGameTest',
+                    'com.cursecycle.FoundationGameTest'
+                ]
+                metadata.parentFile.mkdirs()
+                metadata.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)), 'UTF-8')
+            }
+        }
+        tasks.named('processGametestResources') { dependsOn tasks.named('prepareManualControlsMetadata') }
+        loom.runs.gametest {
+            runDir 'build/manual-controls-gametest/run'
+            vmArg "-Dfabric-api.gametest.report-file=${new File(isolated, 'report.xml').absolutePath}"
+        }
+    }
+}

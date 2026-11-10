@@ -24,7 +24,7 @@ class CurseCycleCommandTest {
         CurseCycleCommand.register(dispatcher);
         for (String alias : List.of("fdc", "cursecycle")) {
             var root = dispatcher.getRoot().getChild(alias);
-            for (String command : List.of("activate", "reset", "setday", "trigger_spin")) {
+            for (String command : List.of("activate", "activate_next", "reset", "setday", "trigger_spin")) {
                 var node = root.getChild(command);
                 assertFalse(node.canUse(new PermissionSource(0)), command);
                 assertFalse(node.canUse(new PermissionSource(1)), command);
