@@ -17,7 +17,7 @@ class SlipperyHandsChallengeTest {
         var challenge = ChallengeRegistry.get("slippery_hands");
         assertInstanceOf(SlipperyHandsChallenge.class, challenge);
         assertEquals("Только фонка не хватает", challenge.getName());
-        assertEquals("Тун тун тун тундундун дун дун", challenge.getShortDescription());
+        assertEquals("Под ногами будто сплошной лёд.", challenge.getShortDescription());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(challenge));

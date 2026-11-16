@@ -25,8 +25,8 @@ public class NoJumpingChallengeTest {
         assertNotNull(challenge, "NoJumpingChallenge should be registered in ChallengeRegistry");
         assertEquals("no_jumping", challenge.getId());
         assertEquals("Прикованные к земле", challenge.getName());
-        assertEquals("Прыжки полностью заблокированы.", challenge.getShortDescription());
-        assertEquals("Игроки теряют способность совершать обычные прыжки.", challenge.getDetailedRules());
+        assertEquals("Подпрыгнуть не получится.", challenge.getShortDescription());
+        assertEquals("Прыжок больше не срабатывает. До конца испытания ноги словно прикованы к земле.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
     }

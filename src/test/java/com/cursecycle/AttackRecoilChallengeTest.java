@@ -19,7 +19,7 @@ class AttackRecoilChallengeTest {
         var challenge = ChallengeRegistry.get(AttackRecoilChallenge.ID);
         assertInstanceOf(AttackRecoilChallenge.class, challenge);
         assertEquals("Как в контрстрайке", challenge.getName());
-        assertEquals("Успешный удар в ближнем бою отбрасывает самого игрока назад.", challenge.getShortDescription());
+        assertEquals("Бьёшь врага — сам отлетаешь назад.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(challenge.getId())).count());

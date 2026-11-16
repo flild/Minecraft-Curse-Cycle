@@ -13,9 +13,14 @@ import java.util.*;
 
 public class RandomPotionChallenge extends Challenge {
     public static final String ID = "random_potion";
+    // Технические нюансы; не включать в описание для игрока.
+    // Выбор независим для каждого игрока, первый происходит сразу. Интервал — 30 секунд серверного времени,
+    // уровень — I. Продолжительный эффект длится до следующего выбора, мгновенный применяется один раз. Список
+    // фиксирован, дополнительных штрафов нет.
     public RandomPotionChallenge() {
-        super(ID, "Лотырея от провизора", "Каждые 30 секунд — случайный эффект зелья.",
-                "Каждые 30 секунд серверного времени каждый игрок независимо получает случайный эффект зелья I уровня. Первый выбор происходит сразу. Обычный эффект длится до следующего выбора, мгновенный применяется один раз. Список эффектов фиксирован в правилах; дополнительные штрафы не назначаются.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+        super(ID, "Лотырея от провизора",
+                "Каждые 30 секунд — случайный эффект зелья.",
+                "Раз в полминуты тебе достаётся случайный эффект. Повезёт или станет хуже — как выпадет.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     public static final List<String> POOL = List.of("speed", "slowness", "strength", "instant_health", "instant_damage",
             "jump_boost", "regeneration", "resistance", "fire_resistance", "water_breathing", "invisibility",

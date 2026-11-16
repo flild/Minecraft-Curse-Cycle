@@ -19,10 +19,12 @@ import net.minecraft.util.Formatting;
 public class ArmorDisabledChallenge extends Challenge {
     public static final String ID = "armor_disabled";
 
+    // Технические нюансы; не включать в описание для игрока.
+    // Отключаются защита и полезные свойства всех видов брони и элитр; полёт на элитрах недоступен.
     public ArmorDisabledChallenge() {
-        super(ID, "Голый король", "Броня и элитры полностью отключены",
-                "Все виды брони и элитр теряют свою защиту и полезные свойства. "
-                        + "Броня не защищает от урона, а элитры не позволяют летать.",
+        super(ID, "Голый король",
+                "Броня больше не защищает, а элитры не летают.",
+                "Хоть в незерит оденься — защиты от него больше нет. Элитры тоже превращаются в бесполезный плащ.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

@@ -23,10 +23,8 @@ class OffsetCrosshairTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(OffsetCrosshairChallenge.class, challenge);
         assertEquals("Конфига симпла", challenge.getName());
-        assertEquals("Прицел визуально смещён вправо и вниз, настоящий выстрел идёт из центра.", challenge.getShortDescription());
-        assertEquals("Видимый прицел смещается на 80 единиц масштабированного GUI вправо и 40 вниз от центра экрана. "
-                + "Настоящее направление взгляда, атаки, добычи и использования остаётся центральным. "
-                + "Мир, камера, курсор меню и остальной HUD не сдвигаются.", challenge.getDetailedRules());
+        assertEquals("Прицел съехал и теперь врёт.", challenge.getShortDescription());
+        assertEquals("Прицел оказался в стороне от привычного места. Попасть по цели стало сложнее.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

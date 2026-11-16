@@ -21,7 +21,7 @@ class ForcedThirdPersonFrontChallengeTest {
         var challenge = ChallengeRegistry.get(ForcedThirdPersonFrontChallenge.ID);
         assertInstanceOf(ForcedThirdPersonFrontChallenge.class, challenge);
         assertEquals("Смотри мне в глаза.", challenge.getName());
-        assertEquals("Впереди явно что-то интересное, но пока смотри назад", challenge.getShortDescription());
+        assertEquals("Впереди явно что-то интересное, но пока смотри назад.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream()

@@ -23,7 +23,7 @@ class SilentWorldTest {
         assertInstanceOf(SilentWorldChallenge.class, challenge);
         assertEquals("Тихий час", challenge.getName());
         assertEquals("Все звуки Minecraft отключены.", challenge.getShortDescription());
-        assertEquals("Для игроков полностью отключается вывод звука Minecraft: окружение, существа, шаги, интерфейс, музыка и звуки мода. Значения громкости в настройках не переписываются. Изображение, субтитры, звук внешних приложений и голос вне звукового движка Minecraft не меняются.", challenge.getDetailedRules());
+        assertEquals("Мир замолчал. Ни шагов, ни музыки, ни шипения за спиной — до конца испытания полная тишина.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

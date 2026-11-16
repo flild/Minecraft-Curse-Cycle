@@ -28,7 +28,7 @@ class FloorIsWaterChallengeTest {
         var challenge = ChallengeRegistry.get("floor_is_water");
         assertInstanceOf(FloorIsWaterChallenge.class, challenge);
         assertEquals("Водобоязнь", challenge.getName());
-        assertEquals("Касание воды приводит к мгновенной смерти.", challenge.getShortDescription());
+        assertEquals("Одно касание воды — и всё.", challenge.getShortDescription());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));

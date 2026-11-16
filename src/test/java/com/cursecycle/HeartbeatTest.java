@@ -13,8 +13,8 @@ class HeartbeatTest {
         var c = ChallengeRegistry.get("heartbeat");
         assertInstanceOf(HeartbeatChallenge.class, c);
         assertEquals("Сердце на ручном приводе", c.getName());
-        assertEquals("Нажимай B в ритм: пропуск удара наносит урон.", c.getShortDescription());
-        assertEquals("Сердце работает на ручном приводе: нажимай назначенную клавишу удара B раз в секунду в отмеченный момент. После 5 секунд подготовки каждый пропущенный удар наносит 2 единицы урона. Допуск — 5 серверных тиков в каждую сторону; ранние и лишние нажатия просто не засчитываются.", c.getDetailedRules());
+        assertEquals("Сердце само не справится — придётся держать ритм.", c.getShortDescription());
+        assertEquals("Нажимай B в ритм сердцебиения. Каждый пропущенный удар отнимает здоровье.", c.getDetailedRules());
         assertEquals(ChallengeDifficulty.HARD, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ch.getId().equals("heartbeat")).count());

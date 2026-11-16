@@ -23,11 +23,8 @@ class TinyFovCameraTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(TinyFovChallenge.class, challenge);
         assertEquals("Тесновато", challenge.getName());
-        assertEquals("Поле зрения сужено до 15 градусов.", challenge.getShortDescription());
-        assertEquals("Эффективное поле зрения игровой камеры фиксировано на 15 градусах во всех перспективах. "
-                + "Спринт, скорость, натягивание лука, подзорная труба и другие ванильные FOV-модификаторы "
-                + "не расширяют и не сужают его. Настройки пользователя и масштаб интерфейса сохраняются.",
-                challenge.getDetailedRules());
+        assertEquals("Смотришь на мир будто через узкую трубку.", challenge.getShortDescription());
+        assertEquals("Обзор сузился до крошечного окошка. По сторонам почти ничего не видно.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

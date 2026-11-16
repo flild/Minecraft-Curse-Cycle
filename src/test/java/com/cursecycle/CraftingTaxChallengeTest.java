@@ -22,7 +22,7 @@ class CraftingTaxChallengeTest {
         var challenge = ChallengeRegistry.get(CraftingTaxChallenge.ID);
         assertInstanceOf(CraftingTaxChallenge.class, challenge);
         assertEquals("Крафт по талонам", challenge.getName());
-        assertEquals("Каждое выполнение рецепта крафта стоит один уровень опыта.", challenge.getShortDescription());
+        assertEquals("Каждый крафт стоит один уровень опыта.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(challenge.getId())).count());

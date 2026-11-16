@@ -23,10 +23,8 @@ class InvertedMouseInputTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(InvertedMouseChallenge.class, challenge);
         assertEquals("Лучше бы вечная тошнота", challenge.getName());
-        assertEquals("Мышь поворачивает камеру в противоположную сторону.", challenge.getShortDescription());
-        assertEquals("Горизонтальное и вертикальное вращение камеры от мыши инвертируются относительно текущих "
-                + "пользовательских настроек. Чувствительность сохраняется. Курсор и клики в меню, "
-                + "кнопки атаки/использования и колесо прокрутки работают обычно.", challenge.getDetailedRules());
+        assertEquals("Камера поворачивается в другую сторону.", challenge.getShortDescription());
+        assertEquals("Мышь больше не слушается привычек: и вверх-вниз, и влево-вправо теперь наоборот.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

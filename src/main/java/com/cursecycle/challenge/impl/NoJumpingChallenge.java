@@ -15,12 +15,14 @@ import net.minecraft.server.network.ServerPlayerEntity;
 public class NoJumpingChallenge extends Challenge {
     public static final String ID = "no_jumping";
 
+    // Технические нюансы; не включать в описание для игрока.
+    // Блокируются обычные прыжки игрока.
     public NoJumpingChallenge() {
         super(
             ID,
             "Прикованные к земле",
-            "Прыжки полностью заблокированы.",
-            "Игроки теряют способность совершать обычные прыжки.",
+            "Подпрыгнуть не получится.",
+            "Прыжок больше не срабатывает. До конца испытания ноги словно прикованы к земле.",
             ChallengeDifficulty.EASY,
             ChallengeScope.GLOBAL
         );

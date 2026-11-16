@@ -24,8 +24,8 @@ class MovementMemoryTest {
         var c = ChallengeRegistry.get(ID);
         assertInstanceOf(MovementMemoryChallenge.class, c);
         assertEquals("Ноги помнят", c.getName());
-        assertEquals("После отпускания движения ноги продолжают идти ещё секунду.", c.getShortDescription());
-        assertEquals("После перехода горизонтального ввода движения в ноль персонаж ещё 20 тиков продолжает последнее направление как будто клавиша всё ещё нажата. Новый ненулевой ввод сразу заменяет запомненный. Это действует на собственное наземное движение; вода, полёт, транспорт и открытые меню используют обычное управление.", c.getDetailedRules());
+        assertEquals("Клавишу уже отпустил, а ноги ещё идут.", c.getShortDescription());
+        assertEquals("После отпускания клавиш ты ещё секунду продолжаешь идти в прежнюю сторону. Ноги не сразу понимают, что пора остановиться.", c.getDetailedRules());
         assertEquals(ChallengeDifficulty.MEDIUM, c.getDifficulty()); assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ID.equals(ch.getId())).count());
         assertEquals(List.of(ID, "no_sprint"), ChallengeUtils.resolveToActiveIds("double_challenge:movement_memory,no_sprint"));

@@ -15,12 +15,14 @@ import net.minecraft.server.network.ServerPlayerEntity;
 public class NoSprintChallenge extends Challenge {
     public static final String ID = "no_sprint";
 
+    // Технические нюансы; не включать в описание для игрока.
+    // Блокируется спринт; обычная ходьба не меняется.
     public NoSprintChallenge() {
         super(
             ID,
             "Без бега",
-            "Запрещает бегать на спринте",
-            "Пока испытание активно, игроки не могут использовать спринт (бег). Обычная ходьба работает без изменений.",
+            "Пробежаться больше не получится.",
+            "Спринт не работает. Куда бы ни спешил, добираться придётся шагом.",
             ChallengeDifficulty.EASY,
             ChallengeScope.GLOBAL
         );

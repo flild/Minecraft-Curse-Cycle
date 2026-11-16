@@ -11,9 +11,14 @@ import java.util.List;
 
 public class AllDebuffsChallenge extends Challenge {
     public static final String ID = "all_debuffs";
+    // Технические нюансы; не включать в описание для игрока.
+    // Используются ванильные эффекты категории HARMFUL I уровня, кроме иссушения и мгновенного урона.
+    // Продолжительные эффекты поддерживаются постоянно и после молока возвращаются на следующем серверном
+    // тике.
     public AllDebuffsChallenge() {
-        super(ID, "Собрал все болячки", "Все вредные эффекты I уровня.",
-                "Действуют все ванильные статус-эффекты категории HARMFUL, кроме иссушения и мгновенного урона. Продолжительные эффекты поддерживаются постоянно. Молоко не даёт постоянного освобождения: длительные эффекты возвращаются на следующем серверном тике.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Собрал все болячки",
+                "Целый букет неприятных эффектов сразу.",
+                "Слабость, медлительность, тошнота и прочие неприятности теперь с тобой до конца испытания.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
     public static List<RegistryEntry.Reference<StatusEffect>> effects() {
         return Registries.STATUS_EFFECT.streamEntries().filter(entry -> {

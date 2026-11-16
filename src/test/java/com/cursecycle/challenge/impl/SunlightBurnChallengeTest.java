@@ -33,7 +33,7 @@ class SunlightBurnChallengeTest {
         var challenge = ChallengeRegistry.get(SunlightBurnChallenge.ID);
         assertInstanceOf(SunlightBurnChallenge.class, challenge);
         assertEquals("Стоило купить крем от солнца", challenge.getName());
-        assertEquals("Под открытым дневным небом игрок загорается.", challenge.getShortDescription());
+        assertEquals("На дневном солнце ты загораешься.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));

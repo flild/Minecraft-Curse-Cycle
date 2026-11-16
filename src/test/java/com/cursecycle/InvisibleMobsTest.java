@@ -22,11 +22,8 @@ class InvisibleMobsTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(InvisibleMobsChallenge.class, challenge);
         assertEquals("Их здесь нет", challenge.getName());
-        assertEquals("Обычные враждебные мобы невидимы, но всё ещё опасны.", challenge.getShortDescription());
-        assertEquals("Для игрока скрывается внешний вид мобов категории MONSTER, кроме дракона Края и Иссушителя. "
-                + "Скрыты их модели, броня, предметы в руках, глаза, тени, имена и светящийся контур. "
-                + "Звуки, частицы, снаряды, столкновения и атаки сохраняются. "
-                + "Мобы не получают настоящий эффект невидимости и ведут себя как обычно.", challenge.getDetailedRules());
+        assertEquals("Враждебных мобов не видно, но они всё ещё здесь.", challenge.getShortDescription());
+        assertEquals("Враждебные мобы исчезли из виду. Вот только нападать на тебя они не перестали.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

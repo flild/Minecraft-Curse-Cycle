@@ -8,9 +8,14 @@ import net.minecraft.server.network.ServerPlayerEntity;
 
 public class NoBlockBreakingChallenge extends Challenge {
     public static final String ID = "no_block_breaking";
+    // Технические нюансы; не включать в описание для игрока.
+    // Постоянно поддерживается Утомление X: minecraft:mining_fatigue, amplifier 9. После молока эффект
+    // возвращается на следующем серверном тике. Отдельного запрета разрушения нет, действуют обычные правила
+    // добычи с эффектом. При завершении снимается только вклад испытания.
     public NoBlockBreakingChallenge() {
-        super(ID, "Не ломается, баг наверно", "Утомление X постоянно действует до конца испытания.",
-                "Постоянно действует ванильное Утомление X: minecraft:mining_fatigue, amplifier 9. Эффект накладывается сразу и поддерживается без перерывов до завершения испытания. После молока он возвращается на следующем серверном тике. Все игровые действия, включая добычу блоков, подчиняются обычным правилам с этим эффектом; отдельного запрета разрушения нет. При завершении снимается только собственный вклад испытания.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+        super(ID, "Не ломается, баг наверно",
+                "Блоки добываются мучительно медленно.",
+                "Руки будто налились свинцом. Из-за сильного утомления даже простой блок добывать непривычно долго.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) { onTick(server, player); }
     @Override public void onTick(MinecraftServer server, ServerPlayerEntity player) {

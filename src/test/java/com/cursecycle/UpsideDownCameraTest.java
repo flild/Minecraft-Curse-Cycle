@@ -23,11 +23,8 @@ class UpsideDownCameraTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(UpsideDownCameraChallenge.class, challenge);
         assertEquals("С ног на голову", challenge.getName());
-        assertEquals("Камера перевёрнута на 180°, интерфейс остаётся обычным.", challenge.getShortDescription());
-        assertEquals("В Survival и Adventure изображение мира повёрнуто на 180 градусов вокруг оси взгляда. "
-                + "HUD, меню, текст, прицел и курсор остаются в обычной ориентации. "
-                + "Направление взгляда, луч взаимодействия и управление сами по себе не инвертируются; "
-                + "смена перспективы не убирает переворот.", challenge.getDetailedRules());
+        assertEquals("Весь мир вверх ногами.", challenge.getShortDescription());
+        assertEquals("Небо оказалось под ногами, а земля над головой. Так теперь выглядит мир до конца испытания.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

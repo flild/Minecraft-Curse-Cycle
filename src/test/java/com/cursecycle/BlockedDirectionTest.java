@@ -30,10 +30,8 @@ class BlockedDirectionTest {
         var c = ChallengeRegistry.get(ID);
         assertInstanceOf(BlockedDirectionChallenge.class, c);
         assertEquals("Туда нельзя", c.getName());
-        assertEquals("Одно направление движения отключено до конца испытания.", c.getShortDescription());
-        assertEquals("При активации случайно выбирается одно общее направление: влево, вправо или вперёд. "
-                + "В Survival и Adventure соответствующая составляющая собственного движения отключается до конца испытания. "
-                + "Назад идти можно всегда; поворачивать камеру и обходить препятствие другой стороной разрешено.", c.getDetailedRules());
+        assertEquals("Одно из направлений движения больше не слушается.", c.getShortDescription());
+        assertEquals("Вперёд, влево или вправо — одно направление случайно отключается до конца испытания.", c.getDetailedRules());
         assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream().filter(ch -> ID.equals(ch.getId())).count());

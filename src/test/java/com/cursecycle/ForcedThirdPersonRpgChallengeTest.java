@@ -21,7 +21,7 @@ class ForcedThirdPersonRpgChallengeTest {
         var challenge = ChallengeRegistry.get(ForcedThirdPersonRpgChallenge.ID);
         assertInstanceOf(ForcedThirdPersonRpgChallenge.class, challenge);
         assertEquals("Как будто это рпг", challenge.getName());
-        assertEquals("Вид от первого лица заблокирован.", challenge.getShortDescription());
+        assertEquals("Теперь смотришь на себя со стороны.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream()

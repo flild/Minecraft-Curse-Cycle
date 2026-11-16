@@ -22,10 +22,8 @@ class BlindHudTest {
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(BlindHudChallenge.class, challenge);
         assertEquals("На ощупь", challenge.getName());
-        assertEquals("Здоровье, голод, броня, воздух и опыт скрыты.", challenge.getShortDescription());
-        assertEquals("Скрываются индикаторы собственного здоровья, поглощения, брони, голода, воздуха, уровня и полоски опыта. "
-                + "Реальные значения не меняются. Хотбар, предметы, прицел, чат, эффекты зелий, игровые меню и HUD испытаний остаются доступными. "
-                + "Настройка F1 и пользовательские настройки интерфейса не переписываются.", challenge.getDetailedRules());
+        assertEquals("Здоровье, голод, броня и опыт скрыты.", challenge.getShortDescription());
+        assertEquals("Привычные шкалы исчезли: ни сердец, ни голода, ни брони, ни воздуха, ни опыта. О своём состоянии придётся судить на ощупь.", challenge.getDetailedRules());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

@@ -9,9 +9,13 @@ import java.util.ArrayList;
 
 public class DamageSlotDropChallenge extends Challenge {
     public static final String ID = "damage_slot_drop";
+    // Технические нюансы; не включать в описание для игрока.
+    // Выбирается непустой слот основного инвентаря или хотбара. Броня, вторая рука и предмет на курсоре
+    // исключены. При пустом инвентаре ничего не происходит; выброшенный стек можно подобрать снова.
     public DamageSlotDropChallenge() {
-        super(ID, "Дырявые карманы", "При получении урона выпадает один случайный стек инвентаря.",
-                "Любой урон выбрасывает весь стек из одного случайного непустого слота основного инвентаря или хотбара. Броня, вторая рука и предмет на курсоре не затрагиваются. Если подходящих предметов нет, ничего не происходит. Выпавший предмет можно подобрать снова.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+        super(ID, "Дырявые карманы",
+                "Получаешь урон — теряешь случайную стопку вещей.",
+                "Каждый удар вытряхивает из карманов одну случайную стопку предметов целиком.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
     @Override public void onPlayerDamageApplied(MinecraftServer server, ServerPlayerEntity player, DamageReceipt damage) {
         if (!ChallengeActivity.active(player, ID)) return;
