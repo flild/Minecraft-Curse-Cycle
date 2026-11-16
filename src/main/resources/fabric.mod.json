@@ -3,7 +3,7 @@
   "id": "cursecycle",
   "version": "${version}",
   "name": "Curse-Cycle",
-  "description": "A Minecraft mod where every 5 in-game days a new challenge alters gameplay.",
+  "description": "Random survival challenges with a configurable schedule.",
   "authors": [
     "Jules"
   ],

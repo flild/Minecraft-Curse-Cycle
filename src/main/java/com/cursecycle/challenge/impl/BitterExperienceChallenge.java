@@ -17,8 +17,8 @@ public class BitterExperienceChallenge extends Challenge {
             Identifier.of("cursecycle", ID));
 
     public BitterExperienceChallenge() {
-        super(ID, "Горький опыт", "Подбор сферы опыта наносит полсердца урона.",
-                "Каждый успешный ванильный акт подбора порции сферы опыта вызывает 1 единицу урона. Опыт начисляется как обычно, включая починку предметов. Количество очков в порции не увеличивает урон. Прямое начисление опыта командами и расход уровней сами по себе урон не вызывают.",
+        super(ID, "Горький опыт", "Подбор сферы опыта наносит урон.",
+                "Каждый успешный подбор порции опыта вызывает 2 единицы урона. Опыт начисляется как обычно, включая починку предметов. Количество очков в порции не увеличивает урон. Прямое начисление опыта командами и расход уровней сами по себе урон не вызывают.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -26,6 +26,6 @@ public class BitterExperienceChallenge extends Challenge {
     public static void afterOrbPickup(ServerPlayerEntity player) {
         if (!ChallengeActivity.active(player, ID)) return;
         var source = new DamageSource(player.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
-        player.damage(source, 1.0F);
+        player.damage(source, 2.0F);
     }
 }

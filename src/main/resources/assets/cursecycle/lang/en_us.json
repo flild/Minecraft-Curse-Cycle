@@ -27,7 +27,7 @@
   "text.cursecycle.menu.setting.hud_y": "Position Y",
   "text.cursecycle.menu.setting.wheel": "Animation and sound",
   "modmenu.name": "Curse-Cycle",
-  "modmenu.description": "A new challenge every 5 in-game days!",
+  "modmenu.description": "Random survival challenges with a configurable schedule.",
   "key.cursecycle.category": "Curse-Cycle",
   "key.cursecycle.open_menu": "Open Curse-Cycle menu",
   "text.cursecycle.day": "Day %d",
