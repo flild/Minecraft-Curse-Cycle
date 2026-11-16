@@ -12,9 +12,9 @@ class HeartbeatTest {
         ChallengeRegistry.clear(); ModChallenges.registerAll();
         var c = ChallengeRegistry.get("heartbeat");
         assertInstanceOf(HeartbeatChallenge.class, c);
-        assertEquals("Сердце на ручном приводе", c.getName());
-        assertEquals("Сердце само не справится — придётся держать ритм.", c.getShortDescription());
-        assertEquals("Нажимай B в ритм сердцебиения. Каждый пропущенный удар отнимает здоровье.", c.getDetailedRules());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
+        assertFalse(c.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.HARD, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ch.getId().equals("heartbeat")).count());

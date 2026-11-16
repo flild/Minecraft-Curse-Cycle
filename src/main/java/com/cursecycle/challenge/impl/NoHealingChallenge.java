@@ -11,7 +11,7 @@ public class NoHealingChallenge extends Challenge {
     // одной единицей, но последующая регенерация блокируется.
     public NoHealingChallenge() {
         super(ID, "Само не заживёт",
-                "Потерянные сердца больше не возвращаются.",
+                "Потерянные сердца больше не востанавливаются.",
                 "Раны не заживают. Ни еда, ни зелья, ни золотые яблоки не восстановят потерянное здоровье.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 

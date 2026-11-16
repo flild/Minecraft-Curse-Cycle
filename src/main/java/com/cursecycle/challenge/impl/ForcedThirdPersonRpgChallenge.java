@@ -18,7 +18,7 @@ public class ForcedThirdPersonRpgChallenge extends Challenge {
     public ForcedThirdPersonRpgChallenge() {
         super(ID, "Как будто это рпг",
                 "Теперь смотришь на себя со стороны.",
-                "Камера остаётся за спиной до конца испытания. Вид от первого лица пока недоступен.",
+                "Камера остаётся за спиной до конца испытания.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 

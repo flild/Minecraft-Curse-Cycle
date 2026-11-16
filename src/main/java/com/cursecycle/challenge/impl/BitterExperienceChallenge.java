@@ -22,8 +22,8 @@ public class BitterExperienceChallenge extends Challenge {
     // опыта и починка сохраняются. Прямое начисление командами и расход уровней не вызывают урон.
     public BitterExperienceChallenge() {
         super(ID, "Горький опыт",
-                "Опыт теперь достаётся с болью.",
-                "Каждая подобранная порция опыта отнимает здоровье. Вот он, горький опыт.",
+                "Опыт теперь наносит урон.",
+                "Каждая подобранная порция опыта отнимает здоровье.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

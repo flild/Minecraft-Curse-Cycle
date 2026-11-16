@@ -26,7 +26,7 @@ public class SlipperyHandsChallenge extends Challenge {
     public SlipperyHandsChallenge() {
         super(ID, "Только фонка не хватает",
                 "Под ногами будто сплошной лёд.",
-                "Земля стала скользкой, словно каток. Клавиши уже отпустил, а тебя всё ещё несёт.",
+                "Теперь ты везде скользишь.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 

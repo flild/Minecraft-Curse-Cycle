@@ -13,7 +13,7 @@ public final class TinyFovChallenge extends Challenge {
     // скорость, лук и подзорную трубу, не влияют. Настройки пользователя и масштаб интерфейса сохраняются.
     public TinyFovChallenge() {
         super(ID, "Тесновато",
-                "Смотришь на мир будто через узкую трубку.",
+                "Fov снижен.",
                 "Обзор сузился до крошечного окошка. По сторонам почти ничего не видно.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }

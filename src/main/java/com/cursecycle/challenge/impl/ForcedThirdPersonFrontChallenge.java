@@ -19,7 +19,7 @@ public class ForcedThirdPersonFrontChallenge extends Challenge {
     public ForcedThirdPersonFrontChallenge() {
         super(ID, "Смотри мне в глаза.",
                 "Впереди явно что-то интересное, но пока смотри назад.",
-                "Камера застряла перед лицом. До конца испытания придётся смотреть на себя, а не туда, куда идёшь.",
+                "Камера перед лицом. До конца испытания придётся смотреть на себя, а не куда идёшь.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

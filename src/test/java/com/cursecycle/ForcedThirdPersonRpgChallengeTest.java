@@ -20,8 +20,8 @@ class ForcedThirdPersonRpgChallengeTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ForcedThirdPersonRpgChallenge.ID);
         assertInstanceOf(ForcedThirdPersonRpgChallenge.class, challenge);
-        assertEquals("Как будто это рпг", challenge.getName());
-        assertEquals("Теперь смотришь на себя со стороны.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream()

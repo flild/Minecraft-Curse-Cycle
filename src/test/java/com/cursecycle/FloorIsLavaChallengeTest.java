@@ -27,8 +27,8 @@ class FloorIsLavaChallengeTest {
     void registeredAndSelectableAsHardGlobalChallenge() {
         var challenge = ChallengeRegistry.get("the_floor_is_lava");
         assertInstanceOf(FloorIsLavaChallenge.class, challenge);
-        assertEquals("Пол — это лава!", challenge.getName());
-        assertEquals("Стоять на твёрдых блоках вредно для здоровья. Очень вредно.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));

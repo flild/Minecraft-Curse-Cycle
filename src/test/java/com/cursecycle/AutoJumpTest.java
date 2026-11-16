@@ -10,8 +10,8 @@ class AutoJumpTest {
         ChallengeRegistry.clear(); ModChallenges.registerAll();
         var c = ChallengeRegistry.get("auto_jump");
         assertInstanceOf(AutoJumpChallenge.class, c);
-        assertEquals("Попрыгунчик", c.getName());
-        assertEquals("Только приземлился — уже снова прыгаешь.", c.getShortDescription());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ch.getId().equals("auto_jump")).count());

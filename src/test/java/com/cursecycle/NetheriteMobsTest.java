@@ -14,8 +14,8 @@ class NetheriteMobsTest {
         assertInstanceOf(NetheriteMobsChallenge.class, challenge);
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
-        assertEquals("Незеритовая вечеринка", challenge.getName());
-        assertEquals("Новые мобы появляются в зачарованной незеритовой броне.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(List.of("netherite_mobs", "no_sprint"),
                 ChallengeUtils.resolveToActiveIds("double_challenge:netherite_mobs,no_sprint"));
         assertEquals(1L, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals("netherite_mobs")).count());

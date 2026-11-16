@@ -21,7 +21,7 @@ public class OneTimeMenuChallenge extends Challenge {
     public OneTimeMenuChallenge() {
         super(ID, "Одноразовое меню",
                 "Каждый вид еды — только один раз за испытание.",
-                "Что уже съел, то больше не лезет. Повторить блюдо до конца испытания не получится.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+                "Что уже съел, то больше нельзя съесть. Повторить блюдо до конца испытания не получится.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
     private static final Map<UUID, Long> feedback = new HashMap<>();
     public static boolean blocked(PlayerEntity player, String food) {

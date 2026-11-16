@@ -13,7 +13,7 @@ public final class InvertedMouseChallenge extends Challenge {
     public InvertedMouseChallenge() {
         super(ID, "Лучше бы вечная тошнота",
                 "Камера поворачивается в другую сторону.",
-                "Мышь больше не слушается привычек: и вверх-вниз, и влево-вправо теперь наоборот.",
+                "Инверсия мышки, всё перепутано.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 }

@@ -13,14 +13,17 @@ import java.util.*;
 
 public class RandomPotionChallenge extends Challenge {
     public static final String ID = "random_potion";
+    public static final int INTERVAL_SECONDS = 30;
+    public static final int INTERVAL_TICKS = INTERVAL_SECONDS * 20;
+
     // Технические нюансы; не включать в описание для игрока.
-    // Выбор независим для каждого игрока, первый происходит сразу. Интервал — 30 секунд серверного времени,
+    // Выбор независим для каждого игрока, первый происходит сразу. Интервал — INTERVAL_SECONDS серверных секунд,
     // уровень — I. Продолжительный эффект длится до следующего выбора, мгновенный применяется один раз. Список
     // фиксирован, дополнительных штрафов нет.
     public RandomPotionChallenge() {
-        super(ID, "Лотырея от провизора",
-                "Каждые 30 секунд — случайный эффект зелья.",
-                "Раз в полминуты тебе достаётся случайный эффект. Повезёт или станет хуже — как выпадет.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+        super(ID, "Аптечная лотырея",
+                "Каждые " + INTERVAL_SECONDS + " секунд — случайный эффект зелья.",
+                "Раз в " + INTERVAL_SECONDS + " секунд тебе достаётся случайный эффект. Повезёт или станет хуже — как выпадет.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     public static final List<String> POOL = List.of("speed", "slowness", "strength", "instant_health", "instant_damage",
             "jump_boost", "regeneration", "resistance", "fire_resistance", "water_breathing", "invisibility",
@@ -30,10 +33,10 @@ public class RandomPotionChallenge extends Challenge {
 
     public static final class Clock {
         private long next;
-        public Clock(long now) { next = now + 600; }
+        public Clock(long now) { next = now + INTERVAL_TICKS; }
         public boolean due(long now) {
             if (now < next) return false;
-            next = now + 600;
+            next = now + INTERVAL_TICKS;
             return true;
         }
     }
@@ -44,7 +47,7 @@ public class RandomPotionChallenge extends Challenge {
         RegistryEntry<StatusEffect> effect = Registries.STATUS_EFFECT.getEntry(
                 Identifier.ofVanilla(POOL.get(player.getRandom().nextInt(POOL.size())))).orElseThrow();
         if (effect.value().isInstant()) effect.value().applyInstantEffect(null, null, player, 0, 1.0);
-        else EffectLedger.of(player).maintain(ID, effect, 0, 600, 0);
+        else EffectLedger.of(player).maintain(ID, effect, 0, INTERVAL_TICKS, 0);
     }
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) { onTick(server, player); }
     @Override public void onTick(MinecraftServer server, ServerPlayerEntity player) {

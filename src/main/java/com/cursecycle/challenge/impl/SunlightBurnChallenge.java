@@ -36,7 +36,7 @@ public final class SunlightBurnChallenge extends Challenge {
     public SunlightBurnChallenge() {
         super(ID, "Стоило купить крем от солнца",
                 "На дневном солнце ты загораешься.",
-                "Солнце больше не греет, а поджигает. Под открытым дневным небом обычного мира ты вспыхиваешь, как зомби.",
+                "Солнце больше не греет, а поджигает.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

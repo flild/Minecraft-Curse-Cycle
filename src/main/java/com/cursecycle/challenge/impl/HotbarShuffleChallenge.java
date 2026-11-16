@@ -34,7 +34,7 @@ public class HotbarShuffleChallenge extends Challenge {
     public HotbarShuffleChallenge() {
         super(ID, "Курчу верчу запутать хочу",
                 "Каждые 5 секунд хотбар перемешивается.",
-                "Предметы на панели быстрого доступа меняются местами каждые пять секунд. В руке запросто окажется совсем не то, что было мгновение назад.",
+                "Предметы на панели быстрого доступа меняются местами каждые пять секунд.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

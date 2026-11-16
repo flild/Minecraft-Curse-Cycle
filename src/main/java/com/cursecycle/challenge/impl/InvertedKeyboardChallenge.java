@@ -12,8 +12,8 @@ public final class InvertedKeyboardChallenge extends Challenge {
     // инвентарь и текст не меняются.
     public InvertedKeyboardChallenge() {
         super(ID, "Да как ходить то!",
-                "Вперёд и назад, влево и вправо поменялись местами.",
-                "Жмёшь вперёд — идёшь назад, жмёшь влево — идёшь вправо. Ноги всё поняли наоборот.",
+                "Вперёд и назад, влево и вправо поменяли местами.",
+                "Жмёшь вперёд — идёшь назад, жмёшь влево — идёшь вправо. Кароче, привыкнешь или нет...",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 }

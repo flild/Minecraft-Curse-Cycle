@@ -22,7 +22,7 @@ public class NoSprintChallenge extends Challenge {
             ID,
             "Без бега",
             "Пробежаться больше не получится.",
-            "Спринт не работает. Куда бы ни спешил, добираться придётся шагом.",
+            "Спринт не работает.",
             ChallengeDifficulty.EASY,
             ChallengeScope.GLOBAL
         );

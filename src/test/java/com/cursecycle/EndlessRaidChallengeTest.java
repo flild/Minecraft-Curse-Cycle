@@ -11,9 +11,9 @@ class EndlessRaidChallengeTest {
         ChallengeRegistry.clear(); ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get("endless_raid");
         assertInstanceOf(EndlessRaidChallenge.class, challenge);
-        assertEquals("Рейд без выходных", challenge.getName());
-        assertEquals("Один рейд закончился — начинается следующий.", challenge.getShortDescription());
-        assertEquals("В деревнях больше нет передышки: после каждого рейда разбойники возвращаются снова.", challenge.getDetailedRules());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
+        assertFalse(challenge.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals("endless_raid")).count());

@@ -18,7 +18,7 @@ public class GillsChallenge extends Challenge {
     // Водное дыхание, Морская сила и Подводное дыхание не отменяют потерю воздуха на суше.
     public GillsChallenge() {
         super(ID, "Зато под водой дышать можно",
-                "На суше задыхаешься, под водой дышишь свободно.",
+                "Ты как рыба, начинаешь задыхаться без воды.",
                 "Теперь у тебя жабры. На суше запас воздуха быстро кончается, а под водой можно дышать сколько угодно.", ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
     private final Map<MinecraftServer, Map<UUID, Integer>> lastTicks = new WeakHashMap<>();

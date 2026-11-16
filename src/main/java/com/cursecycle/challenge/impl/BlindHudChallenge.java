@@ -14,7 +14,7 @@ public final class BlindHudChallenge extends Challenge {
     public BlindHudChallenge() {
         super(ID, "На ощупь",
                 "Здоровье, голод, броня и опыт скрыты.",
-                "Привычные шкалы исчезли: ни сердец, ни голода, ни брони, ни воздуха, ни опыта. О своём состоянии придётся судить на ощупь.",
+                "Привычные шкалы исчезли: ни сердец, ни голода, ни брони, ни воздуха, ни опыта.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 }

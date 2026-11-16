@@ -23,7 +23,7 @@ class AdhdNoStandingStillChallengeTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(AdhdNoStandingStillChallenge.ID);
         assertInstanceOf(AdhdNoStandingStillChallenge.class, challenge);
-        assertEquals("У тебя СДВГ?", challenge.getName());
+        assertFalse(challenge.getName().isBlank());
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));

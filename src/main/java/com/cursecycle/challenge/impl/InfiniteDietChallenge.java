@@ -21,7 +21,7 @@ public class InfiniteDietChallenge extends Challenge {
     // значения.
     public InfiniteDietChallenge() {
         super(ID, "Жестокая диета",
-                "Ешь не ешь — всё мимо кассы.",
+                "Еда не восполняется.",
                 "Еда исчезает, а голод остаётся. Сколько ни ешь, шкала сытости больше не пополняется.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }

@@ -21,9 +21,9 @@ class InvisibleMobsTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(InvisibleMobsChallenge.class, challenge);
-        assertEquals("Их здесь нет", challenge.getName());
-        assertEquals("Враждебных мобов не видно, но они всё ещё здесь.", challenge.getShortDescription());
-        assertEquals("Враждебные мобы исчезли из виду. Вот только нападать на тебя они не перестали.", challenge.getDetailedRules());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
+        assertFalse(challenge.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

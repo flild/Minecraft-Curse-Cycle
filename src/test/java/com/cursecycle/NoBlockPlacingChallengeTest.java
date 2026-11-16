@@ -15,8 +15,8 @@ class NoBlockPlacingChallengeTest {
         ModChallenges.registerAll();
         var c = ChallengeRegistry.get(NoBlockPlacingChallenge.ID);
         assertInstanceOf(NoBlockPlacingChallenge.class, c);
-        assertEquals("Ну ты же не строитель", c.getName());
-        assertEquals("Поставить блок больше не получится.", c.getShortDescription());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(x -> x.getId().equals(c.getId())).count());

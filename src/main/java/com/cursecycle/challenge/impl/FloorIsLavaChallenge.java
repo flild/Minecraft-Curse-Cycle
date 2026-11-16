@@ -41,7 +41,7 @@ public class FloorIsLavaChallenge extends Challenge {
     // транспорт.
     public FloorIsLavaChallenge() {
         super(ID, "Пол — это лава!",
-                "Стоять на твёрдых блоках вредно для здоровья. Очень вредно.",
+                "Стоять на твёрдых блоках вредно для здоровья.",
                 "Касание твёрдого пола отнимает три сердца. Пока он под ногами, боль повторяется каждую секунду.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }

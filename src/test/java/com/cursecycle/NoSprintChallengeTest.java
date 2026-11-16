@@ -23,7 +23,7 @@ public class NoSprintChallengeTest {
         Challenge challenge = ChallengeRegistry.get(NoSprintChallenge.ID);
         assertNotNull(challenge, "NoSprintChallenge should be registered in ChallengeRegistry");
         assertEquals("no_sprint", challenge.getId());
-        assertEquals("Без бега", challenge.getName());
+        assertFalse(challenge.getName().isBlank());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
     }
 

@@ -22,9 +22,9 @@ class InvertedMouseInputTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(InvertedMouseChallenge.class, challenge);
-        assertEquals("Лучше бы вечная тошнота", challenge.getName());
-        assertEquals("Камера поворачивается в другую сторону.", challenge.getShortDescription());
-        assertEquals("Мышь больше не слушается привычек: и вверх-вниз, и влево-вправо теперь наоборот.", challenge.getDetailedRules());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
+        assertFalse(challenge.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

@@ -14,8 +14,8 @@ public class DamageSlotDropChallenge extends Challenge {
     // исключены. При пустом инвентаре ничего не происходит; выброшенный стек можно подобрать снова.
     public DamageSlotDropChallenge() {
         super(ID, "Дырявые карманы",
-                "Получаешь урон — теряешь случайную стопку вещей.",
-                "Каждый удар вытряхивает из карманов одну случайную стопку предметов целиком.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+                "Получаешь урон — теряешь случайный стак предметов.",
+                "Каждый удар вытряхивает из карманов один случайный стак предметов целиком.", ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
     @Override public void onPlayerDamageApplied(MinecraftServer server, ServerPlayerEntity player, DamageReceipt damage) {
         if (!ChallengeActivity.active(player, ID)) return;

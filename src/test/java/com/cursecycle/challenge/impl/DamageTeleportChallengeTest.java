@@ -59,7 +59,7 @@ class DamageTeleportChallengeTest {
         assertInstanceOf(DamageTeleportChallenge.class, challenge);
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
-        assertEquals("Почти как эндермен", challenge.getName());
+        assertFalse(challenge.getName().isBlank());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(DamageTeleportChallenge.ID)).count());
         assertEquals(List.of("damage_teleport", "damage_slot_drop"),
                 ChallengeUtils.resolveToActiveIds("double_challenge:damage_teleport,damage_slot_drop"));

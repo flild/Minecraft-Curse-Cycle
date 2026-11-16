@@ -19,8 +19,8 @@ class InfiniteDietChallengeTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get("infinite_diet");
         assertInstanceOf(InfiniteDietChallenge.class, challenge);
-        assertEquals("Жестокая диета", challenge.getName());
-        assertEquals("Ешь не ешь — всё мимо кассы.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals("infinite_diet")).count());

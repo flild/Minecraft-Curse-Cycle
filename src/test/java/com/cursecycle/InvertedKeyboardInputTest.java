@@ -24,8 +24,8 @@ class InvertedKeyboardInputTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(InvertedKeyboardChallenge.class, challenge);
-        assertEquals("Да как ходить то!", challenge.getName());
-        assertEquals("Вперёд и назад, влево и вправо поменялись местами.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

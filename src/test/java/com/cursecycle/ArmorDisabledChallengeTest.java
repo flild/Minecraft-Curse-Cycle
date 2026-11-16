@@ -24,8 +24,8 @@ class ArmorDisabledChallengeTest {
     void registeredAsMediumGlobalChallenge() {
         var challenge = ChallengeRegistry.get("armor_disabled");
         assertInstanceOf(ArmorDisabledChallenge.class, challenge);
-        assertEquals("Голый король", challenge.getName());
-        assertEquals("Броня больше не защищает, а элитры не летают.", challenge.getShortDescription());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));

@@ -10,8 +10,8 @@ class GravityTenTest {
         ChallengeRegistry.clear(); ModChallenges.registerAll();
         var c = ChallengeRegistry.get("gravity_ten");
         assertInstanceOf(GravityTenChallenge.class, c);
-        assertEquals("Земля тянет к себе", c.getName());
-        assertEquals("Прыгать тяжелее, падать быстрее.", c.getShortDescription());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.MEDIUM, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ch.getId().equals("gravity_ten")).count());

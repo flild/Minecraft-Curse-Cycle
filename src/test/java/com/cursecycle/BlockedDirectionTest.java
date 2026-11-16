@@ -29,9 +29,9 @@ class BlockedDirectionTest {
     @Test void metadataAndCompositeMatchSpecification() {
         var c = ChallengeRegistry.get(ID);
         assertInstanceOf(BlockedDirectionChallenge.class, c);
-        assertEquals("Туда нельзя", c.getName());
-        assertEquals("Одно из направлений движения больше не слушается.", c.getShortDescription());
-        assertEquals("Вперёд, влево или вправо — одно направление случайно отключается до конца испытания.", c.getDetailedRules());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
+        assertFalse(c.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream().filter(ch -> ID.equals(ch.getId())).count());

@@ -23,7 +23,7 @@ public class ArmorDisabledChallenge extends Challenge {
     // Отключаются защита и полезные свойства всех видов брони и элитр; полёт на элитрах недоступен.
     public ArmorDisabledChallenge() {
         super(ID, "Голый король",
-                "Броня больше не защищает, а элитры не летают.",
+                "Броня больше не работает.",
                 "Хоть в незерит оденься — защиты от него больше нет. Элитры тоже превращаются в бесполезный плащ.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }

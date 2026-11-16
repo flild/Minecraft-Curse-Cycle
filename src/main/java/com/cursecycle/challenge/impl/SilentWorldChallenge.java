@@ -13,7 +13,7 @@ public final class SilentWorldChallenge extends Challenge {
     public SilentWorldChallenge() {
         super(ID, "Тихий час",
                 "Все звуки Minecraft отключены.",
-                "Мир замолчал. Ни шагов, ни музыки, ни шипения за спиной — до конца испытания полная тишина.",
+                "Ни шагов, ни музыки, ни шипения за спиной — до конца испытания полная тишина.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 }

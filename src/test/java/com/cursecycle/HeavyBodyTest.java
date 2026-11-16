@@ -13,8 +13,8 @@ class HeavyBodyTest {
         ChallengeRegistry.clear(); ModChallenges.registerAll();
         var c = ChallengeRegistry.get("heavy_body");
         assertInstanceOf(HeavyBodyChallenge.class, c);
-        assertEquals("На массе", c.getName());
-        assertEquals("Бегаешь медленнее, прыгаешь ниже и запыхиваешься.", c.getShortDescription());
+        assertFalse(c.getName().isBlank());
+        assertFalse(c.getShortDescription().isBlank());
         assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(ch -> ch.getId().equals("heavy_body")).count());

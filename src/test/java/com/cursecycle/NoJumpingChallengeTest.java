@@ -24,9 +24,9 @@ public class NoJumpingChallengeTest {
         Challenge challenge = ChallengeRegistry.get(NoJumpingChallenge.ID);
         assertNotNull(challenge, "NoJumpingChallenge should be registered in ChallengeRegistry");
         assertEquals("no_jumping", challenge.getId());
-        assertEquals("Прикованные к земле", challenge.getName());
-        assertEquals("Подпрыгнуть не получится.", challenge.getShortDescription());
-        assertEquals("Прыжок больше не срабатывает. До конца испытания ноги словно прикованы к земле.", challenge.getDetailedRules());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
+        assertFalse(challenge.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
     }

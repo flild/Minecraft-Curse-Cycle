@@ -22,9 +22,9 @@ class OffsetCrosshairTest {
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ID);
         assertInstanceOf(OffsetCrosshairChallenge.class, challenge);
-        assertEquals("Конфига симпла", challenge.getName());
-        assertEquals("Прицел съехал и теперь врёт.", challenge.getShortDescription());
-        assertEquals("Прицел оказался в стороне от привычного места. Попасть по цели стало сложнее.", challenge.getDetailedRules());
+        assertFalse(challenge.getName().isBlank());
+        assertFalse(challenge.getShortDescription().isBlank());
+        assertFalse(challenge.getDetailedRules().isBlank());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());

@@ -13,7 +13,7 @@ public final class InvisibleMobsChallenge extends Challenge {
     // статус невидимости не выдаётся; ИИ не меняется.
     public InvisibleMobsChallenge() {
         super(ID, "Их здесь нет",
-                "Враждебных мобов не видно, но они всё ещё здесь.",
+                "Все враждебные мобы невидимые",
                 "Враждебные мобы исчезли из виду. Вот только нападать на тебя они не перестали.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }

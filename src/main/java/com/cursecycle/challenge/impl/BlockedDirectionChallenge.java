@@ -32,7 +32,7 @@ public final class BlockedDirectionChallenge extends Challenge {
     // движения. Назад идти можно всегда; поворот камеры не ограничивается.
     public BlockedDirectionChallenge() {
         super(ID, "Туда нельзя",
-                "Одно из направлений движения больше не слушается.",
+                "Одно из направлений движения больше не работает.",
                 "Вперёд, влево или вправо — одно направление случайно отключается до конца испытания.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }

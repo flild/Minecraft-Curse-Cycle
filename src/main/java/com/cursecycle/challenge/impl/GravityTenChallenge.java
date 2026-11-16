@@ -15,8 +15,8 @@ public final class GravityTenChallenge extends Challenge {
     // умножается.
     public GravityTenChallenge() {
         super(ID, "Земля тянет к себе",
-                "Прыгать тяжелее, падать быстрее.",
-                "Гравитация стала втрое сильнее. Земля притягивает быстрее, а приземления стали больнее.",
+                "Гравитация стала втрое сильнее.",
+                "Представь, что ты юпитире. К земле притягиваешься быстрее, а приземления стали больнее.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

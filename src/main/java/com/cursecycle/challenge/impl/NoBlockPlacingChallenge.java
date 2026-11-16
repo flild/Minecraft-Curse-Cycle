@@ -19,8 +19,8 @@ public final class NoBlockPlacingChallenge extends Challenge {
     // разрушение и размещение сущностей не ограничиваются.
     public NoBlockPlacingChallenge() {
         super(ID, "Ну ты же не строитель",
-                "Поставить блок больше не получится.",
-                "Строительство отменяется: ни блок поставить, ни воду вылить, ни огонь разжечь.",
+                "Нельзя ставить блоки.",
+                "Ни блок поставить, ни воду вылить, ни огонь разжечь.",
                 ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
