@@ -6,6 +6,12 @@ public final class ChallengeCountdown {
 
     private ChallengeCountdown() {}
 
+    public static String preparationTime(long ticks) {
+        long remaining = Math.max(0, ticks);
+        long seconds = remaining / 20 + (remaining % 20 == 0 ? 0 : 1);
+        return String.format(java.util.Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60);
+    }
+
     public static long daysRemaining(long ticks) {
         long remaining = Math.max(0, ticks);
         return remaining / TICKS_PER_DAY + (remaining % TICKS_PER_DAY == 0 ? 0 : 1);

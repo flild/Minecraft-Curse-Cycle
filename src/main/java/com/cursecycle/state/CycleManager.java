@@ -8,6 +8,7 @@ import com.cursecycle.challenge.impl.BlockedDirectionChallenge;
 import com.cursecycle.config.CurseCycleConfig;
 import com.cursecycle.network.NetworkHandler;
 import com.cursecycle.roulette.RouletteSelector;
+import com.cursecycle.roulette.WheelTiming;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -17,6 +18,23 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class CycleManager {
+
+    /** Editing timing retains active effects, world time, history and an already announced winner. */
+    public static void applyTimingChange(CurseCycleState state, com.cursecycle.config.TimingSettings old,
+                                         com.cursecycle.config.TimingSettings next, long timeOfDay) {
+        if (state.isInitialPreparationPending()) {
+            if (state.getInitialWheelTicks() < 0 && old.preparationSeconds() != next.preparationSeconds())
+                state.setInitialPreparationTicks(next.preparationSeconds() * 20L);
+        } else if (old.intervalDays() != next.intervalDays()) {
+            String promised = state.getNextChallengeId();
+            state.restartCycleAt(timeOfDay);
+            if (promised != null && !promised.isEmpty()) {
+                state.setNextChallengeId(promised);
+                state.setLastSpinCycle(1);
+                state.setSpinTriggeredForCurrentCycle(true);
+            }
+        }
+    }
 
     public static void onServerTick(MinecraftServer server, CurseCycleConfig config) {
         if (server.getOverworld() == null) return;
@@ -51,16 +69,53 @@ public class CycleManager {
 
     public static void updateSchedule(MinecraftServer server, CurseCycleConfig config) {
         CurseCycleState state = CurseCycleState.getServerState(server);
-        updateCycle(state, config, server.getOverworld().getTimeOfDay(),
-                id -> activateChallenge(server, state, id),
-                result -> {
-                    List<String> candidateIds = result.wheelItems.stream().map(Challenge::getId).toList();
-                    NetworkHandler.triggerWheelForAll(server, candidateIds, result.getEncodedWinnerId());
-                    server.getPlayerManager().broadcast(
-                            Text.literal("🎲 [Curse-Cycle] Следующее испытание выбрано! Вращаем колесо...")
-                                    .formatted(Formatting.GOLD), false);
-                });
+        long timeOfDay = server.getOverworld().getTimeOfDay();
+        Consumer<String> activate = id -> activateChallenge(server, state, id);
+        Consumer<RouletteSelector.WheelResult> announce = result -> {
+            List<String> candidateIds = result.wheelItems.stream().map(Challenge::getId).toList();
+            NetworkHandler.triggerWheelForAll(server, candidateIds, result.getEncodedWinnerId());
+            server.getPlayerManager().broadcast(
+                    Text.literal("🎲 [Curse-Cycle] Следующее испытание выбрано! Вращаем колесо...")
+                            .formatted(Formatting.GOLD), false);
+        };
+        if (!updateInitialCycle(state, config, timeOfDay, server.getTicks(),
+                !server.getPlayerManager().getPlayerList().isEmpty(), activate, announce)) {
+            updateCycle(state, config, timeOfDay, activate, announce);
+        }
         BlockedDirectionChallenge.reconcile(server);
+    }
+
+    /** Preparation uses online server ticks, independent of sleep and commands changing the world day. */
+    static boolean updateInitialCycle(CurseCycleState state, CurseCycleConfig config, long timeOfDay,
+                                      int serverTick, boolean playersPresent, Consumer<String> activate,
+                                      Consumer<RouletteSelector.WheelResult> announce) {
+        if (!state.isInitialPreparationPending()) return false;
+        timeOfDay = Math.max(0, timeOfDay);
+        state.setCurrentDay(timeOfDay / 24000L + 1);
+        state.setTotalInGameTicks(timeOfDay);
+        if (!playersPresent || !state.claimPreparationTick(serverTick)) return true;
+
+        boolean justStarted = state.getInitialPreparationTicks() < 0;
+        if (justStarted) {
+            state.setInitialPreparationTicks(Math.max(0, config.initialPreparationSeconds) * 20L);
+        }
+        if (state.getInitialPreparationTicks() > 0) {
+            if (!justStarted) state.setInitialPreparationTicks(state.getInitialPreparationTicks() - 1);
+            if (state.getInitialPreparationTicks() > 0) return true;
+        }
+
+        if (state.getInitialWheelTicks() < 0 || !isSelectable(state.getNextChallengeId())) {
+            RouletteSelector.WheelResult result = selectUpcomingChallenge(state, config, timeOfDay);
+            if (result != null) announce.accept(result);
+            return true;
+        }
+        state.setInitialWheelTicks(Math.max(0, state.getInitialWheelTicks() - 1));
+        if (state.getInitialWheelTicks() == 0) {
+            String winner = state.getNextChallengeId();
+            state.restartCycleAt(timeOfDay);
+            activate.accept(winner);
+        }
+        return true;
     }
 
     // Keep scheduling separate from player effects and network I/O so time jumps can be tested.
@@ -128,6 +183,10 @@ public class CycleManager {
         RouletteSelector.WheelResult result = RouletteSelector.selectNextChallenge(config, state);
         if (result != null) {
             state.setNextChallengeId(result.getEncodedWinnerId());
+            if (state.isInitialPreparationPending()) {
+                state.setInitialPreparationTicks(0);
+                state.setInitialWheelTicks(WheelTiming.DURATION_TICKS);
+            }
             state.setLastSpinCycle(cycleTicks(state, timeOfDay) / (config.challengeIntervalDays * 24000L) + 1);
             state.setSpinTriggeredForCurrentCycle(true);
         }
@@ -146,6 +205,11 @@ public class CycleManager {
     }
 
     public static long ticksUntilNext(CurseCycleState state, CurseCycleConfig config, long timeOfDay) {
+        if (state.isInitialPreparationPending()) {
+            if (state.getInitialWheelTicks() >= 0) return state.getInitialWheelTicks();
+            return state.getInitialPreparationTicks() >= 0 ? state.getInitialPreparationTicks()
+                    : Math.max(0, config.initialPreparationSeconds) * 20L;
+        }
         long intervalTicks = config.challengeIntervalDays * 24000L;
         return intervalTicks - cycleTicks(state, timeOfDay) % intervalTicks;
     }

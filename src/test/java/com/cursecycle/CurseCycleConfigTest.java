@@ -12,6 +12,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CurseCycleConfigTest {
     @Test
+    void preparationDefaultsApplyToOldConfigsAndNegativeValuesAreClamped() {
+        var legacy = new Gson().fromJson("{}", CurseCycleConfig.class);
+        legacy.validate();
+        assertEquals(60, legacy.initialPreparationSeconds);
+        legacy.initialPreparationSeconds = -10;
+        legacy.validate();
+        assertEquals(0, legacy.initialPreparationSeconds);
+    }
+
+    @Test
     void malformedValuesInValidJsonRecoverToSafeDefaults() {
         var config = new Gson().fromJson("""
                 {"challengeIntervalDays":0,"noticeLeadTimeDays":999,

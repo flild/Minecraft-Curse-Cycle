@@ -4,6 +4,7 @@ import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
 import com.cursecycle.client.BlockedDirectionInput;
+import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.config.CurseCycleConfig;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -45,10 +46,14 @@ public final class CurseCycleHudOverlay {
         int visibleHeight = Math.min(height, context.getScaledWindowHeight() - y - 6);
         CurseStyle.panel(context, x, y, width, visibleHeight);
         context.enableScissor(x + 1, y + 1, x + width - 1, y + visibleHeight - 1);
-        context.drawTextWithShadow(renderer, Text.translatable("text.cursecycle.hud.countdown"),
+        boolean preparation = ClientDataHolder.isPreparingInitialChallenge();
+        String countdownKey = preparation ? (next ? "text.cursecycle.hud.first_activation"
+                : "text.cursecycle.hud.first_wheel") : "text.cursecycle.hud.countdown";
+        context.drawTextWithShadow(renderer, Text.translatable(countdownKey),
                 x + 7, y + 7, CurseStyle.BRONZE);
         long days = ChallengeCountdown.daysRemaining(ticksUntilNext);
-        Text timer = Text.translatable(ChallengeCountdown.daysKey(days, client.getLanguageManager().getLanguage()), days);
+        Text timer = preparation ? Text.literal(ChallengeCountdown.preparationTime(ticksUntilNext))
+                : Text.translatable(ChallengeCountdown.daysKey(days, client.getLanguageManager().getLanguage()), days);
         context.drawTextWithShadow(renderer, timer, x + width - renderer.getWidth(timer) - 7, y + 7,
                 days <= 1 ? CurseStyle.PURPLE : CurseStyle.TEXT);
         context.fill(x + 7, y + 20, x + width - 7, y + 21, CurseStyle.EDGE);

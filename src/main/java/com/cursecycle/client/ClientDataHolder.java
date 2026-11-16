@@ -52,6 +52,9 @@ public class ClientDataHolder {
     }
 
     public static boolean isSynced() { return synced; }
+    public static boolean isPreparingInitialChallenge() {
+        return synced && activeChallengeIds.isEmpty() && historyChallengeIds.isEmpty();
+    }
     public static Direction getBlockedDirection() { return blockedDirection; }
     public static long getCurrentDay() { return currentDay; }
     public static long getTicksUntilNext() { return ticksUntilNext; }

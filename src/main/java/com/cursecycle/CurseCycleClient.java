@@ -6,6 +6,7 @@ import com.cursecycle.client.gui.CurseCycleHudOverlay;
 import com.cursecycle.client.gui.MainMenuScreen;
 import com.cursecycle.client.gui.WheelScreen;
 import com.cursecycle.challenge.impl.NoSprintChallenge;
+import com.cursecycle.diagnostics.StartupDiagnostics;
 import com.cursecycle.network.CurseCycleSyncPayload;
 import com.cursecycle.network.TriggerWheelPayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -27,17 +28,24 @@ public class CurseCycleClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        CurseCycleMod.LOGGER.info("Initializing Curse-Cycle Client...");
+        StartupDiagnostics.initialize("client", this::initializeClient);
+    }
+
+    private void initializeClient(StartupDiagnostics diagnostics) {
+        diagnostics.stage("registering connection events");
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             ClientDataHolder.reset();
+            com.cursecycle.client.ClientTimingSettings.reset();
             ForcedThirdPersonCamera.apply(client);
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientDataHolder.reset();
+            com.cursecycle.client.ClientTimingSettings.reset();
             ForcedThirdPersonCamera.apply(client);
         });
 
         // Register Keybinding 'H' to open main menu
+        diagnostics.stage("registering key bindings");
         com.cursecycle.client.HeartbeatInput.key = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.cursecycle.heartbeat", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_B, "key.cursecycle.category"));
         openMenuKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -47,6 +55,7 @@ public class CurseCycleClient implements ClientModInitializer {
             "key.cursecycle.category"
         ));
 
+        diagnostics.stage("registering client ticks");
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             com.cursecycle.client.HeartbeatInput.tick(client);
             com.cursecycle.client.HeavyBodyInput.tick(client);
@@ -55,6 +64,8 @@ public class CurseCycleClient implements ClientModInitializer {
             while (openMenuKeyBinding.wasPressed()) {
                 if (client.currentScreen == null && client.player != null && ClientDataHolder.isSynced()) {
                     client.setScreen(new MainMenuScreen());
+                    if (ClientPlayNetworking.canSend(com.cursecycle.network.TimingSettingsRequestPayload.ID))
+                        ClientPlayNetworking.send(new com.cursecycle.network.TimingSettingsRequestPayload(false, 0, 0, 0));
                 }
             }
 
@@ -65,6 +76,9 @@ public class CurseCycleClient implements ClientModInitializer {
             }
         });
 
+        diagnostics.stage("registering client network receivers");
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.TimingSettingsPayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.ClientTimingSettings.receive(payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.FoodHistoryPayload.ID, (payload, context) ->
                 context.client().execute(() -> ClientDataHolder.updateFoodHistory(payload.ids())));
 
@@ -103,6 +117,7 @@ public class CurseCycleClient implements ClientModInitializer {
         });
 
         // HUD Render Callback
+        diagnostics.stage("registering HUD renderer");
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
             if (!ClientDataHolder.isSynced()) return;
             CurseCycleHudOverlay.render(

@@ -14,6 +14,18 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playC2S().register(TimingSettingsRequestPayload.ID, TimingSettingsRequestPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TimingSettingsPayload.ID, TimingSettingsPayload.CODEC);
+        ServerPlayNetworking.registerGlobalReceiver(TimingSettingsRequestPayload.ID, (payload, context) -> {
+            int result = com.cursecycle.config.TimingSettingsService.handle(context.player(), payload);
+            ServerPlayNetworking.send(context.player(), com.cursecycle.config.TimingSettingsService.snapshot(context.player(), result));
+            if (payload.save() && result == TimingSettingsPayload.SAVED) {
+                for (var other : context.server().getPlayerManager().getPlayerList()) {
+                    if (other != context.player() && ServerPlayNetworking.canSend(other, TimingSettingsPayload.ID))
+                        ServerPlayNetworking.send(other, com.cursecycle.config.TimingSettingsService.snapshot(other, TimingSettingsPayload.SNAPSHOT));
+                }
+            }
+        });
         PayloadTypeRegistry.playS2C().register(HeartbeatStatePayload.ID, HeartbeatStatePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(HeartbeatPressPayload.ID, HeartbeatPressPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HeartbeatPressPayload.ID, (payload, context) ->

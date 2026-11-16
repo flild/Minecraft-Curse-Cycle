@@ -2,7 +2,7 @@ package com.cursecycle.client.gui;
 
 /** Unwrapped angles keep interpolation continuous when the wheel passes zero degrees. */
 public final class WheelAnimation {
-    public static final int DURATION = 100;
+    public static final int DURATION = com.cursecycle.roulette.WheelTiming.DURATION_TICKS;
     private final int count;
     private final double travel;
 

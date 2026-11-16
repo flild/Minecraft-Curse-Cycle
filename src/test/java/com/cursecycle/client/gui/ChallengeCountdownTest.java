@@ -4,6 +4,14 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChallengeCountdownTest {
+    @Test void preparationUsesMinutesAndSecondsRoundedUp() {
+        assertEquals("1:00", ChallengeCountdown.preparationTime(1200));
+        assertEquals("1:00", ChallengeCountdown.preparationTime(1199));
+        assertEquals("0:59", ChallengeCountdown.preparationTime(1180));
+        assertEquals("0:01", ChallengeCountdown.preparationTime(1));
+        assertEquals("0:00", ChallengeCountdown.preparationTime(-1));
+    }
+
     @Test void wholeGameDaysRoundUpUntilTheNextBoundaryWithoutOverflow() {
         assertEquals(5, ChallengeCountdown.daysRemaining(120_000));
         assertEquals(5, ChallengeCountdown.daysRemaining(119_999));

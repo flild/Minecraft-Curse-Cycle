@@ -22,7 +22,12 @@ public class CurseCycleState extends PersistentState {
     private NbtCompound challengeData = new NbtCompound();
 
     public long getActivationSerial() { return activationSerial; }
-    public void beginActivation() { activationSerial++; challengeData = new NbtCompound(); markDirty(); }
+    public void beginActivation() {
+        activationSerial++;
+        challengeData = new NbtCompound();
+        initialPreparationComplete = true;
+        markDirty();
+    }
     public NbtCompound getChallengeData() { return challengeData; }
 
     private long totalInGameTicks = 0;
@@ -37,6 +42,10 @@ public class CurseCycleState extends PersistentState {
     private final List<HistoryEntry> history = new ArrayList<>();
     private final List<String> currentPool = new ArrayList<>();
     private String lastDrawnChallengeId = null;
+    private boolean initialPreparationComplete;
+    private long initialPreparationTicks = -1;
+    private int initialWheelTicks = -1;
+    private Integer lastPreparationServerTick;
 
     public static class HistoryEntry {
         public final String challengeId;
@@ -82,6 +91,10 @@ public class CurseCycleState extends PersistentState {
         history.clear();
         currentPool.clear();
         lastDrawnChallengeId = null;
+        initialPreparationComplete = false;
+        initialPreparationTicks = -1;
+        initialWheelTicks = -1;
+        lastPreparationServerTick = null;
         markDirty();
     }
 
@@ -105,6 +118,11 @@ public class CurseCycleState extends PersistentState {
         state.challengeData = tag.getCompound("challengeData").copy();
         state.totalInGameTicks = tag.getLong("totalInGameTicks");
         state.cycleOriginTicks = Math.max(0, tag.getLong("cycleOriginTicks"));
+        state.initialPreparationTicks = tag.contains("initialPreparationTicks")
+                ? Math.max(-1, tag.getLong("initialPreparationTicks")) : -1;
+        state.initialWheelTicks = tag.contains("initialWheelTicks")
+                ? Math.clamp(tag.getInt("initialWheelTicks"), -1, com.cursecycle.roulette.WheelTiming.DURATION_TICKS) : -1;
+        state.initialPreparationComplete = tag.getBoolean("initialPreparationComplete");
         state.currentDay = tag.getLong("currentDay");
         if (state.currentDay < 1) state.currentDay = 1;
 
@@ -170,6 +188,9 @@ public class CurseCycleState extends PersistentState {
         tag.putLong("totalInGameTicks", totalInGameTicks);
         tag.putLong("cycleOriginTicks", cycleOriginTicks);
         tag.putLong("currentDay", currentDay);
+        tag.putBoolean("initialPreparationComplete", initialPreparationComplete);
+        tag.putLong("initialPreparationTicks", initialPreparationTicks);
+        tag.putInt("initialWheelTicks", initialWheelTicks);
 
         NbtList activeList = new NbtList();
         for (String id : activeChallengeIds) {
@@ -216,6 +237,9 @@ public class CurseCycleState extends PersistentState {
 
     /** Restart only the challenge schedule; world time, history and remaining pool are retained. */
     public void restartCycleAt(long timeOfDay) {
+        initialPreparationComplete = true;
+        initialPreparationTicks = -1;
+        initialWheelTicks = -1;
         cycleOriginTicks = Math.max(0, timeOfDay);
         totalInGameTicks = cycleOriginTicks;
         currentDay = cycleOriginTicks / 24000L + 1;
@@ -227,6 +251,24 @@ public class CurseCycleState extends PersistentState {
     }
 
     public long getCycleOriginTicks() { return cycleOriginTicks; }
+
+    /** Legacy worlds that already started a cycle retain their current challenges and timing. */
+    public boolean isInitialPreparationPending() {
+        return !initialPreparationComplete && lastActivatedCycle < 0 && history.isEmpty()
+                && activeChallengeIds.isEmpty()
+                && personalActiveChallenges.values().stream().allMatch(List::isEmpty);
+    }
+
+    long getInitialPreparationTicks() { return initialPreparationTicks; }
+    void setInitialPreparationTicks(long ticks) { initialPreparationTicks = ticks; markDirty(); }
+    int getInitialWheelTicks() { return initialWheelTicks; }
+    void setInitialWheelTicks(int ticks) { initialWheelTicks = ticks; markDirty(); }
+
+    boolean claimPreparationTick(int serverTick) {
+        if (lastPreparationServerTick != null && lastPreparationServerTick == serverTick) return false;
+        lastPreparationServerTick = serverTick;
+        return true;
+    }
 
     // Getters and setters
     public long getTotalInGameTicks() { return totalInGameTicks; }

@@ -9,7 +9,6 @@ import net.minecraft.util.Identifier;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -24,6 +23,7 @@ public class CurseCycleConfig {
 
     public int challengeIntervalDays = 5;
     public int noticeLeadTimeDays = 1;
+    public int initialPreparationSeconds = 60;
     public int maxActiveChallenges = 1;
     public boolean allowDuplicatesInHistory = true;
     public boolean enableWheelAnimation = true;
@@ -70,20 +70,32 @@ public class CurseCycleConfig {
 
     public void save() {
         try {
-            File file = configFile();
-            if (!file.getParentFile().exists()) {
-                file.getParentFile().mkdirs();
-            }
-            try (FileWriter writer = new FileWriter(file, StandardCharsets.UTF_8)) {
-                GSON.toJson(this, writer);
-            }
+            saveOrThrow();
         } catch (Exception e) {
             CurseCycleMod.LOGGER.error("Failed to save CurseCycle config", e);
         }
     }
 
+    public void saveOrThrow() throws java.io.IOException {
+        var target = configFile().toPath();
+        java.nio.file.Files.createDirectories(target.getParent());
+        var temp = java.nio.file.Files.createTempFile(target.getParent(), "cursecycle-", ".tmp");
+        try {
+            java.nio.file.Files.writeString(temp, GSON.toJson(this), StandardCharsets.UTF_8);
+            try {
+                java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(temp);
+        }
+    }
+
     public void validate() {
         if (challengeIntervalDays < 1) challengeIntervalDays = 5;
+        initialPreparationSeconds = Math.max(0, initialPreparationSeconds);
         noticeLeadTimeDays = Math.clamp(noticeLeadTimeDays, 0, challengeIntervalDays);
         maxActiveChallenges = Math.max(1, maxActiveChallenges);
         hudPositionX = Math.max(0, hudPositionX);

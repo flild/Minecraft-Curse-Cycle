@@ -4,6 +4,7 @@ import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ModChallenges;
 import com.cursecycle.command.CurseCycleCommand;
 import com.cursecycle.config.CurseCycleConfig;
+import com.cursecycle.diagnostics.StartupDiagnostics;
 import com.cursecycle.event.ChallengeEventManager;
 import com.cursecycle.network.NetworkHandler;
 import com.cursecycle.state.CurseCycleState;
@@ -31,16 +32,24 @@ public class CurseCycleMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("Initializing Curse-Cycle Mod...");
+        StartupDiagnostics.initialize("common", this::initializeCommon);
+    }
+
+    private void initializeCommon(StartupDiagnostics diagnostics) {
 
         // Load config & register challenges
+        diagnostics.stage("loading config");
         config = CurseCycleConfig.load();
+        diagnostics.stage("registering challenges");
         ModChallenges.registerAll();
         config.applyChallengeToggles();
+        diagnostics.stage("registering gameplay events");
         ChallengeEventManager.registerEvents();
 
         // Register payloads & commands
+        diagnostics.stage("registering network payloads");
         NetworkHandler.registerPayloads();
+        diagnostics.stage("registering lifecycle events and commands");
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.HeartbeatChallenge::clear);
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
