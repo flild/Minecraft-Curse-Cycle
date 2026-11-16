@@ -47,7 +47,7 @@ public final class CurseCycleHudOverlay {
         CurseStyle.panel(context, x, y, width, visibleHeight);
         context.enableScissor(x + 1, y + 1, x + width - 1, y + visibleHeight - 1);
         boolean preparation = ClientDataHolder.isPreparingInitialChallenge();
-        String countdownKey = preparation ? (next ? "text.cursecycle.hud.first_activation"
+        String countdownKey = preparation ? (ClientDataHolder.isWaitingForFirstActivation() ? "text.cursecycle.hud.first_activation"
                 : "text.cursecycle.hud.first_wheel") : "text.cursecycle.hud.countdown";
         context.drawTextWithShadow(renderer, Text.translatable(countdownKey),
                 x + 7, y + 7, CurseStyle.BRONZE);

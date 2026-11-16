@@ -10,6 +10,8 @@ public class ClientDataHolder {
     private static long ticksUntilNext = 0;
     private static final List<String> activeChallengeIds = new ArrayList<>();
     private static String nextChallengeId = "";
+    private static long wheelSequence;
+    private static long spinningWheel;
     private static final List<String> historyChallengeIds = new ArrayList<>();
     private static boolean synced = false;
     private static Direction blockedDirection;
@@ -25,6 +27,8 @@ public class ClientDataHolder {
         ticksUntilNext = 0;
         activeChallengeIds.clear();
         nextChallengeId = "";
+        wheelSequence++;
+        spinningWheel = 0;
         historyChallengeIds.clear();
         synced = false;
         blockedDirection = null;
@@ -59,6 +63,15 @@ public class ClientDataHolder {
     public static long getCurrentDay() { return currentDay; }
     public static long getTicksUntilNext() { return ticksUntilNext; }
     public static List<String> getActiveChallengeIds() { return activeChallengeIds; }
-    public static String getNextChallengeId() { return nextChallengeId; }
+    /** State sync may contain the winner before the local wheel has stopped. */
+    public static String getNextChallengeId() { return spinningWheel != 0 ? "" : nextChallengeId; }
+    public static boolean isWaitingForFirstActivation() {
+        return isPreparingInitialChallenge() && !nextChallengeId.isEmpty();
+    }
+    public static long beginWheel() { return spinningWheel = ++wheelSequence; }
+    public static void finishWheel(long wheel) {
+        // Removing a replaced screen must not reveal the replacement wheel's result.
+        if (spinningWheel == wheel) spinningWheel = 0;
+    }
     public static List<String> getHistoryChallengeIds() { return historyChallengeIds; }
 }

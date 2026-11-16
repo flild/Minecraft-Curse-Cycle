@@ -4,6 +4,7 @@ import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
+import com.cursecycle.client.ClientDataHolder;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -26,6 +27,7 @@ public class WheelScreen extends Screen {
     private final String winnerId;
     private final Challenge winner;
     private final WheelAnimation animation;
+    private final long wheel;
     private int ticks;
     private int lastClickTick = -20;
     private boolean finished;
@@ -45,6 +47,7 @@ public class WheelScreen extends Screen {
             if (challenge != null) subChallenges.add(challenge);
         }
         animation = new WheelAnimation(items.size(), items.indexOf(winner));
+        wheel = ClientDataHolder.beginWheel();
     }
 
     @Override public boolean shouldPause() { return false; }
@@ -81,6 +84,7 @@ public class WheelScreen extends Screen {
     private void revealResult() {
         if (finished) return;
         finished = true;
+        ClientDataHolder.finishWheel(wheel);
         announceResult(winnerId);
     }
 
