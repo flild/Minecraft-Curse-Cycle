@@ -13,12 +13,13 @@ import net.minecraft.util.Identifier;
 
 public class BitterExperienceChallenge extends Challenge {
     public static final String ID = "bitter_experience";
+    private static final float DAMAGE = 2.0F;
     public static final RegistryKey<DamageType> DAMAGE_TYPE = RegistryKey.of(RegistryKeys.DAMAGE_TYPE,
             Identifier.of("cursecycle", ID));
 
     public BitterExperienceChallenge() {
         super(ID, "Горький опыт", "Подбор сферы опыта наносит урон.",
-                "Каждый успешный подбор порции опыта вызывает 2 единицы урона. Опыт начисляется как обычно, включая починку предметов. Количество очков в порции не увеличивает урон. Прямое начисление опыта командами и расход уровней сами по себе урон не вызывают.",
+                "Каждый успешный подбор порции опыта наносит " + DAMAGE + " ед. урона. Опыт начисляется как обычно, включая починку предметов. Количество очков в порции не увеличивает урон. Прямое начисление опыта командами и расход уровней сами по себе урон не вызывают.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -26,6 +27,6 @@ public class BitterExperienceChallenge extends Challenge {
     public static void afterOrbPickup(ServerPlayerEntity player) {
         if (!ChallengeActivity.active(player, ID)) return;
         var source = new DamageSource(player.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
-        player.damage(source, 2.0F);
+        player.damage(source, DAMAGE);
     }
 }

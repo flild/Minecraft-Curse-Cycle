@@ -22,7 +22,7 @@ class BitterExperienceChallengeTest {
         var challenge = ChallengeRegistry.get(BitterExperienceChallenge.ID);
         assertInstanceOf(BitterExperienceChallenge.class, challenge);
         assertEquals("Горький опыт", challenge.getName());
-        assertEquals("Подбор сферы опыта наносит полсердца урона.", challenge.getShortDescription());
+        assertEquals("Подбор сферы опыта наносит урон.", challenge.getShortDescription());
         assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(challenge.getId())).count());
