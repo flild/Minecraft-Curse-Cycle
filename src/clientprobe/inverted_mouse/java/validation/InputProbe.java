@@ -141,8 +141,9 @@ public final class InputProbe implements PreLaunchEntrypoint {
             if(cameraActive) expected.rotateZ((float)Math.PI);
             var actual=(org.joml.Matrix4f)roll.invoke(renderer,projection);
             check(expected.equals(actual,1e-6f),"Real camera injected handler; both endings");
-            var angle=sample(m,10,10); same(mouseActive?-controlLook:controlLook,angle[0],"Roll does not reinvert yaw");
-            same(mouseActive?-controlLook:controlLook,angle[1],"Roll does not reinvert pitch");
+            var angle=sample(m,10,10);
+            same(mouseActive||cameraActive?-controlLook:controlLook,angle[0],"Either challenge inverts yaw once; both endings");
+            same(mouseActive||cameraActive?-controlLook:controlLook,angle[1],"Either challenge inverts pitch once; both endings");
         }
         for(String forced:new String[]{"forced_third_person_front","forced_third_person_rpg"}) {
             sync("inverted_mouse",forced); options.setPerspective(net.minecraft.client.option.Perspective.FIRST_PERSON);
@@ -188,22 +189,26 @@ public final class InputProbe implements PreLaunchEntrypoint {
                     for (boolean smooth : new boolean[]{false,true}) {
                         for (boolean scope : new boolean[]{false,true}) {
                             scoping=scope;
-                            for (var perspective : Perspective.values()) {
-                                set(options,GameOptions.class,"perspective",perspective);
-                                Mouse control=mouse(sensitivity,invertY,smooth);
-                                Mouse inverted=mouse(sensitivity,invertY,smooth);
-                                for (int frame=0;frame<4;frame++) {
-                                    double x=new double[]{13,-8,0,1.5}[frame];
-                                    double y=new double[]{-9,6,2.25,0}[frame];
-                                    sync("no_sprint"); var before=sample(control,x,y);
-                                    sync("inverted_mouse","inverted_mouse","inverted_keyboard","no_sprint");
-                                    var after=sample(inverted,x,y);
-                                    same(-before[0],after[0],"Yaw after sensitivity/smoothing");
-                                    same(-before[1],after[1],"Pitch after current invertY");
-                                    check(options.getMouseSensitivity().getValue()==sensitivity
-                                            && options.getInvertYMouse().getValue()==invertY
-                                            && options.getPerspective()==perspective,"Options unchanged");
-                                    comparisons++;
+                            for (var activation : List.of(new String[]{"inverted_mouse", "inverted_mouse", "inverted_keyboard"},
+                                    new String[]{"upside_down_camera", "upside_down_camera"},
+                                    new String[]{"inverted_mouse", "upside_down_camera"})) {
+                                for (var perspective : Perspective.values()) {
+                                    set(options,GameOptions.class,"perspective",perspective);
+                                    Mouse control=mouse(sensitivity,invertY,smooth);
+                                    Mouse inverted=mouse(sensitivity,invertY,smooth);
+                                    for (int frame=0;frame<4;frame++) {
+                                        double x=new double[]{13,-8,0,1.5}[frame];
+                                        double y=new double[]{-9,6,2.25,0}[frame];
+                                        sync("no_sprint"); var before=sample(control,x,y);
+                                        sync(activation);
+                                        var after=sample(inverted,x,y);
+                                        same(-before[0],after[0],"Yaw after sensitivity/smoothing");
+                                        same(-before[1],after[1],"Pitch after current invertY");
+                                        check(options.getMouseSensitivity().getValue()==sensitivity
+                                                && options.getInvertYMouse().getValue()==invertY
+                                                && options.getPerspective()==perspective,"Options unchanged");
+                                        comparisons++;
+                                    }
                                 }
                             }
                         }

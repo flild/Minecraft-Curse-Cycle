@@ -1,6 +1,7 @@
 package com.cursecycle;
 
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.impl.UpsideDownCameraChallenge;
 import com.cursecycle.network.CurseCycleSyncPayload;
 import com.cursecycle.state.CurseCycleState;
@@ -23,6 +24,8 @@ public class UpsideDownCameraGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "upside_down_camera")
     public void activationRecipientsPersistenceAndLifecycle(TestContext context) throws Exception {
         try (var s = new ChallengeScenario(context)) {
+            context.assertEquals(ChallengeDifficulty.HARD, ChallengeRegistry.get(ID).getDifficulty(),
+                    "Upside-down camera belongs to the hard roulette pool");
             var server = context.getWorld().getServer();
             var first = s.player();
             var second = s.player();

@@ -2,7 +2,7 @@
 
 ## Реализация
 
-«С ног на голову», MEDIUM/GLOBAL. Название и оба описания совпадают с JSON.
+«С ног на голову», HARD/GLOBAL. Название и оба описания сохранены.
 `UpsideDownGameRendererMixin` находится только в client-разделе Mixin config.
 MixinExtras меняет результат `getBasicProjectionMatrix` только внутри
 `GameRenderer.renderWorld` и `renderHand`. В Yarn 1.21.1 это три места:
@@ -11,16 +11,40 @@ MixinExtras меняет результат `getBasicProjectionMatrix` толь�
 Frustum при 180° имеет ту же область, его проекция также согласована с креном.
 
 Порядок сцены: `projection * roll * hurt * bob * view`; ванильные эффекты
-сохраняются. Матрица вида камеры, shared model-view, yaw/pitch, луч взаимодействия,
-перспектива, FOV и пользовательские настройки не меняются. Руки получают свой
+сохраняются. Сам крен не меняет матрицу вида камеры, shared model-view, yaw/pitch,
+луч взаимодействия, перспективу, FOV и пользовательские настройки. Руки получают свой
 единственный крен, без переноса уже повёрнутой матрицы мира. HUD/меню используют
 отдельную GUI-проекцию. Panorama исключена.
+
+С 2026-11-17 обе оси мышиного взгляда инвертируются через существующий
+`InvertedMouseMixin` после sensitivity, smoothing/spyglass и invertY.
+`InvertedMouseInput` включает инверсию при upside_down_camera или inverted_mouse;
+пара и дубли ID применяют её один раз. Клавиатура и GUI-курсор не меняются.
+После окончания обоих испытаний возвращается обычный ввод без скачка угла.
 
 `UpsideDownCamera` читает текущее synced состояние, мир, живого неудалённого
 игрока и режим Survival/Adventure на каждом вызове. Нет сохранённой матрицы,
 снимка настроек, ссылки на игрока, таймера, новых пакетов или дополнительного NBT.
 Активность сохраняет общий `CurseCycleState`; включённые GLOBAL/PERSONAL ID
 приходят существующим sync_state. Reset при JOIN/DISCONNECT уже есть.
+
+## Изменение 2026-11-17 — Hard и инверсия мыши
+
+- `.\gradlew.bat build runGametest --offline --no-daemon -I build/upside-down-input-server.init.gradle`
+  — BUILD SUCCESSFUL; 195 JUnit, 6/6 изолированных GameTest камеры и мыши.
+  Проверены HARD в реестре, активация, S2C, GLOBAL/PERSONAL, дубли,
+  режимы, смерть/респаун, измерения, reconnect и сохранение в одной JVM.
+  Init выбирает только UpsideDownCameraGameTest/InvertedMouseGameTest,
+  runDir `build/upside-down-input-server/run`; XML `build/reports/upside-down-input.xml`.
+- `.\gradlew.bat runClient --offline --no-daemon -I src/clientprobe/inverted_mouse/init.gradle`
+  — `INVERTED_MOUSE_REVIEW_CLIENT_PASSED checks=8643 pairs=1152`.
+  Настоящий transformed Mouse.updateMouse: отдельные испытания и пара,
+  дубли, sensitivity, invertY, smoothing/spyglass, три перспективы.
+  Проверены оба окончания пары с настоящим roll-handler: инверсия сохраняется,
+  пока активно хотя бы одно испытание. Настройки, клавиатура и абсолютные
+  повороты проходят прежние проверки. Unsafe fixtures, без окна и физической мыши.
+- Логи: `build/upside-down-input-build.log`, `build/upside-down-input-mouse-probe.log`.
+  Ручные проверки ниже не выполнены; результаты 2026-11-06/10-29 исторические.
 
 ## Ревью 2026-11-06 — свежие проверки этапа 26
 
@@ -124,7 +148,8 @@ lock-файлы не удалялись, зависимости не менял�
    Мир/руки перевёрнуты; сломать центральную цель и выстрелить в неё. F5 во всех
    перспективах, транспорт, элитры, вода, hurt/bob, портал: крен сохраняется один раз.
    Открыть инвентарь/чат/меню: HUD, текст, прицел и курсор обычные, ввод совпадает
-   с контролем. Проверить реальные геометрию рук, held map, освещение и culling.
+   с контролем в GUI; в мире обе оси мышиного взгляда инвертированы относительно
+   ванильного ввода. Проверить реальные геометрию рук, held map, освещение и culling.
 2. Два настоящих клиента и поздний вход: основной сценарий, смерть/респаун,
    reconnect и измерения. Серверные embedded игроки не заменяют эту проверку.
 3. Creative/Spectator без крена, Adventure с креном; возврат в Survival без удвоения.

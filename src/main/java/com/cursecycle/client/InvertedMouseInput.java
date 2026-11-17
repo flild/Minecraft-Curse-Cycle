@@ -1,6 +1,7 @@
 package com.cursecycle.client;
 
 import com.cursecycle.challenge.impl.InvertedMouseChallenge;
+import com.cursecycle.challenge.impl.UpsideDownCameraChallenge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.world.GameMode;
 
@@ -12,7 +13,8 @@ public final class InvertedMouseInput {
 
     public static boolean affects(boolean synced, List<String> activeIds, GameMode mode, boolean alive) {
         return synced && alive && (mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE)
-                && activeIds.contains(InvertedMouseChallenge.ID);
+                && (activeIds.contains(InvertedMouseChallenge.ID)
+                    || activeIds.contains(UpsideDownCameraChallenge.ID));
     }
 
     public static boolean shouldInvert(MinecraftClient client) {

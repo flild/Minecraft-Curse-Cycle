@@ -2,6 +2,7 @@ package com.cursecycle;
 
 import com.cursecycle.challenge.*;
 import com.cursecycle.challenge.impl.InvertedMouseChallenge;
+import com.cursecycle.challenge.impl.UpsideDownCameraChallenge;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.InvertedMouseInput;
 import net.minecraft.world.GameMode;
@@ -55,6 +56,31 @@ class InvertedMouseInputTest {
         ClientDataHolder.updateState(3, 60, List.of(ID, "no_sprint"), "", List.of());
         assertTrue(active());
         ClientDataHolder.updateState(4, 80, List.of(), "", List.of(ID));
+        assertFalse(active());
+    }
+
+    @Test void upsideDownCameraInvertsMouseAloneAndWithInvertedMouse() {
+        for (var ids : List.of(List.of(UpsideDownCameraChallenge.ID),
+                List.of(UpsideDownCameraChallenge.ID, ID),
+                List.of(UpsideDownCameraChallenge.ID, UpsideDownCameraChallenge.ID, ID, ID))) {
+            for (var mode : GameMode.values()) {
+                assertEquals(mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE,
+                        InvertedMouseInput.affects(true, ids, mode, true));
+                assertFalse(InvertedMouseInput.affects(false, ids, mode, true));
+                assertFalse(InvertedMouseInput.affects(true, ids, mode, false));
+            }
+            assertFalse(InvertedMouseInput.affects(true, ids, null, true));
+        }
+        ClientDataHolder.updateState(1, 20, List.of(UpsideDownCameraChallenge.ID, ID), "", List.of());
+        assertTrue(active());
+        ClientDataHolder.updateState(2, 40, List.of(UpsideDownCameraChallenge.ID), "", List.of());
+        assertTrue(active());
+        ClientDataHolder.updateState(3, 60, List.of(ID), "", List.of());
+        assertTrue(active());
+        ClientDataHolder.updateState(4, 80, List.of("no_sprint"), "", List.of());
+        assertFalse(active());
+        ClientDataHolder.updateState(5, 100, List.of(UpsideDownCameraChallenge.ID), "", List.of());
+        ClientDataHolder.reset();
         assertFalse(active());
     }
 

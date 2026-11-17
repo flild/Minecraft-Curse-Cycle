@@ -12,11 +12,13 @@
 - `InvertedMouseInput.shouldInvert` проверяет текущие world/player/manager,
   alive/removed, Survival/Adventure и синхронизированные эффективные ID.
   Перспектива, транспорт и жидкости не исключают мышиный ввод.
+  С 2026-11-17 инверсия включается также для upside_down_camera; оба испытания
+  вместе применяют её один раз. Окончание одного сохраняет инверсию другого.
 - Enabled/GLOBAL/PERSONAL/double фильтруются общим `NetworkHandler`.
   JOIN/DISCONNECT сбрасывают `ClientDataHolder`; собственных пакетов,
   таймеров, коллекций, NBT и ссылок на игрока у испытания нет.
 - GUI, кнопки, колесо и абсолютные повороты проходят отдельными путями.
-  Пары с keyboard/roll/forced perspective сохраняют независимость.
+  Keyboard и forced perspective сохраняют свои правила, крен не дублирует инверсию.
 
 ## Свежее ревью 2026-11-05
 

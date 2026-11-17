@@ -25,10 +25,11 @@ class UpsideDownCameraTest {
         assertFalse(challenge.getName().isBlank());
         assertFalse(challenge.getShortDescription().isBlank());
         assertFalse(challenge.getDetailedRules().isBlank());
-        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
+        assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));
+        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
         assertEquals(List.of(ID, "no_sprint"), ChallengeUtils.resolveToActiveIds("double_challenge:upside_down_camera,no_sprint"));
     }
 
