@@ -23,6 +23,130 @@ import java.util.Map;
 import java.util.UUID;
 
 public class ManualCycleGameTest implements FabricGameTest {
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "cycle_sleep", tickLimit = 320)
+    public void twoDayChallengesReplaceEachOtherThroughTwoRealBedSleeps(TestContext c) {
+        var server = c.getWorld().getServer();
+        var world = server.getOverworld();
+        var config = CurseCycleMod.getConfig();
+        var settings = com.cursecycle.config.TimingSettings.from(config);
+        long originalTime = world.getTimeOfDay();
+        boolean daylight = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE);
+        int sleepPercentage = world.getGameRules().getInt(net.minecraft.world.GameRules.PLAYERS_SLEEPING_PERCENTAGE);
+        var scenario = new ChallengeScenario(c);
+        var player = scenario.player();
+        var foot = c.getAbsolutePos(new net.minecraft.util.math.BlockPos(2, 3, 2));
+        var head = foot.east();
+        var originalFoot = world.getBlockState(foot);
+        var originalHead = world.getBlockState(head);
+        var bed = net.minecraft.block.Blocks.RED_BED.getDefaultState()
+                .with(net.minecraft.block.BedBlock.FACING, net.minecraft.util.math.Direction.EAST);
+        world.setBlockState(foot, bed, net.minecraft.block.Block.NOTIFY_LISTENERS);
+        world.setBlockState(head, bed.with(net.minecraft.block.BedBlock.PART, net.minecraft.block.enums.BedPart.HEAD),
+                net.minecraft.block.Block.NOTIFY_LISTENERS);
+        world.getGameRules().get(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE).set(true, server);
+        world.getGameRules().get(net.minecraft.world.GameRules.PLAYERS_SLEEPING_PERCENTAGE).set(100, server);
+        config.challengeIntervalDays = 2;
+        config.noticeLeadTimeDays = 1;
+        world.setTimeOfDay(0);
+        scenario.state.restartCycleAt(0);
+        scenario.activate("slippery_hands");
+        long serial = scenario.state.getActivationSerial();
+        String[] choices = {"blocked_direction", "slippery_hands"};
+        int[] stage = {0};
+        boolean[] done = {false};
+        Runnable cleanup = () -> {
+            done[0] = true;
+            if (player.isSleeping()) player.wakeUp(true, true);
+            scenario.close();
+            world.setBlockState(foot, originalFoot, net.minecraft.block.Block.NOTIFY_LISTENERS);
+            world.setBlockState(head, originalHead, net.minecraft.block.Block.NOTIFY_LISTENERS);
+            settings.applyTo(config);
+            world.getGameRules().get(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE).set(daylight, server);
+            world.getGameRules().get(net.minecraft.world.GameRules.PLAYERS_SLEEPING_PERCENTAGE).set(sleepPercentage, server);
+            world.setTimeOfDay(originalTime);
+        };
+        Runnable sleep = () -> {
+            scenario.state.getCurrentPool().clear();
+            scenario.state.getCurrentPool().add(choices[stage[0]]);
+            world.setTimeOfDay(stage[0] * 48_000L + 24_000);
+            CycleManager.updateSchedule(server, config);
+            CycleManager.syncState(server, scenario.state, config);
+            var preview = latestSync(scenario, player);
+            c.assertEquals(choices[stage[0]], preview.nextChallengeId(), "Wheel announces one day before replacement");
+            c.assertEquals(24_000L, preview.ticksUntilNext(), "Announcement does not reset the interval");
+            world.setTimeOfDay(stage[0] * 48_000L + 37_000);
+            world.calculateAmbientDarkness();
+            player.refreshPositionAndAngles(foot.getX() + 0.5, foot.getY() + 1, foot.getZ() + 0.5, 0, 0);
+            c.assertTrue(player.trySleep(head).right().isPresent(), "Vanilla bed interaction accepted");
+            c.assertTrue(player.isSleeping(), "Real bed sleep started");
+        };
+        try {
+            sleep.run();
+        } catch (Throwable failure) {
+            cleanup.run();
+            throw failure;
+        }
+        c.runAtEveryTick(() -> {
+            if (done[0]) return;
+            try {
+                // Embedded connections do not run ServerPlayNetworkHandler.tick/playerTick.
+                player.playerTick();
+                CycleManager.updateSchedule(server, config);
+                c.assertFalse(scenario.state.getActiveChallengeIds().isEmpty(), "No empty tick between challenges");
+                long boundary = (stage[0] + 1L) * 48_000;
+                if (world.getTimeOfDay() < boundary) return;
+                c.assertFalse(player.isSleeping(), "Vanilla sleep woke the player at sunrise");
+                var changed = latestSync(scenario, player);
+                c.assertEquals(List.of(choices[stage[0]]), changed.activeChallengeIds(), "HUD immediately receives the replacement");
+                c.assertEquals("", changed.nextChallengeId(), "Previous wheel result consumed");
+                c.assertEquals(serial + stage[0] + 1, scenario.state.getActivationSerial(), "One activation per two-day interval");
+                c.assertTrue(changed.ticksUntilNext() > 47_900 && changed.ticksUntilNext() <= 48_000,
+                        "Next change is two days away with the new challenge already active");
+                if (stage[0] == 0) {
+                    c.assertFalse(com.cursecycle.challenge.impl.SlipperyHandsChallenge.isActiveForPlayer(player), "Ice effect removed");
+                    c.assertTrue(com.cursecycle.challenge.impl.BlockedDirectionChallenge.reconcile(server) != null,
+                            "Replacement direction actually initialized");
+                    stage[0]++;
+                    sleep.run();
+                } else {
+                    c.assertTrue(com.cursecycle.challenge.impl.SlipperyHandsChallenge.isActiveForPlayer(player), "Following challenge takes effect too");
+                    cleanup.run();
+                    c.complete();
+                }
+            } catch (Throwable failure) {
+                cleanup.run();
+                throw failure;
+            }
+        });
+        c.waitAndRun(300, () -> {
+            if (done[0]) return;
+            cleanup.run();
+            throw new AssertionError("Two bed sleeps did not complete within 300 ticks");
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "manual_controls")
+    public void emptySavedCycleRecoversImmediatelyAndSynchronizesTheReplacement(TestContext c) {
+        var server = c.getWorld().getServer();
+        long originalTime = server.getOverworld().getTimeOfDay();
+        try (var scenario = new ChallengeScenario(c)) {
+            var player = scenario.player();
+            scenario.state.restartCycleAt(originalTime);
+            scenario.state.getActiveChallengeIds().clear();
+            scenario.state.setNextChallengeId("blocked_direction");
+            var saved = scenario.state.writeNbt(new NbtCompound(), c.getWorld().getRegistryManager());
+            var restored = CurseCycleState.createFromNbt(saved, c.getWorld().getRegistryManager());
+            server.getOverworld().getPersistentStateManager().set(CurseCycleState.STATE_KEY, restored);
+            CycleManager.updateSchedule(server, CurseCycleMod.getConfig());
+            c.assertEquals(List.of("blocked_direction"), restored.getActiveChallengeIds(), "Recover without waiting another interval");
+            c.assertEquals(List.of("blocked_direction"), latestSync(scenario, player).activeChallengeIds(), "HUD also recovers");
+            c.assertTrue(com.cursecycle.challenge.impl.BlockedDirectionChallenge.reconcile(server) != null, "Direction is ready");
+        } finally {
+            server.getOverworld().setTimeOfDay(originalTime);
+        }
+        c.complete();
+    }
+
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "manual_controls")
     public void menuSettingsCheckPermissionsAndPersistWithoutResettingGameplay(TestContext c) throws Exception {
         var server = c.getWorld().getServer();
@@ -419,6 +543,8 @@ public class ManualCycleGameTest implements FabricGameTest {
 
     private static CurseCycleSyncPayload latestSync(ChallengeScenario scenario, ServerPlayerEntity player) {
         scenario.channel(player).runPendingTasks();
+        // A test may inspect the activation inside ServerWorld.tick, before vanilla enables flushing.
+        scenario.channel(player).flush();
         var payloads = scenario.channel(player).outboundMessages().stream()
                 .filter(CustomPayloadS2CPacket.class::isInstance).map(CustomPayloadS2CPacket.class::cast)
                 .map(CustomPayloadS2CPacket::payload).filter(CurseCycleSyncPayload.class::isInstance)

@@ -25,6 +25,7 @@ class CycleManagerTest {
     private void advance(long time) {
         CycleManager.updateCycle(state, config, time, id -> {
             events.add("activate:" + id);
+            state.beginActivation();
             state.getActiveChallengeIds().clear();
             state.getActiveChallengeIds().addAll(ChallengeUtils.resolveToActiveIds(id));
             state.addHistory(id, state.getCurrentDay());
@@ -236,6 +237,77 @@ class CycleManagerTest {
                         CycleManager.ticksUntilNext(state, config, boundary)), "Refresh the counter, never add duration");
                 assertEquals(cycle + 1, state.getHistory().size());
                 if (duration > 1) assertNull(state.getNextChallengeId(), "Consumed preview removed");
+            }
+        }
+    }
+
+    @Test
+    void emptyStartedCycleImmediatelyActivatesThePromisedChallengeAfterReload() {
+        config.challengeIntervalDays = 2;
+        config.noticeLeadTimeDays = 1;
+        state.restartCycleAt(1234);
+        state.addHistory("no_sprint", 1);
+        state.setLastActivatedCycle(1);
+        state.setLastSpinCycle(2);
+        state.setNextChallengeId("no_jumping");
+        state = CurseCycleState.createFromNbt(state.writeNbt(new net.minecraft.nbt.NbtCompound(), null), null);
+
+        advance(1234 + 48_001);
+        assertEquals(List.of("activate:no_jumping"), events);
+        assertEquals(List.of("no_jumping"), state.getActiveChallengeIds());
+        assertNull(state.getNextChallengeId());
+        events.clear();
+        advance(1234 + 48_002);
+        assertTrue(events.isEmpty(), "Recovery must not activate the same challenge again");
+    }
+
+    @Test
+    void failedReplacementKeepsThePreviewAndRetriesInsteadOfCountingAnEmptyCycle() {
+        config.challengeIntervalDays = 2;
+        state.restartCycleAt(0);
+        state.getActiveChallengeIds().add("slippery_hands");
+        state.setNextChallengeId("no_jumping");
+        state.setLastSpinCycle(1);
+        CycleManager.updateCycle(state, config, 48_000, id -> {}, result -> fail("Already announced"));
+        assertEquals("no_jumping", state.getNextChallengeId());
+        assertEquals(0, state.getLastActivatedCycle());
+        assertEquals(List.of("slippery_hands"), state.getActiveChallengeIds());
+        assertEquals(0, CycleManager.ticksUntilNext(state, config, 48_000),
+                "A failed replacement must not advertise another two-day wait");
+        advance(48_001);
+        assertEquals(List.of("no_jumping"), state.getActiveChallengeIds());
+        assertEquals(47_999, CycleManager.ticksUntilNext(state, config, 48_001));
+        advance(48_001);
+        assertEquals(List.of("activate:no_jumping"), events);
+        assertFalse(state.getActiveChallengeIds().isEmpty());
+    }
+
+    @Test
+    void twoDayChallengesRemainContinuousThroughSleepWithAnyNoticeSetting() {
+        for (int notice : new int[]{0, 1, 2}) {
+            config.challengeIntervalDays = 2;
+            config.noticeLeadTimeDays = notice;
+            state = new CurseCycleState();
+            state.getActiveChallengeIds().add("no_sprint");
+            long origin = 1400;
+            state.restartCycleAt(origin);
+            events.clear();
+            for (int cycle = 0; cycle < 4; cycle++) {
+                long start = origin + cycle * 48_000L;
+                advance(start);
+                advance(start + 24_000);
+                if (notice > 0) assertNotNull(state.getNextChallengeId());
+                String promised = state.getNextChallengeId();
+                // Bed skips from night to morning, crossing the replacement deadline.
+                advance(start + 46_000);
+                assertEquals(cycle, state.getHistory().size());
+                advance(start + 46_000);
+                advance(start + 48_100);
+                assertFalse(state.getActiveChallengeIds().isEmpty());
+                if (promised != null) assertEquals(ChallengeUtils.resolveToActiveIds(promised), state.getActiveChallengeIds());
+                assertEquals(cycle + 1, state.getHistory().size());
+                assertEquals(47_900, CycleManager.ticksUntilNext(state, config, start + 48_100));
+                state = CurseCycleState.createFromNbt(state.writeNbt(new net.minecraft.nbt.NbtCompound(), null), null);
             }
         }
     }

@@ -134,13 +134,11 @@ public class CycleManager {
             // Old read-side lookups and removed assignments may leave empty UUID records.
             if (personalIds.isEmpty()) { it.remove(); state.markDirty(); }
         }
-        if (removed) {
-            state.markDirty();
-            if (state.getActiveChallengeIds().isEmpty()) state.setLastActivatedCycle(-1);
-        }
+        if (removed) state.markDirty();
 
         // Consume the existing announcement before preparing the following cycle's draw.
-        if (currentCycle > state.getLastActivatedCycle()) {
+        // A started world must never wait out an empty interval, including after loading old state.
+        if (currentCycle > state.getLastActivatedCycle() || state.getActiveChallengeIds().isEmpty()) {
             if (state.getLastActivatedCycle() != -1 || state.getActiveChallengeIds().isEmpty()) {
                 String nextId = state.getNextChallengeId();
                 if (!isSelectable(nextId)) {
@@ -148,8 +146,22 @@ public class CycleManager {
                     nextId = result == null ? null : result.getEncodedWinnerId();
                 }
                 // Activation immediately synchronizes the HUD: consume the preview before broadcasting.
+                // Only a real replacement completes this transition. Retain the promise and retry
+                // next tick if no challenge could be activated, instead of starting an empty interval.
+                if (nextId == null) return;
+                long previousActivation = state.getActivationSerial();
+                long previousCycle = state.getLastActivatedCycle();
+                var previousIds = List.copyOf(state.getActiveChallengeIds());
+                state.setLastActivatedCycle(currentCycle);
                 state.setNextChallengeId(null);
-                if (nextId != null) activate.accept(nextId);
+                activate.accept(nextId);
+                if (state.getActiveChallengeIds().isEmpty()
+                        || state.getActivationSerial() == previousActivation
+                        && state.getActiveChallengeIds().equals(previousIds)) {
+                    state.setNextChallengeId(nextId);
+                    state.setLastActivatedCycle(previousCycle);
+                    return;
+                }
             }
             state.setLastActivatedCycle(currentCycle);
             state.setSpinTriggeredForCurrentCycle(false);
@@ -208,7 +220,11 @@ public class CycleManager {
                     : Math.max(0, config.initialPreparationSeconds) * 20L;
         }
         long intervalTicks = config.challengeIntervalDays * 24000L;
-        return intervalTicks - cycleTicks(state, timeOfDay) % intervalTicks;
+        // The countdown belongs to the active interval. Merely crossing a day boundary
+        // must not advertise a fresh interval before its replacement has actually started.
+        long elapsed = cycleTicks(state, timeOfDay);
+        if (state.getLastActivatedCycle() < 0) return intervalTicks - elapsed % intervalTicks;
+        return Math.max(0, (state.getLastActivatedCycle() + 1) * intervalTicks - elapsed);
     }
 
     /** Resolve and validate before stopping anything; failures leave the current cycle intact. */
