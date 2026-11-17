@@ -34,11 +34,6 @@ public class RouletteSelector {
         List<Challenge> availableMedium = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM);
         List<Challenge> availableHard = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD);
 
-        // Zero-weight categories are not eligible in this progression stage.
-        if (targetEasyCount == 0) availableEasy = List.of();
-        if (targetMediumCount == 0) availableMedium = List.of();
-        if (targetHardCount == 0) availableHard = List.of();
-
         List<String> pool = state.getCurrentPool();
         Set<String> eligibleIds = new LinkedHashSet<>();
         availableEasy.forEach(c -> eligibleIds.add(c.getId()));
@@ -59,9 +54,27 @@ public class RouletteSelector {
         selectedForWheel.addAll(pickCandidates(availableMedium, targetMediumCount, drawPool));
         selectedForWheel.addAll(pickCandidates(availableHard, targetHardCount, drawPool));
 
+        // Difficulty weights are preferred sector counts. Fill shortages with other unseen challenges,
+        // including zero-weight difficulties, before repeating any challenge within the wheel.
+        int targetCount = targetEasyCount + targetMediumCount + targetHardCount;
+        Set<String> selectedIds = new HashSet<>();
+        selectedForWheel.forEach(c -> selectedIds.add(c.getId()));
+        List<Challenge> fallback = ChallengeRegistry.getAll().stream()
+                .filter(Challenge::isEnabled)
+                .filter(c -> !selectedIds.contains(c.getId()))
+                .toList();
+        selectedForWheel.addAll(pickCandidates(fallback, targetCount - selectedForWheel.size(), drawPool));
+
         if (selectedForWheel.isEmpty()) {
             state.markDirty();
             return null;
+        }
+
+        // Only repeat sectors when the entire remaining bag is smaller than the wheel.
+        List<Challenge> repeatCandidates = new ArrayList<>(selectedForWheel);
+        Collections.shuffle(repeatCandidates);
+        for (int i = 0; selectedForWheel.size() < targetCount; i++) {
+            selectedForWheel.add(repeatCandidates.get(i % repeatCandidates.size()));
         }
 
         Collections.shuffle(selectedForWheel);
@@ -95,14 +108,8 @@ public class RouletteSelector {
         List<Challenge> copy = new ArrayList<>(inPool);
         Collections.shuffle(copy);
 
-        for (int i = 0; i < count; i++) {
-            if (copy.isEmpty()) {
-                copy = new ArrayList<>(inPool);
-                Collections.shuffle(copy);
-            }
-            if (!copy.isEmpty()) {
-                result.add(copy.remove(0));
-            }
+        for (int i = 0; i < count && i < copy.size(); i++) {
+            result.add(copy.get(i));
         }
         return result;
     }

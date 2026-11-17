@@ -33,6 +33,7 @@ public class NetworkHandler {
         PayloadTypeRegistry.playS2C().register(AutoJumpPayload.ID, AutoJumpPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(HeavyBodyPayload.ID, HeavyBodyPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(HeavyBodyStatePayload.ID, HeavyBodyStatePayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(HeavyBodyPayload.ID, (payload, context) ->
                 com.cursecycle.challenge.impl.HeavyBodyChallenge.receive(context.player(), payload));
         PayloadTypeRegistry.playC2S().register(MovementMemoryPayload.ID, MovementMemoryPayload.CODEC);
@@ -58,9 +59,11 @@ public class NetworkHandler {
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
         com.cursecycle.challenge.impl.HeartbeatChallenge.sync(player);
-        if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID))
+        if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID)) {
             ServerPlayNetworking.send(player, new HeavyBodyPayload(
                     CurseCycleState.getServerState(player.getServer()).getActivationSerial(), false));
+            com.cursecycle.challenge.impl.HeavyBodyChallenge.sync(player);
+        }
         if (effectiveIds.contains(com.cursecycle.challenge.impl.MovementMemoryChallenge.ID))
             ServerPlayNetworking.send(player, new MovementMemoryPayload(
                     CurseCycleState.getServerState(player.getServer()).getActivationSerial(), -1, false));

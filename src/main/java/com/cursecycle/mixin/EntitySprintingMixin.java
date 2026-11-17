@@ -18,7 +18,8 @@ public abstract class EntitySprintingMixin {
 
         LivingEntity self = (LivingEntity) (Object) this;
         if (self instanceof PlayerEntity player) {
-            if (NoSprintChallenge.isNoSprintActiveForPlayer(player)) {
+            if (NoSprintChallenge.isNoSprintActiveForPlayer(player)
+                    || com.cursecycle.challenge.impl.HeavyBodyChallenge.cannotSprint(player)) {
                 ci.cancel();
                 player.setSprinting(false);
             }

@@ -94,5 +94,7 @@
   "text.cursecycle.hud.first_activation": "До испытания",
   "text.cursecycle.hud.days.one": "%s день",
   "text.cursecycle.hud.days.few": "%s дня",
-  "text.cursecycle.hud.days.many": "%s дней"
+  "text.cursecycle.hud.days.many": "%s дней",
+  "text.cursecycle.heavy_body.stamina": "Выносливость",
+  "text.cursecycle.heavy_body.recovering": "Одышка"
 }

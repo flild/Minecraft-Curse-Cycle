@@ -3,7 +3,9 @@ package com.cursecycle.challenge.impl;
 import com.cursecycle.challenge.*;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.network.HeavyBodyPayload;
+import com.cursecycle.network.HeavyBodyStatePayload;
 import com.cursecycle.state.CurseCycleState;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.StopSoundS2CPacket;
 import net.minecraft.server.MinecraftServer;
@@ -21,18 +23,20 @@ public final class HeavyBodyChallenge extends Challenge {
     public static final String ID = "heavy_body";
     public static final float MULTIPLIER = 0.6F;
     public static final double MOVING_THRESHOLD = 0.02;
+    public static final int MAX_STAMINA = 100, RECOVERY_TICKS = 40;
     public static final SoundEvent PANT = SoundEvent.of(Identifier.of("cursecycle", "heavy_body_pant"));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
 
     // Технические нюансы; не включать в описание для игрока.
     // Скорость наземного движения и начальная вертикальная скорость обычного прыжка составляют 60% от значения
-    // с учётом других эффектов. После пяти секунд непрерывной ходьбы начинается одышка, после двух секунд
-    // покоя прекращается. Размер, голод и здоровье не меняются.
+    // с учётом других эффектов. Спринт расходует 100 единиц за 100 тиков; отдых возвращает 2 за тик.
+    // При истощении спринт блокируется на 40 тиков, запас восстанавливается за это время.
     public HeavyBodyChallenge() {
         super(ID, "На массе",
                 "Бегаешь медленнее, прыгаешь ниже и запыхиваешься.",
-                "Тело стало тяжёлым: каждый шаг даётся труднее, прыжки ниже, а долгая ходьба вызывает одышку.",
-                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+                "Бегаешь медленнее и прыгаешь ниже. Спринт расходует выносливость. Когда она заканчивается, "
+                        + "на две секунды сбивается дыхание, темнеет в глазах и нельзя бежать.",
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
     public static boolean active(PlayerEntity player) {
@@ -53,24 +57,30 @@ public final class HeavyBodyChallenge extends Challenge {
 
     /** Tick state only; no player attributes, inventory, or timer data are persisted. */
     public static final class Breathing {
-        private int movingTicks, restingTicks, sinceSound;
-        private boolean panting;
-        public boolean tick(boolean moving) {
-            if (moving) {
-                restingTicks = 0;
-                if (!panting && ++movingTicks >= 100) {
-                    panting = true;
-                    sinceSound = 0;
-                    return true;
-                }
-            } else {
-                movingTicks = 0;
-                if (panting && ++restingTicks >= 40) { panting = false; return false; }
+        private int stamina = MAX_STAMINA, recoveryTicks;
+        public boolean tick(boolean sprinting) {
+            if (recoveryTicks > 0) {
+                --recoveryTicks;
+                stamina = MAX_STAMINA * (RECOVERY_TICKS - recoveryTicks) / RECOVERY_TICKS;
+                return recoveryTicks == RECOVERY_TICKS / 2;
             }
-            if (panting && ++sinceSound >= 80) { sinceSound = 0; return true; }
+            if (sprinting) {
+                if (--stamina == 0) { recoveryTicks = RECOVERY_TICKS; return true; }
+            } else stamina = Math.min(MAX_STAMINA, stamina + 2);
             return false;
         }
-        public boolean panting() { return panting; }
+        public boolean panting() { return recoveryTicks > 0; }
+        public int stamina() { return stamina; }
+        public int recoveryTicks() { return recoveryTicks; }
+    }
+
+    public static boolean cannotSprint(PlayerEntity player) {
+        if (!active(player) || !onFoot(player)) return false;
+        if (player.getWorld().isClient) return com.cursecycle.client.HeavyBodyInput.exhausted(player);
+        if (!(player instanceof ServerPlayerEntity serverPlayer)) return false;
+        var sessions = SESSIONS.get(player.getServer());
+        var s = sessions == null ? null : sessions.get(player.getUuid());
+        return s != null && s.matches(serverPlayer) && s.breathing.panting();
     }
 
     private static final class Session {
@@ -98,7 +108,7 @@ public final class HeavyBodyChallenge extends Challenge {
         var sessions = SESSIONS.computeIfAbsent(player.getServer(), ignored -> new HashMap<>());
         var current = sessions.get(player.getUuid());
         if (current == null || !current.matches(player)) {
-            if (current != null) stopSound(current.player);
+            if (current != null) release(current);
             current = new Session(player);
             sessions.put(player.getUuid(), current);
         }
@@ -111,6 +121,20 @@ public final class HeavyBodyChallenge extends Challenge {
                 && player.currentScreenHandler == player.playerScreenHandler;
     }
 
+    private static void send(Session s) {
+        ServerPlayNetworking.send(s.player, new HeavyBodyStatePayload(s.activation,
+                s.breathing.stamina(), s.breathing.recoveryTicks()));
+    }
+    /** Normal challenge sync must preserve the current stamina and cooldown. */
+    public static void sync(ServerPlayerEntity player) {
+        if (!active(player)) return;
+        var sessions = SESSIONS.get(player.getServer());
+        var s = sessions == null ? null : sessions.get(player.getUuid());
+        if (s != null && s.matches(player)) send(s);
+        else ServerPlayNetworking.send(player, new HeavyBodyStatePayload(
+                CurseCycleState.getServerState(player.getServer()).getActivationSerial(), MAX_STAMINA, 0));
+    }
+
     /** Runs once per server tick, including when disabled, to release stale sessions. */
     public static void tick(MinecraftServer server) {
         var sessions = SESSIONS.get(server);
@@ -118,7 +142,7 @@ public final class HeavyBodyChallenge extends Challenge {
             sessions.values().removeIf(s -> {
                 var current = server.getPlayerManager().getPlayer(s.player.getUuid());
                 if (current == null || !s.matches(current) || !active(current)) {
-                    stopSound(s.player);
+                    release(s);
                     return true;
                 }
                 return false;
@@ -133,12 +157,17 @@ public final class HeavyBodyChallenge extends Challenge {
             s.lastTick = now;
             Vec3d delta = player.getPos().subtract(s.position);
             s.position = player.getPos();
-            boolean moving = elapsed == 1 && s.input && onFoot(player) && player.isOnGround()
+            boolean moving = elapsed == 1 && s.input && onFoot(player)
                     && player.currentScreenHandler == player.playerScreenHandler
                     && delta.horizontalLengthSquared() > MOVING_THRESHOLD * MOVING_THRESHOLD;
             boolean wasPanting = s.breathing.panting();
-            if (s.breathing.tick(moving)) player.playSoundToPlayer(PANT, SoundCategory.PLAYERS, 0.35F, 1.0F);
+            int oldStamina = s.breathing.stamina();
+            if (s.breathing.tick(moving && player.isSprinting()))
+                player.playSoundToPlayer(PANT, SoundCategory.PLAYERS, 0.35F, 1.0F);
+            if (s.breathing.panting()) player.setSprinting(false);
             if (wasPanting && !s.breathing.panting()) stopSound(player);
+            if (wasPanting != s.breathing.panting() || oldStamina != s.breathing.stamina()
+                    && (now % 5 == 0 || s.breathing.stamina() == MAX_STAMINA)) send(s);
         }
         if (sessions != null && sessions.isEmpty()) SESSIONS.remove(server);
     }
@@ -146,11 +175,15 @@ public final class HeavyBodyChallenge extends Challenge {
     private static void stopSound(ServerPlayerEntity player) {
         player.networkHandler.sendPacket(new StopSoundS2CPacket(PANT.getId(), SoundCategory.PLAYERS));
     }
+    private static void release(Session s) {
+        stopSound(s.player);
+        ServerPlayNetworking.send(s.player, new HeavyBodyStatePayload(s.activation, MAX_STAMINA, 0));
+    }
     public static void forget(ServerPlayerEntity player) {
         var sessions = SESSIONS.get(player.getServer());
         if (sessions == null) return;
         var old = sessions.remove(player.getUuid());
-        if (old != null) stopSound(old.player);
+        if (old != null) release(old);
         if (sessions.isEmpty()) SESSIONS.remove(player.getServer());
     }
     public static void clear(MinecraftServer server) { SESSIONS.remove(server); }

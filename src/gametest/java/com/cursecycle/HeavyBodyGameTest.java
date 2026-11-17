@@ -3,6 +3,7 @@ package com.cursecycle;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.impl.HeavyBodyChallenge;
 import com.cursecycle.network.HeavyBodyPayload;
+import com.cursecycle.network.HeavyBodyStatePayload;
 import com.cursecycle.state.CurseCycleState;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
@@ -58,6 +59,16 @@ public class HeavyBodyGameTest implements FabricGameTest {
                 found.add(packet);
             }
             if (packet instanceof StopSoundS2CPacket stop && HeavyBodyChallenge.PANT.getId().equals(stop.getSoundId())) found.add(packet);
+            if (packet instanceof net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket custom
+                    && custom.payload() instanceof HeavyBodyStatePayload state) {
+                var buf = new RegistryByteBuf(Unpooled.buffer(), p.getRegistryManager());
+                try {
+                    HeavyBodyStatePayload.CODEC.encode(buf, state);
+                    s.context.assertEquals(state, HeavyBodyStatePayload.CODEC.decode(buf), "Stamina S2C codec");
+                    s.context.assertEquals(0, buf.readableBytes(), "State codec consumes packet");
+                } finally { buf.release(); }
+                found.add(state);
+            }
         }
         return found;
     }
@@ -164,7 +175,7 @@ public class HeavyBodyGameTest implements FabricGameTest {
     }
     private static double jump(ServerPlayerEntity p, BlockPos base) { reset(p, base, true); p.jump(); return p.getVelocity().y; }
 
-    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heavy_body_timing", tickLimit = 360)
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heavy_body_timing", tickLimit = 320)
     public void realTicksInputIndependentPlayersAndSoundCleanup(TestContext c) {
         var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
         var p = s.player(); var other = s.player(); s.activate(ID);
@@ -175,32 +186,49 @@ public class HeavyBodyGameTest implements FabricGameTest {
         intent(s, p, true); intent(s, other, true);
         HeavyBodyChallenge.tick(server); packets(s, p); packets(s, other);
         int start = server.getTicks();
-        for (int i = 1; i <= 320; i++) {
+        for (int i = 1; i <= 280; i++) {
             final int tick = i;
             c.waitAndRun(i, () -> {
                 try {
                     c.assertEquals(tick, server.getTicks()-start, "Real server tick");
-                    // 1..49 move, 50 rest resets; 51..150 earns the first pant.
-                    boolean move = tick != 50 && tick <= 230;
-                    p.setPosition(p.getX(), p.getY(), p.getZ() + (move ? .04 : 0)); p.setOnGround(true);
-                    other.setPosition(other.getX(), other.getY(), other.getZ() + (tick <= 100 ? .019 : .04)); other.setOnGround(true);
-                    if (tick == 101) intent(s, other, false);
-                    if (tick == 121) intent(s, other, true);
-                    if (tick == 231) intent(s, p, false);
-                    // Repeated valid packets never restart accumulation or create extra sounds.
-                    intent(s, p, move); intent(s, p, move);
+                    // 50 sprint ticks -> 50 stamina, ten walking ticks -> 70, then 70 sprint ticks -> exhaustion.
+                    p.setPosition(p.getX(), p.getY(), p.getZ() + .04); p.setOnGround(tick != 125);
+                    p.setSprinting(tick <= 50 || tick >= 61);
+                    other.setPosition(other.getX(), other.getY(), other.getZ() + (tick <= 50 ? .019 : .04));
+                    other.setOnGround(true); other.setSprinting(tick <= 210);
+                    // Movement below threshold, a push without input, and walking cannot spend stamina.
+                    intent(s, other, tick <= 50 || tick >= 71);
+                    intent(s, p, true); intent(s, p, true);
                     if (tick == 75) intent(s, p, s.state.getActivationSerial() - 1, false);
                     if (tick == 100) server.getOverworld().setTimeOfDay(server.getOverworld().getTimeOfDay() + 24000);
                     HeavyBodyChallenge.tick(server); HeavyBodyChallenge.tick(server);
+                    // Periodic state sync and repeated intent never restart the recovery clock.
+                    if (tick == 150) HeavyBodyChallenge.sync(p);
                     var one = packets(s, p); var two = packets(s, other);
-                    if (tick == 150 || tick == 230) c.assertEquals(1L, one.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "100 ticks, then 80 tick interval");
+                    if (tick == 130 || tick == 150 || tick == 270) c.assertEquals(1L, one.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Exhaustion pant, repeated after one second");
                     else c.assertTrue(one.stream().noneMatch(PlaySoundS2CPacket.class::isInstance), "Unexpected first pant tick="+tick);
-                    if (tick == 270) c.assertTrue(one.stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Stop at exact 40th resting tick");
-                    if (tick == 220 || tick == 300) c.assertEquals(1L, two.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Independent timer and input exclusion");
+                    if (tick == 170) c.assertTrue(one.stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Stop exactly 40 ticks after exhaustion while movement continues");
+                    if (tick == 170 || tick == 190) c.assertEquals(1L, two.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Independent player exhaustion");
                     else c.assertTrue(two.stream().noneMatch(PlaySoundS2CPacket.class::isInstance), "Unexpected second pant tick="+tick);
-                    if (tick == 320) {
+                    if (tick >= 130 && tick < 170 || tick >= 270) {
+                        c.assertTrue(HeavyBodyChallenge.cannotSprint(p), "Server blocks sprint throughout recovery");
+                        p.setSprinting(true); c.assertFalse(p.isSprinting(), "Actual sprint Mixin blocks repeated attempts");
+                    } else c.assertFalse(HeavyBodyChallenge.cannotSprint(p), "No sprint lock outside recovery");
+                    if (tick == 130 || tick == 170 || tick == 270) {
+                        var state = one.stream().filter(HeavyBodyStatePayload.class::isInstance)
+                                .map(HeavyBodyStatePayload.class::cast).reduce((a, b) -> b).orElseThrow();
+                        c.assertEquals(tick == 170 ? 100 : 0, state.stamina(), "Immediate edge stamina snapshot");
+                        c.assertEquals(tick == 170 ? 0 : 40, state.recoveryTicks(), "Immediate edge cooldown snapshot");
+                    }
+                    if (tick == 170) { p.setSprinting(true); c.assertTrue(p.isSprinting(), "Sprint immediately available after two seconds"); }
+                    if (tick == 280) {
                         s.activate("no_sprint");
-                        c.assertTrue(packets(s, other).stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Deactivation stops own sound");
+                        var ended = packets(s, p);
+                        c.assertTrue(ended.stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Deactivation stops own sound");
+                        c.assertTrue(ended.stream().anyMatch(packet -> packet instanceof HeavyBodyStatePayload state
+                                && state.stamina() == 100 && state.recoveryTicks() == 0), "Deactivation clears client exhaustion");
+                        c.assertFalse(HeavyBodyChallenge.cannotSprint(p), "End releases own sprint lock");
+                        p.setSprinting(true); c.assertFalse(p.isSprinting(), "End retains companion no_sprint");
                         HeavyBodyChallenge.clear(server); s.close(); c.complete();
                     }
                 } catch (Throwable failure) { HeavyBodyChallenge.clear(server); s.close(); throw failure; }

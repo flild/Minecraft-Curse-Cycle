@@ -83,6 +83,8 @@ public class CurseCycleClient implements ClientModInitializer {
                 context.client().execute(() -> ClientDataHolder.updateFoodHistory(payload.ids())));
 
         // Register S2C Packet Listeners
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.HeavyBodyStatePayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.HeavyBodyInput.receive(context.client(), payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.HeartbeatStatePayload.ID, (payload, context) ->
                 context.client().execute(() -> com.cursecycle.client.HeartbeatInput.receive(context.client(), payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.AutoJumpPayload.ID, (payload, context) ->

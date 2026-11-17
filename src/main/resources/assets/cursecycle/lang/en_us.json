@@ -94,5 +94,7 @@
   "text.cursecycle.hud.first_activation": "Challenge starts in",
   "text.cursecycle.hud.days.one": "%s day",
   "text.cursecycle.hud.days.few": "%s days",
-  "text.cursecycle.hud.days.many": "%s days"
+  "text.cursecycle.hud.days.many": "%s days",
+  "text.cursecycle.heavy_body.stamina": "Stamina",
+  "text.cursecycle.heavy_body.recovering": "Out of breath"
 }

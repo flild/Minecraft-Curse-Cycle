@@ -29,11 +29,18 @@ class RouletteSelectorTest {
         ChallengeRegistry.getAll().forEach(challenge -> remaining.add(challenge.getId()));
         int size = remaining.size();
         for (int i = 0; i < size; i++) {
+            state.setCurrentDay(1L + i * 5L);
             var result = RouletteSelector.selectNextChallenge(config, state);
             assertNotNull(result);
+            int sectors = config.getWeightsForDay(state.getCurrentDay()).stream().mapToInt(Integer::intValue).sum();
+            assertEquals(sectors, result.wheelItems.size(), "Exhausted difficulties must not leave empty sectors");
+            assertEquals(Math.min(sectors, remaining.size()),
+                    result.wheelItems.stream().map(Challenge::getId).distinct().count(),
+                    "Use every available distinct challenge before repeating sectors");
             assertTrue(result.wheelItems.stream().allMatch(challenge -> remaining.contains(challenge.getId())),
                     "Used challenges must not return as filler sectors");
             assertTrue(remaining.remove(result.winner.getId()));
+            state = CurseCycleState.createFromNbt(state.writeNbt(new net.minecraft.nbt.NbtCompound(), null), null);
         }
         assertTrue(remaining.isEmpty());
         assertTrue(state.getCurrentPool().isEmpty());
@@ -73,15 +80,79 @@ class RouletteSelectorTest {
     }
 
     @Test
-    void zeroWeightCategoriesStayExcludedAcrossRefills() {
+    void zeroWeightCategoriesOnlyFillMissingSectorsAfterPreferredChallengesRunOut() {
         config.difficultyWeightsByDay = Map.of("1", List.of(0, 0, 1));
+        Set<String> hardIds = new HashSet<>();
+        ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).forEach(c -> hardIds.add(c.getId()));
         String previous = null;
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < hardIds.size(); i++) {
             var result = RouletteSelector.selectNextChallenge(config, state);
             assertNotNull(result);
             assertEquals(ChallengeDifficulty.HARD, result.winner.getDifficulty());
             assertNotEquals(previous, result.winner.getId());
             previous = result.winner.getId();
+        }
+        var fallback = RouletteSelector.selectNextChallenge(config, state);
+        assertNotNull(fallback);
+        assertNotEquals(ChallengeDifficulty.HARD, fallback.winner.getDifficulty());
+        assertTrue(state.getCurrentPool().stream().noneMatch(hardIds::contains),
+                "Do not refill a difficulty while other unseen challenges remain");
+    }
+
+    @Test
+    void fullWheelKeepsDifficultyQuotasWhenEnoughDistinctChallengesRemain() {
+        var result = RouletteSelector.selectNextChallenge(config, state);
+        assertNotNull(result);
+        assertEquals(6, result.wheelItems.size());
+        assertEquals(6, result.wheelItems.stream().map(Challenge::getId).distinct().count());
+        assertEquals(3, result.wheelItems.stream().filter(c -> c.getDifficulty() == ChallengeDifficulty.EASY).count());
+        assertEquals(2, result.wheelItems.stream().filter(c -> c.getDifficulty() == ChallengeDifficulty.MEDIUM).count());
+        assertEquals(1, result.wheelItems.stream().filter(c -> c.getDifficulty() == ChallengeDifficulty.HARD).count());
+    }
+
+    @Test
+    void sixRemainingHardChallengesFillAllSixSectors() {
+        List<String> remaining = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).stream()
+                .limit(6).map(Challenge::getId).toList();
+        assertEquals(6, remaining.size());
+        state.getCurrentPool().addAll(remaining);
+        var result = RouletteSelector.selectNextChallenge(config, state);
+        assertEquals(6, result.wheelItems.size());
+        assertEquals(new HashSet<>(remaining), new HashSet<>(result.wheelItems.stream().map(Challenge::getId).toList()));
+        assertEquals(5, state.getCurrentPool().size(), "Only the winner leaves the bag");
+    }
+
+    @Test
+    void shortagesUseOtherDifficultiesBeforeRepeatingAnySector() {
+        List<String> remaining = new ArrayList<>();
+        remaining.add(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).getFirst().getId());
+        remaining.addAll(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).stream()
+                .limit(5).map(Challenge::getId).toList());
+        state.getCurrentPool().addAll(remaining);
+        var result = RouletteSelector.selectNextChallenge(config, state);
+        assertEquals(6, result.wheelItems.size());
+        assertEquals(new HashSet<>(remaining), new HashSet<>(result.wheelItems.stream().map(Challenge::getId).toList()));
+    }
+
+    @Test
+    void fallbackIgnoresDisabledChallengesAndRetainsZeroWeightChallengesAcrossStageChanges() {
+        config.difficultyWeightsByDay = Map.of("1", List.of(6, 0, 0), "20", List.of(0, 6, 0));
+        List<String> remaining = ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).stream()
+                .limit(6).map(Challenge::getId).toList();
+        state.getCurrentPool().addAll(remaining);
+        ChallengeRegistry.get(remaining.getFirst()).setEnabled(false);
+        state.getCurrentPool().add("removed_challenge");
+        for (int day : new int[]{1, 20}) {
+            state.setCurrentDay(day);
+            Set<String> unseen = new HashSet<>(state.getCurrentPool());
+            unseen.remove(remaining.getFirst());
+            unseen.remove("removed_challenge");
+            var result = RouletteSelector.selectNextChallenge(config, state);
+            assertNotNull(result);
+            assertEquals(6, result.wheelItems.size());
+            assertEquals(unseen, new HashSet<>(result.wheelItems.stream().map(Challenge::getId).toList()));
+            unseen.remove(result.winner.getId());
+            assertEquals(unseen, new HashSet<>(state.getCurrentPool()));
         }
     }
 

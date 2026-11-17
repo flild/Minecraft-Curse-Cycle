@@ -44,6 +44,18 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
         public Manager() { super(null, null); }
         @Override public GameMode getCurrentGameMode() { return mode; }
     }
+    public static class Canvas extends net.minecraft.client.gui.DrawContext {
+        int fills, labels, lastWidth, lastColor;
+        public Canvas() { super(null, null); }
+        @Override public int getScaledWindowWidth() { return 320; }
+        @Override public int getScaledWindowHeight() { return 240; }
+        @Override public void fill(int x1, int y1, int x2, int y2, int color) {
+            fills++; lastWidth = x2 - x1; lastColor = color;
+        }
+        @Override public void drawCenteredTextWithShadow(net.minecraft.client.font.TextRenderer font,
+                net.minecraft.text.Text label, int x, int y, int color) { labels++; }
+        void clear() { fills = labels = lastWidth = lastColor = 0; }
+    }
     private static void set(Class<?> owner, Object object, String name, Object value) throws Exception {
         var field = owner.getDeclaredField(name); field.setAccessible(true); field.set(object, value);
     }
@@ -108,6 +120,51 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
             near(0, (float) mute.invoke(listener, .35F));
             sync("heavy_body"); near(.35F, (float) mute.invoke(listener, .35F)); near(.15F, (float) speed.invoke(client.player, .6F));
             sync("silent_world"); check(SilentWorld.shouldMute(client), "Ending heavy preserves mute"); near(.25F, (float) speed.invoke(client.player, .6F));
+            sync("heavy_body");
+            HeavyBodyInput.receive(new HeavyBodyPayload(99, false));
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 100, 0));
+            var canvas = (Canvas) unsafe.allocateInstance(Canvas.class);
+            com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.fills == 0, "Full stamina hidden at rest");
+            sprinting = true; com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.fills == 3 && canvas.labels == 1 && canvas.lastWidth == 100, "Sprint reveals full bar");
+            canvas.clear(); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 50, 0));
+            com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.lastWidth == 50, "Server stamina maps to half bar");
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 0, 40));
+            check(!sprinting && HeavyBodyChallenge.cannotSprint(client.player), "Exhaustion cancels client sprint");
+            var sprintGate = Arrays.stream(LivingEntity.class.getDeclaredMethods())
+                    .filter(m -> m.getName().contains("onSetSprinting")).findFirst().orElseThrow();
+            sprintGate.setAccessible(true);
+            var callback = new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("setSprinting", true);
+            sprintGate.invoke(client.player, true, callback);
+            check(callback.isCancelled(), "Transformed CLIENT sprint handler rejects exhaustion");
+            for (int i = 0; i < 500; i++) HeavyBodyInput.stamina().tick();
+            check(HeavyBodyChallenge.cannotSprint(client.player), "Client cannot advance server cooldown");
+            canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.fills == 4 && canvas.lastWidth == 0, "Darkening and empty stamina bar");
+            options.hudHidden = true; canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.fills == 1 && canvas.labels == 0, "F1 hides resource but retains exhaustion darkness");
+            options.hudHidden = false; sync("heavy_body", "blind_hud");
+            canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
+            check(canvas.fills == 1, "Blind HUD hides stamina consistently with other resources");
+            sync("heavy_body"); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(98, 100, 0));
+            check(HeavyBodyChallenge.cannotSprint(client.player), "Stale state cannot unlock sprint");
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 100, 0));
+            callback = new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("setSprinting", true);
+            sprintGate.invoke(client.player, true, callback); check(!callback.isCancelled(), "Server recovery unlocks sprint");
+            for (int i = 0; i < 5; i++) HeavyBodyInput.stamina().tick();
+            near(0, HeavyBodyInput.stamina().darkness());
+            check(Arrays.stream(net.minecraft.client.render.GameRenderer.class.getDeclaredMethods())
+                    .anyMatch(m -> m.getName().contains("cursecycle$heavyBody")), "Final render hook transformed");
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 0, 40));
+            var previousWorld = client.world;
+            client.world = (ClientWorld) unsafe.allocateInstance(ClientWorld.class);
+            set(net.minecraft.world.World.class, client.world, "isClient", true);
+            check(!HeavyBodyInput.valid(client) && !HeavyBodyChallenge.cannotSprint(client.player), "New world invalidates stale exhaustion");
+            client.world = previousWorld; ClientDataHolder.reset();
+            check(!HeavyBodyInput.exhausted(client.player) && get(HeavyBodyInput.class, null, "statePlayer") == null
+                    && get(HeavyBodyInput.class, null, "stateWorld") == null, "Disconnect clears stamina and references");
             var intent = (HeavyBodyInput.Intent) get(HeavyBodyInput.class, null, "INTENT"); var sent = new ArrayList<HeavyBodyPayload>();
             for (int cycle = 0; cycle < 32; cycle++) {
                 sync("heavy_body"); HeavyBodyInput.receive(new HeavyBodyPayload(100 + cycle, false));
