@@ -24,7 +24,7 @@ public class FloorIsLavaChallenge extends Challenge {
     public static final String ID = "the_floor_is_lava";
     public static final RegistryKey<DamageType> DAMAGE_TYPE = RegistryKey.of(RegistryKeys.DAMAGE_TYPE,
             Identifier.of("cursecycle", ID));
-    private static final float DAMAGE = 6.0F;
+    private static final float DAMAGE = 3.0F;
     private static final int DAMAGE_INTERVAL = 20;
 
     // Registered challenges are singletons. Each player has an independent clock, and a
