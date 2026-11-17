@@ -59,8 +59,12 @@ public class InventoryLockdownGameTest implements FabricGameTest {
         var oldState = state.writeNbt(new NbtCompound(), world.getRegistryManager());
         boolean keepInventory = world.getGameRules().getBoolean(GameRules.KEEP_INVENTORY);
         var challenge = ChallengeRegistry.get(InventoryLockdownChallenge.ID);
+        var replacement = ChallengeRegistry.get("test_easy");
+        boolean replacementEnabled = replacement.isEnabled();
         List<ServerPlayerEntity> players = new ArrayList<>();
         try {
+            // Test challenges are disabled by default; the lifecycle fixture must enable its replacement.
+            replacement.setEnabled(true);
             var player = createPlayer(context, UUID.randomUUID(), players);
             var inv = player.getInventory();
             inv.setStack(9, new ItemStack(Items.STONE, 12));
@@ -222,6 +226,7 @@ public class InventoryLockdownGameTest implements FabricGameTest {
             late = createPlayer(context, lateId, players);
             assertLockedClick(context, late, false, "Ending while offline leaves no stale restriction");
         } finally {
+            replacement.setEnabled(replacementEnabled);
             challenge.setEnabled(true);
             for (var player : players) if (manager.getPlayerList().contains(player)) manager.remove(player);
             world.getGameRules().get(GameRules.KEEP_INVENTORY).set(keepInventory, server);

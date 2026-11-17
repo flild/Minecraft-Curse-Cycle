@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "inventory_lockdown_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "preLaunch": ["validation.InventoryLockdownProbe"] }
+}

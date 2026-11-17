@@ -55,6 +55,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "InventoryLockdownHandledScreenMixin",
     "HeavyBodyGameRendererMixin",
     "InfiniteDietClientHungerManagerMixin",
     "OneHeartInGameHudMixin",

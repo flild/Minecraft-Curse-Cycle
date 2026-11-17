@@ -74,9 +74,6 @@ public class CycleManager {
         Consumer<RouletteSelector.WheelResult> announce = result -> {
             List<String> candidateIds = result.wheelItems.stream().map(Challenge::getId).toList();
             NetworkHandler.triggerWheelForAll(server, candidateIds, result.getEncodedWinnerId());
-            server.getPlayerManager().broadcast(
-                    Text.literal("🎲 [Curse-Cycle] Следующее испытание выбрано! Вращаем колесо...")
-                            .formatted(Formatting.GOLD), false);
         };
         if (!updateInitialCycle(state, config, timeOfDay, server.getTicks(),
                 !server.getPlayerManager().getPlayerList().isEmpty(), activate, announce)) {

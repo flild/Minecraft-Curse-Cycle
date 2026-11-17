@@ -3,12 +3,14 @@ package com.cursecycle.challenge.impl;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeScope;
+import net.minecraft.block.Blocks;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageType;
 import net.minecraft.entity.vehicle.AbstractMinecartEntity;
 import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -33,7 +35,8 @@ public class FloorIsLavaChallenge extends Challenge {
     private record DamagePulse(ServerPlayerEntity player, int age) {}
 
     // Технические нюансы; не включать в описание для игрока.
-    // Твёрдая опора включает блоки, полублоки, ступени и заборы. Урон — 6 единиц при касании и далее раз в 20
+    // Кровати, шерсть, ковры и снопы сена безопасны, в том числе во время сна. Остальная твёрдая опора
+    // включает блоки, полублоки, ступени и заборы. Урон — 3 единицы при касании и далее раз в 20
     // тиков; повторное касание не ускоряет его. Броня, щит, защитные чары, сопротивление, огнестойкость и
     // неуязвимость после удара или входа не защищают. Поглощение и тотемы работают штатно. Без опоры под
     // ногами плавание, полёт на элитрах, лодки, вагонетки, лестницы и лианы не вызывают этот урон. Урон самой
@@ -41,21 +44,27 @@ public class FloorIsLavaChallenge extends Challenge {
     // транспорт.
     public FloorIsLavaChallenge() {
         super(ID, "Пол — это лава!",
-                "Стоять на твёрдых блоках вредно для здоровья.",
-                "Касание твёрдого пола отнимает три сердца. Пока он под ногами, боль повторяется каждую секунду.",
+                "Пол обжигает. Спасайся на кроватях, шерсти, шерстяных коврах и снопах сена.",
+                "Касание твёрдого пола отнимает полтора сердца каждую секунду. Кровати, шерсть, шерстяные ковры и снопы сена безопасны; в кровати можно спать.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
     @Override
     public void onTick(MinecraftServer server, ServerPlayerEntity player) {
         if (player == null || !player.isAlive() || player.isCreative() || player.isSpectator()) return;
+        if (player.isSleeping()) return;
         if (player.getVehicle() instanceof BoatEntity || player.getVehicle() instanceof AbstractMinecartEntity) return;
 
         Box box = player.getBoundingBox();
         // Same thin slice as Entity.updateSupportingBlockPos, queried at the current
         // position rather than using cached onGround/support data after a teleport.
         Box feet = new Box(box.minX, box.minY - 1.0E-6, box.minZ, box.maxX, box.minY, box.maxZ);
-        if (player.getServerWorld().findSupportingBlockPos(player, feet).isEmpty()) return;
+        var world = player.getServerWorld();
+        var support = world.findSupportingBlockPos(player, feet);
+        if (support.isEmpty()) return;
+        var floor = world.getBlockState(support.get());
+        if (floor.isIn(BlockTags.BEDS) || floor.isIn(BlockTags.WOOL)
+                || floor.isIn(BlockTags.WOOL_CARPETS) || floor.isOf(Blocks.HAY_BLOCK)) return;
 
         DamagePulse last = lastPulses.get(player.getUuid());
         if (last != null && last.player() == player && player.age - last.age() < DAMAGE_INTERVAL) return;

@@ -119,8 +119,6 @@ public class CurseCycleCommand {
             source.sendError(Text.literal("[Curse-Cycle] Выбранное испытание недоступно. Запустите /fdc trigger_spin заново."));
             return 0;
         }
-        source.sendFeedback(() -> Text.literal("[Curse-Cycle] Следующее испытание активировано. Предыдущее завершено, отсчёт начат заново.")
-                .formatted(Formatting.GREEN), true);
         return 1;
     }
 

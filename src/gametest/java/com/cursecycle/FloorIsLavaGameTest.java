@@ -11,7 +11,9 @@ import net.minecraft.SharedConstants;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.BedBlock;
 import net.minecraft.block.SlabBlock;
+import net.minecraft.block.enums.BedPart;
 import net.minecraft.block.enums.SlabType;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
@@ -24,18 +26,108 @@ import net.minecraft.item.Items;
 import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.Registries;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.server.network.ConnectedClientData;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.DyeColor;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Direction;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.World;
 
 import java.util.UUID;
 
 public class FloorIsLavaGameTest implements FabricGameTest {
+    @GameTest(templateName = EMPTY_STRUCTURE)
+    public void safeSurfacesSleepingAndReturnToFloor(TestContext context) {
+        var world = context.getWorld();
+        var server = world.getServer();
+        var state = CurseCycleState.getServerState(server);
+        var challenge = ChallengeRegistry.get(FloorIsLavaChallenge.ID);
+        BlockPos floor = context.getAbsolutePos(new BlockPos(2, 3, 2));
+        ServerPlayerEntity player = createPlayer(context, UUID.randomUUID());
+        try {
+            fresh(context, player);
+            for (var color : DyeColor.values()) {
+                for (var part : BedPart.values()) {
+                    var bed = Registries.BLOCK.get(Identifier.ofVanilla(color.getName() + "_bed"))
+                            .getDefaultState().with(BedBlock.PART, part);
+                    safeSupport(context, player, floor, bed, 9.0 / 16);
+                }
+                safeSupport(context, player, floor, Registries.BLOCK.get(Identifier.ofVanilla(color.getName() + "_wool"))
+                        .getDefaultState(), 1);
+                safeSupport(context, player, floor, Registries.BLOCK.get(Identifier.ofVanilla(color.getName() + "_carpet"))
+                        .getDefaultState(), 1.0 / 16);
+            }
+            for (var axis : Direction.Axis.values()) {
+                safeSupport(context, player, floor, Blocks.HAY_BLOCK.getDefaultState()
+                        .with(net.minecraft.block.PillarBlock.AXIS, axis), 1);
+            }
+
+            // A safe block beside the feet must not exempt an ordinary floor.
+            world.setBlockState(floor, Blocks.STONE.getDefaultState(), Block.NOTIFY_LISTENERS);
+            world.setBlockState(floor.east(), Blocks.RED_WOOL.getDefaultState(), Block.NOTIFY_LISTENERS);
+            move(player, floor, 0.5, 1, 0.5);
+            tick(context);
+            health(context, player, 17, "Leaving shelter immediately resumes floor damage");
+            move(player, floor.east(), 0.5, 1, 0.5);
+            tick(context);
+            health(context, player, 17, "Entering shelter stops damage without restoring health");
+            move(player, floor, 0.5, 1, 0.5);
+            tick(context);
+            health(context, player, 17, "Safe blocks do not reset the damage cooldown");
+            player.age += 20;
+            tick(context);
+            health(context, player, 14, "Ordinary floor still deals damage once the cooldown expires");
+
+            fresh(context, player);
+            var bed = Blocks.RED_BED.getDefaultState().with(BedBlock.FACING, Direction.EAST);
+            world.setBlockState(floor, bed, Block.NOTIFY_LISTENERS);
+            world.setBlockState(floor.east(), bed.with(BedBlock.PART, BedPart.HEAD), Block.NOTIFY_LISTENERS);
+            player.sleep(floor.east());
+            context.assertTrue(player.isSleeping(), "Control: player is sleeping in a real bed");
+            for (int i = 0; i < 40; i++) advance(context);
+            health(context, player, 20, "Sleeping in a bed is safe across damage intervals");
+            player.wakeUp(true, true);
+            move(player, floor, 0.5, 9.0 / 16, 0.5);
+            tick(context);
+            health(context, player, 20, "Standing on the bed after waking remains safe");
+            world.setBlockState(floor, Blocks.STONE.getDefaultState(), Block.NOTIFY_LISTENERS);
+            move(player, floor, 0.5, 1, 0.5);
+            tick(context);
+            health(context, player, 17, "Waking and leaving the bed restores normal floor damage");
+        } finally {
+            if (player.isSleeping()) player.wakeUp(true, true);
+            challenge.onStop(server, player);
+            state.getActiveChallengeIds().clear();
+            server.getPlayerManager().remove(player);
+            world.setBlockState(floor, Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
+            world.setBlockState(floor.east(), Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
+            world.setBlockState(floor.down(), Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
+        }
+        context.complete();
+    }
+
+    private static void safeSupport(TestContext context, ServerPlayerEntity player, BlockPos pos,
+                                    BlockState block, double height) {
+        context.getWorld().setBlockState(pos.down(), Blocks.STONE.getDefaultState(), Block.NOTIFY_LISTENERS);
+        context.getWorld().setBlockState(pos, block, Block.NOTIFY_LISTENERS);
+        for (double x : new double[]{0.5, -0.2}) {
+            move(player, pos, x, height, 0.5);
+            var box = player.getBoundingBox();
+            var feet = new net.minecraft.util.math.Box(box.minX, box.minY - 1.0E-6, box.minZ,
+                    box.maxX, box.minY, box.maxZ);
+            context.assertTrue(context.getWorld().findSupportingBlockPos(player, feet).isPresent(),
+                    "Control: safe surface actually supports the player: " + block);
+            for (int i = 0; i < 21; i++) advance(context);
+            health(context, player, 20, "Safe surface over stone, including its edge: " + block);
+        }
+    }
+
     // Synchronous: no other game test can change the shared challenge state mid-test.
     // Advance player ages explicitly to exercise the cooldown without wall-clock waits.
     @GameTest(templateName = EMPTY_STRUCTURE)
@@ -63,36 +155,36 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         context.assertTrue(player.getArmor() > 0, "Control: armor attributes are applied");
         player.timeUntilRegen = 20;
         tick(context);
-        health(context, player, 14, "Immediate damage must bypass login protection, armor, enchantments, resistance and hit cooldown");
+        health(context, player, 17, "Immediate damage must bypass login protection, armor, enchantments, resistance and hit cooldown");
         challenge.onStart(server, player);
         challenge.onPlayerJoin(server, player);
         tick(context);
-        health(context, player, 14, "Repeated start/join/tick calls in the same tick must not duplicate damage");
+        health(context, player, 17, "Repeated start/join/tick calls in the same tick must not duplicate damage");
         for (int i = 0; i < 19; i++) advance(context);
-        health(context, player, 14, "No second pulse before 20 ticks");
+        health(context, player, 17, "No second pulse before 20 ticks");
         player.timeUntilRegen = 20;
         advance(context);
-        health(context, player, 8, "Exactly six damage after 20 ticks, even during attack invulnerability");
+        health(context, player, 14, "Exactly three damage after 20 ticks, even during attack invulnerability");
         player.clearStatusEffects();
 
         // Every collision shape is checked at the feet, including off-center support.
         BlockState[] supports = {Blocks.STONE.getDefaultState(), Blocks.OAK_PLANKS.getDefaultState(),
                 Blocks.OAK_SLAB.getDefaultState(), Blocks.OAK_SLAB.getDefaultState().with(SlabBlock.TYPE, SlabType.TOP),
                 Blocks.OAK_STAIRS.getDefaultState(), Blocks.OAK_FENCE.getDefaultState(),
-                Blocks.COBBLESTONE_WALL.getDefaultState(), Blocks.WHITE_CARPET.getDefaultState()};
+                Blocks.COBBLESTONE_WALL.getDefaultState(), Blocks.MOSS_CARPET.getDefaultState()};
         double[] heights = {1, 1, 0.5, 1, 1, 1.5, 1.5, 1.0 / 16};
         for (int i = 0; i < supports.length; i++) {
             world.setBlockState(floor, supports[i], Block.NOTIFY_LISTENERS);
             fresh(context, player);
             move(player, floor, 0.5, heights[i], 0.25);
             tick(context);
-            health(context, player, 14, "Solid support must hurt: " + supports[i]);
+            health(context, player, 17, "Solid support must hurt: " + supports[i]);
         }
         world.setBlockState(floor, Blocks.STONE.getDefaultState(), Block.NOTIFY_LISTENERS);
         fresh(context, player);
         move(player, floor, -0.2, 1, 0.5);
         tick(context);
-        health(context, player, 14, "A block under the edge of the feet must count");
+        health(context, player, 17, "A block under the edge of the feet must count");
 
         fresh(context, player);
         move(player, floor, 0.5, 1.1, 0.5);
@@ -119,7 +211,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         world.setBlockState(floor.up(), Blocks.WATER.getDefaultState(), Block.NOTIFY_LISTENERS);
         move(player, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, player, 14, "Solid support under water still counts");
+        health(context, player, 17, "Solid support under water still counts");
         world.setBlockState(floor.up(), Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
 
         for (Entity vehicle : new Entity[]{new BoatEntity(world, floor.getX(), floor.getY() + 1, floor.getZ()),
@@ -142,45 +234,45 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         player.changeGameMode(GameMode.ADVENTURE);
         move(player, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, player, 14, "Adventure must be affected immediately");
+        health(context, player, 17, "Adventure must be affected immediately");
         player.changeGameMode(GameMode.SURVIVAL);
 
         fresh(context, player);
         player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 200, 0));
         context.assertTrue(player.getAbsorptionAmount() == 4, "Control: absorption grants four points");
         tick(context);
-        health(context, player, 18, "Vanilla absorption still absorbs damage");
-        context.assertTrue(player.getAbsorptionAmount() == 0, "Absorption was consumed");
+        health(context, player, 20, "Vanilla absorption still absorbs damage");
+        context.assertTrue(player.getAbsorptionAmount() == 1, "Absorption was consumed by three points");
         player.clearStatusEffects();
         fresh(context, player);
-        player.setHealth(4);
+        player.setHealth(2);
         player.equipStack(EquipmentSlot.OFFHAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         tick(context);
         context.assertTrue(player.isAlive() && player.getOffHandStack().isEmpty(), "A vanilla totem must still work");
         player.clearStatusEffects();
         player.setAbsorptionAmount(0);
         fresh(context, player);
-        player.setHealth(6);
+        player.setHealth(3);
         tick(context);
         context.assertFalse(player.isAlive(), "Floor damage must be lethal");
         player = manager.respawnPlayer(player, false, Entity.RemovalReason.KILLED);
         player.networkHandler.player = player;
         move(player, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, player, 14, "A replacement respawn entity must immediately receive damage");
+        health(context, player, 17, "A replacement respawn entity must immediately receive damage");
 
         var late = createPlayer(context, UUID.randomUUID());
         move(late, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, late, 14, "Late join has its own immediate pulse");
-        health(context, player, 14, "Another player's pulse cannot alter the first player's clock");
+        health(context, late, 17, "Late join has its own immediate pulse");
+        health(context, player, 17, "Another player's pulse cannot alter the first player's clock");
         manager.remove(late);
         UUID reconnect = player.getUuid();
         manager.remove(player);
         player = createPlayer(context, reconnect);
         move(player, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, player, 8, "Reconnect preserves saved health and immediately applies another six damage");
+        health(context, player, 14, "Reconnect preserves saved health and immediately applies another three damage");
 
         var persistence = server.getOverworld().getPersistentStateManager();
         persistence.save();
@@ -191,7 +283,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         persistence.set(CurseCycleState.STATE_KEY, state);
         fresh(context, player);
         tick(context);
-        health(context, player, 14, "Reloaded shared state resumes damage");
+        health(context, player, 17, "Reloaded shared state resumes damage");
 
         var nether = server.getWorld(World.NETHER);
         BlockPos destination = new BlockPos(floor.getX(), 80, floor.getZ());
@@ -200,7 +292,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         player.teleport(nether, destination.getX() + 0.5, destination.getY() + 1, destination.getZ() + 0.5, 0, 0);
         player.onTeleportationDone(); // The real client acknowledges the dimension transfer.
         tick(context);
-        health(context, player, 14, "Damage works after a dimension transfer");
+        health(context, player, 17, "Damage works after a dimension transfer");
         player.teleport(world, floor.getX() + 0.5, floor.getY() + 1, floor.getZ() + 0.5, 0, 0);
         player.onTeleportationDone();
         nether.setBlockState(destination, Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
@@ -209,7 +301,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
                 "fdc activate \"double_challenge:the_floor_is_lava,no_sprint\"");
         player.setHealth(20);
         tick(context);
-        health(context, player, 14, "Damage works in double challenge");
+        health(context, player, 17, "Damage works in double challenge");
         player.setSprinting(true);
         context.assertFalse(player.isSprinting(), "The other challenge remains effective");
         CycleManager.activateChallenge(server, state, "no_sprint");
@@ -219,7 +311,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
 
         state.getPersonalActiveChallengeIds(player.getUuid()).add(FloorIsLavaChallenge.ID);
         tick(context);
-        health(context, player, 14, "Personal dispatch works for the selected player");
+        health(context, player, 17, "Personal dispatch works for the selected player");
         late = createPlayer(context, UUID.randomUUID());
         move(late, floor, 0.5, 1, 0.5);
         tick(context);
@@ -231,7 +323,7 @@ public class FloorIsLavaGameTest implements FabricGameTest {
         player = createPlayer(context, reconnect);
         move(player, floor, 0.5, 1, 0.5);
         tick(context);
-        health(context, player, 14, "A challenge ended while offline must preserve saved health without more damage");
+        health(context, player, 17, "A challenge ended while offline must preserve saved health without more damage");
         state.getPersonalActiveChallengeIds(player.getUuid()).clear();
         challenge.onStop(server, player);
         challenge.setEnabled(false);
