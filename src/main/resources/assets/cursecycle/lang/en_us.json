@@ -1,4 +1,9 @@
 {
+  "text.cursecycle.menu.safe_floor": "Safe surfaces",
+  "text.cursecycle.menu.safe_floor.beds": "Beds of any color",
+  "text.cursecycle.menu.safe_floor.wool": "Wool of any color",
+  "text.cursecycle.menu.safe_floor.carpets": "Wool carpets of any color",
+  "text.cursecycle.menu.safe_floor.hay": "Hay bales",
   "death.attack.cursecycle.heartbeat": "%1$s missed a heartbeat",
   "death.attack.cursecycle.heartbeat.player": "%1$s missed a heartbeat while fighting %2$s",
   "key.cursecycle.heartbeat": "Heartbeat",

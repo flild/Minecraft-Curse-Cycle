@@ -43,6 +43,7 @@
       "com.cursecycle.ArmorDisabledGameTest",
       "com.cursecycle.FloorIsWaterGameTest",
       "com.cursecycle.FloorIsLavaGameTest",
+      "com.cursecycle.FloorFeedbackGameTest",
       "com.cursecycle.SlipperyHandsGameTest",
       "com.cursecycle.InfiniteDietGameTest",
       "com.cursecycle.ForcedThirdPersonRpgGameTest",

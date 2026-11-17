@@ -11,6 +11,7 @@ import net.minecraft.entity.vehicle.BoatEntity;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -73,6 +74,9 @@ public class FloorIsLavaChallenge extends Challenge {
                 .get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
         if (player.damage(source, DAMAGE)) {
             lastPulses.put(player.getUuid(), new DamagePulse(player, player.age));
+            var center = box.getCenter();
+            world.spawnParticles(ParticleTypes.LAVA, center.x, box.minY + 0.05, center.z,
+                    3, 0.2, 0.02, 0.2, 0);
         }
     }
 

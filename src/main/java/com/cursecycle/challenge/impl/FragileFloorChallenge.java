@@ -9,6 +9,7 @@ import net.minecraft.block.Block;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.BlockCollisionSpliterator;
@@ -28,8 +29,11 @@ public final class FragileFloorChallenge extends Challenge {
 
     // No player/world references or persisted clocks. A new server starts with no contacts.
     private final Map<MinecraftServer, Map<UUID, Standing>> standing = new WeakHashMap<>();
+    // Synthetic negative IDs keep simultaneous supports separate from player mining animations.
+    private int nextCrackId = Integer.MIN_VALUE;
     private record Standing(long activation, int entityId, RegistryKey<World> world, GameMode mode,
-                            Contacts<BlockPos, Block> contacts) {}
+                            Contacts<BlockPos, Block> contacts, Map<BlockPos, Crack> cracks) {}
+    private record Crack(int id, int stage) {}
     private record Support(BlockPos pos, boolean touchesTop) {}
 
     // Технические нюансы; не включать в описание для игрока.
@@ -39,7 +43,7 @@ public final class FragileFloorChallenge extends Challenge {
     public FragileFloorChallenge() {
         super(ID, "Хрупкий пол",
                 "Если стоять на блоке слишком долго, то он ломается.",
-                "Через две секунды под твоим весом ломается любой блок. Даже бедрок?",
+                "Через две секунды под твоим весом ломается любой блок. Даже бедрок? Трещины и нарастающий треск предупреждают об обрушении. Отойди или прыгни, чтобы сбросить отсчёт.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -94,10 +98,13 @@ public final class FragileFloorChallenge extends Challenge {
         var clock = players.get(player.getUuid());
         if (clock == null || clock.activation != activation || clock.entityId != player.getId()
                 || !clock.world.equals(world.getRegistryKey()) || clock.mode != mode) {
-            clock = new Standing(activation, player.getId(), world.getRegistryKey(), mode, new Contacts<>());
+            if (clock != null) clearCracks(server, clock);
+            clock = new Standing(activation, player.getId(), world.getRegistryKey(), mode, new Contacts<>(), new HashMap<>());
             players.put(player.getUuid(), clock);
         }
-        for (var entry : clock.contacts.observe(server.getTicks(), supports(player)).entrySet()) {
+        var due = clock.contacts.observe(server.getTicks(), supports(player));
+        updateCracks(server, clock);
+        for (var entry : due.entrySet()) {
             // Neighbour updates from a preceding break can remove/change another due support.
             if (!ChallengeActivity.active(player, ID) || player.getServerWorld() != world) break;
             if (world.getBlockState(entry.getKey()).isOf(entry.getValue())
@@ -109,17 +116,62 @@ public final class FragileFloorChallenge extends Challenge {
         }
     }
 
+    private void updateCracks(MinecraftServer server, Standing clock) {
+        var world = server.getWorld(clock.world);
+        if (world == null) return;
+        clock.cracks.entrySet().removeIf(entry -> {
+            if (clock.contacts.counts.containsKey(entry.getKey())) return false;
+            world.setBlockBreakingInfo(entry.getValue().id, entry.getKey(), -1);
+            return true;
+        });
+        BlockPos soundPos = null;
+        int soundStage = -1;
+        for (var entry : clock.contacts.counts.entrySet()) {
+            int stage = entry.getValue().count * 10 / STANDING_THRESHOLD_TICKS;
+            var previous = clock.cracks.get(entry.getKey());
+            if (previous != null && previous.stage == stage) continue;
+            int id = previous == null ? nextCrackId++ : previous.id;
+            clock.cracks.put(entry.getKey(), new Crack(id, stage));
+            world.setBlockBreakingInfo(id, entry.getKey(), stage);
+            // Intervals shorten from 12 to 8 to 4 ticks as collapse approaches.
+            if ((stage == 2 || stage == 5 || stage >= 7) && stage > soundStage) {
+                soundPos = entry.getKey();
+                soundStage = stage;
+            }
+        }
+        // At most one creak per player/tick even at the intersection of several blocks.
+        if (soundPos != null) {
+            var material = world.getBlockState(soundPos).getSoundGroup();
+            world.playSound(null, soundPos, material.getHitSound(), SoundCategory.BLOCKS,
+                    0.15F + soundStage * 0.04F, 0.65F + soundStage * 0.035F);
+        }
+    }
+
+    private static void clearCracks(MinecraftServer server, Standing clock) {
+        var world = server.getWorld(clock.world);
+        if (world != null) clock.cracks.forEach((pos, crack) -> world.setBlockBreakingInfo(crack.id, pos, -1));
+        clock.cracks.clear();
+    }
+
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) { onStop(server, player); }
     @Override public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         // Disabled IDs are pruned before tick/leave dispatch, so those callbacks cannot clean up.
-        if (!enabled) standing.clear();
+        if (!enabled) {
+            standing.forEach((server, players) -> players.values().forEach(clock -> clearCracks(server, clock)));
+            standing.clear();
+        }
     }
     @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
-        if (player == null) { standing.remove(server); return; }
+        if (player == null) {
+            var players = standing.remove(server);
+            if (players != null) players.values().forEach(clock -> clearCracks(server, clock));
+            return;
+        }
         var players = standing.get(server);
         if (players != null) {
-            players.remove(player.getUuid());
+            var clock = players.remove(player.getUuid());
+            if (clock != null) clearCracks(server, clock);
             if (players.isEmpty()) standing.remove(server);
         }
     }

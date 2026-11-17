@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "floor_feedback_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "client": ["validation.FloorFeedbackProbe"] }
+}

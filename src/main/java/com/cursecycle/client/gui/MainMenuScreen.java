@@ -4,6 +4,7 @@ import com.cursecycle.CurseCycleMod;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
+import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
 import com.cursecycle.client.BlockedDirectionInput;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.ClientTimingSettings;
@@ -16,6 +17,8 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
@@ -27,6 +30,11 @@ import java.util.List;
 public class MainMenuScreen extends Screen {
     private static final int HOME = 0, ACTIVE = 1, NEXT = 2, HISTORY = 3, COMMANDS = 4, SETTINGS = 5;
     private static final String[] TABS = {"home", "active", "next", "history", "commands", "settings"};
+    private static final List<SafeFloor> SAFE_FLOORS = List.of(
+            new SafeFloor(new ItemStack(Items.RED_BED), "beds"),
+            new SafeFloor(new ItemStack(Items.WHITE_WOOL), "wool"),
+            new SafeFloor(new ItemStack(Items.WHITE_CARPET), "carpets"),
+            new SafeFloor(new ItemStack(Items.HAY_BLOCK), "hay"));
     private int activeTab;
     private int historyPage;
     private int scroll;
@@ -418,16 +426,37 @@ public class MainMenuScreen extends Screen {
         String feedback = BlockedDirectionInput.feedback(modal.getId());
         Text rules = Text.literal(modal.getDetailedRules() + (feedback.isEmpty() ? "" : "\n" + feedback));
         List<OrderedText> lines = textRenderer.wrapLines(rules, panelWidth - 32);
+        boolean showSafeFloors = modal.getId().equals(FloorIsLavaChallenge.ID);
+        List<List<OrderedText>> safeLabels = showSafeFloors ? SAFE_FLOORS.stream()
+                .map(floor -> textRenderer.wrapLines(Text.translatable("text.cursecycle.menu.safe_floor." + floor.key),
+                        Math.max(24, panelWidth - 58))).toList() : List.of();
+        int totalHeight = lines.size() * 11;
+        if (showSafeFloors) totalHeight += 25 + safeLabels.stream().mapToInt(label -> Math.max(18, label.size() * 11) + 4).sum();
         int available = Math.max(11, end - start);
-        modalScroll = Math.clamp(modalScroll, 0, Math.max(0, lines.size() * 11 - available));
+        modalScroll = Math.clamp(modalScroll, 0, Math.max(0, totalHeight - available));
         context.enableScissor(left + 12, start, left + panelWidth - 12, end);
         int y = start - modalScroll;
         for (OrderedText line : lines) {
             context.drawTextWithShadow(textRenderer, line, left + 14, y, CurseStyle.MUTED);
             y += 11;
         }
+        if (showSafeFloors) {
+            y += 10;
+            context.drawTextWithShadow(textRenderer, Text.translatable("text.cursecycle.menu.safe_floor"),
+                    left + 14, y, CurseStyle.TEXT);
+            y += 15;
+            for (int i = 0; i < SAFE_FLOORS.size(); i++) {
+                context.drawItem(SAFE_FLOORS.get(i).stack, left + 14, y);
+                int labelY = y + 3;
+                for (var line : safeLabels.get(i)) {
+                    context.drawTextWithShadow(textRenderer, line, left + 36, labelY, CurseStyle.MUTED);
+                    labelY += 11;
+                }
+                y += Math.max(18, safeLabels.get(i).size() * 11) + 4;
+            }
+        }
         context.disableScissor();
-        drawScroll(context, modalScroll, lines.size() * 11, start, end);
+        drawScroll(context, modalScroll, totalHeight, start, end);
     }
 
     private void drawScroll(DrawContext context, int offset, int total, int start, int end) {
@@ -471,4 +500,5 @@ public class MainMenuScreen extends Screen {
                          boolean rules, int offset, int height) {}
     private record Paragraph(List<OrderedText> lines, int offset, int color) {}
     private record SettingControl(ClickableWidget widget, int offset, Integer value) {}
+    private record SafeFloor(ItemStack stack, String key) {}
 }

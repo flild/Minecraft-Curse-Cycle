@@ -1,4 +1,9 @@
 {
+  "text.cursecycle.menu.safe_floor": "Безопасная опора",
+  "text.cursecycle.menu.safe_floor.beds": "Кровати любого цвета",
+  "text.cursecycle.menu.safe_floor.wool": "Шерсть любого цвета",
+  "text.cursecycle.menu.safe_floor.carpets": "Шерстяные ковры любого цвета",
+  "text.cursecycle.menu.safe_floor.hay": "Снопы сена",
   "death.attack.cursecycle.heartbeat": "%1$s пропустил удар сердца",
   "death.attack.cursecycle.heartbeat.player": "%1$s пропустил удар сердца, сражаясь с %2$s",
   "key.cursecycle.heartbeat": "Удар сердца",

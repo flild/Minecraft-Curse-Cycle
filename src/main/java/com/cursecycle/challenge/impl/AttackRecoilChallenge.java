@@ -21,7 +21,7 @@ public class AttackRecoilChallenge extends Challenge {
         super(ID, "Как в контрстрайке",
                 "Теперь есть отдача от ударов.",
                 "Каждый удачный удар в ближнем бою отбрасывает от противника.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
     public static boolean eligible(ServerPlayerEntity player, Entity target) {
