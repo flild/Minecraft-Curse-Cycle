@@ -24,18 +24,20 @@ public final class HeavyBodyChallenge extends Challenge {
     public static final float MULTIPLIER = 0.6F;
     public static final double MOVING_THRESHOLD = 0.02;
     public static final int MAX_STAMINA = 100, RECOVERY_TICKS = 40;
+    public static final int REGEN_DELAY_TICKS = 20;
     public static final SoundEvent PANT = SoundEvent.of(Identifier.of("cursecycle", "heavy_body_pant"));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
 
     // Технические нюансы; не включать в описание для игрока.
     // Скорость наземного движения и начальная вертикальная скорость обычного прыжка составляют 60% от значения
-    // с учётом других эффектов. Спринт расходует 100 единиц за 100 тиков; отдых возвращает 2 за тик.
-    // При истощении спринт блокируется на 40 тиков, запас восстанавливается за это время.
+    // с учётом других эффектов. Спринт расходует 100 единиц за 100 тиков; после 20 тиков без расхода отдых возвращает 2 за тик.
+    // При истощении спринт блокируется на 40 тиков: 20 тиков паузы, затем восстановление до полного запаса.
     public HeavyBodyChallenge() {
         super(ID, "На массе",
                 "Бегаешь медленнее, прыгаешь ниже и запыхиваешься.",
                 "Бегаешь медленнее и прыгаешь ниже. Спринт расходует выносливость. Когда она заканчивается, "
-                        + "на две секунды сбивается дыхание, темнеет в глазах и нельзя бежать.",
+                        + "на две секунды сбивается дыхание, темнеет в глазах и нельзя бежать. "
+                        + "Выносливость начинает восстанавливаться через секунду после остановки спринта.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -57,16 +59,20 @@ public final class HeavyBodyChallenge extends Challenge {
 
     /** Tick state only; no player attributes, inventory, or timer data are persisted. */
     public static final class Breathing {
-        private int stamina = MAX_STAMINA, recoveryTicks;
+        private int stamina = MAX_STAMINA, recoveryTicks, regenDelay;
         public boolean tick(boolean sprinting) {
             if (recoveryTicks > 0) {
                 --recoveryTicks;
-                stamina = MAX_STAMINA * (RECOVERY_TICKS - recoveryTicks) / RECOVERY_TICKS;
-                return recoveryTicks == RECOVERY_TICKS / 2;
+                if (regenDelay > 0) --regenDelay;
+                stamina = Math.max(0, MAX_STAMINA * (RECOVERY_TICKS - recoveryTicks - REGEN_DELAY_TICKS)
+                        / (RECOVERY_TICKS - REGEN_DELAY_TICKS));
+                return false;
             }
             if (sprinting) {
+                regenDelay = REGEN_DELAY_TICKS;
                 if (--stamina == 0) { recoveryTicks = RECOVERY_TICKS; return true; }
-            } else stamina = Math.min(MAX_STAMINA, stamina + 2);
+            } else if (regenDelay > 0) --regenDelay;
+            else stamina = Math.min(MAX_STAMINA, stamina + 2);
             return false;
         }
         public boolean panting() { return recoveryTicks > 0; }

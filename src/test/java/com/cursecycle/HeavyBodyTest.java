@@ -26,9 +26,11 @@ class HeavyBodyTest {
         assertTrue(b.tick(true)); assertTrue(b.panting());
         assertEquals(0, b.stamina()); assertEquals(40, b.recoveryTicks());
         for (int i = 1; i < 20; i++) { assertFalse(b.tick(true)); assertTrue(b.panting()); }
-        assertTrue(b.tick(true));
-        assertEquals(50, b.stamina());
-        for (int i = 1; i < 20; i++) { assertFalse(b.tick(false)); assertTrue(b.panting()); }
+        assertFalse(b.tick(true));
+        assertEquals(0, b.stamina());
+        for (int i = 1; i < 20; i++) {
+            assertFalse(b.tick(false)); assertTrue(b.panting()); assertEquals(i * 5, b.stamina());
+        }
         assertFalse(b.tick(false)); assertFalse(b.panting());
         assertEquals(100, b.stamina());
         for (int i = 1; i < 100; i++) assertFalse(b.tick(true));
@@ -40,14 +42,33 @@ class HeavyBodyTest {
         assertEquals(100, b.stamina());
         for (int i = 0; i < 50; i++) assertFalse(b.tick(true));
         assertEquals(50, b.stamina());
+        for (int i = 0; i < HeavyBodyChallenge.REGEN_DELAY_TICKS; i++) {
+            assertFalse(b.tick(false)); assertEquals(50, b.stamina());
+        }
         for (int i = 0; i < 10; i++) assertFalse(b.tick(false));
         assertEquals(70, b.stamina());
         for (int i = 0; i < 69; i++) assertFalse(b.tick(true));
         assertTrue(b.tick(true));
         for (int i = 1; i <= 40; i++) {
             b.tick(true); assertEquals(i < 40, b.panting());
-            assertEquals(100*i/40, b.stamina());
+            assertEquals(Math.max(0, (i - 20) * 5), b.stamina());
         }
+    }
+    @Test void spendingRestartsDelayAndNeverRegeneratesBetweenSprintSamples() {
+        var b = new HeavyBodyChallenge.Breathing();
+        for (int spent = 1; spent <= 90; spent++) {
+            b.tick(true);
+            assertEquals(100 - spent, b.stamina());
+            for (int rest = 0; rest < HeavyBodyChallenge.REGEN_DELAY_TICKS; rest++) {
+                b.tick(false);
+                assertEquals(100 - spent, b.stamina(), "Short rests must not refill stamina");
+            }
+        }
+        b.tick(false); assertEquals(12, b.stamina());
+        b.tick(true); assertEquals(11, b.stamina());
+        for (int i = 0; i < HeavyBodyChallenge.REGEN_DELAY_TICKS; i++) b.tick(false);
+        assertEquals(11, b.stamina());
+        b.tick(false); assertEquals(13, b.stamina());
     }
     @Test void clientStateRejectsStaleActivationAndFadesWithoutUnlockingEarly() {
         var s = new HeavyBodyInput.Stamina();

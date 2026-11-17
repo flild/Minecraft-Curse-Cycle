@@ -45,16 +45,20 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
         @Override public GameMode getCurrentGameMode() { return mode; }
     }
     public static class Canvas extends net.minecraft.client.gui.DrawContext {
-        int fills, labels, lastWidth, lastColor;
+        int fills, labels, lastWidth, lastColor, filledWidth, dividers;
         public Canvas() { super(null, null); }
         @Override public int getScaledWindowWidth() { return 320; }
         @Override public int getScaledWindowHeight() { return 240; }
         @Override public void fill(int x1, int y1, int x2, int y2, int color) {
             fills++; lastWidth = x2 - x1; lastColor = color;
+            if (y1 == 171 && y2 == 175) {
+                if (x1 == 100 && (color == 0xFFAF8954 || color == 0xFFDE857E)) filledWidth = x2 - x1;
+                if (x2 - x1 == 1 && color == 0xFF0D0B12) dividers++;
+            }
         }
         @Override public void drawCenteredTextWithShadow(net.minecraft.client.font.TextRenderer font,
                 net.minecraft.text.Text label, int x, int y, int color) { labels++; }
-        void clear() { fills = labels = lastWidth = lastColor = 0; }
+        void clear() { fills = labels = lastWidth = lastColor = filledWidth = dividers = 0; }
     }
     private static void set(Class<?> owner, Object object, String name, Object value) throws Exception {
         var field = owner.getDeclaredField(name); field.setAccessible(true); field.set(object, value);
@@ -127,10 +131,10 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
             com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.fills == 0, "Full stamina hidden at rest");
             sprinting = true; com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
-            check(canvas.fills == 3 && canvas.labels == 1 && canvas.lastWidth == 100, "Sprint reveals full bar");
+            check(canvas.labels == 1 && canvas.filledWidth == 120 && canvas.dividers == 9, "Sprint reveals full segmented bronze bar");
             canvas.clear(); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 50, 0));
             com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
-            check(canvas.lastWidth == 50, "Server stamina maps to half bar");
+            check(canvas.filledWidth == 60 && canvas.dividers == 9, "Server stamina maps to half bar");
             HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 0, 40));
             check(!sprinting && HeavyBodyChallenge.cannotSprint(client.player), "Exhaustion cancels client sprint");
             var sprintGate = Arrays.stream(LivingEntity.class.getDeclaredMethods())
@@ -142,7 +146,7 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
             for (int i = 0; i < 500; i++) HeavyBodyInput.stamina().tick();
             check(HeavyBodyChallenge.cannotSprint(client.player), "Client cannot advance server cooldown");
             canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
-            check(canvas.fills == 4 && canvas.lastWidth == 0, "Darkening and empty stamina bar");
+            check(canvas.fills > 1 && canvas.filledWidth == 0 && canvas.dividers == 9, "Darkening and empty framed stamina bar");
             options.hudHidden = true; canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.fills == 1 && canvas.labels == 0, "F1 hides resource but retains exhaustion darkness");
             options.hudHidden = false; sync("heavy_body", "blind_hud");

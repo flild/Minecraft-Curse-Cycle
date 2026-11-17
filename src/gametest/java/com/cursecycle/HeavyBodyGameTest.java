@@ -191,8 +191,8 @@ public class HeavyBodyGameTest implements FabricGameTest {
             c.waitAndRun(i, () -> {
                 try {
                     c.assertEquals(tick, server.getTicks()-start, "Real server tick");
-                    // 50 sprint ticks -> 50 stamina, ten walking ticks -> 70, then 70 sprint ticks -> exhaustion.
-                    p.setPosition(p.getX(), p.getY(), p.getZ() + .04); p.setOnGround(tick != 125);
+                    // Ten walking ticks cannot regenerate; the next 50 sprint ticks exhaust at tick 110.
+                    p.setPosition(p.getX(), p.getY(), p.getZ() + .04); p.setOnGround(tick != 105);
                     p.setSprinting(tick <= 50 || tick >= 61);
                     other.setPosition(other.getX(), other.getY(), other.getZ() + (tick <= 50 ? .019 : .04));
                     other.setOnGround(true); other.setSprinting(tick <= 210);
@@ -203,24 +203,26 @@ public class HeavyBodyGameTest implements FabricGameTest {
                     if (tick == 100) server.getOverworld().setTimeOfDay(server.getOverworld().getTimeOfDay() + 24000);
                     HeavyBodyChallenge.tick(server); HeavyBodyChallenge.tick(server);
                     // Periodic state sync and repeated intent never restart the recovery clock.
-                    if (tick == 150) HeavyBodyChallenge.sync(p);
+                    if (tick == 60 || tick == 95 || tick == 130) HeavyBodyChallenge.sync(p);
                     var one = packets(s, p); var two = packets(s, other);
-                    if (tick == 130 || tick == 150 || tick == 270) c.assertEquals(1L, one.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Exhaustion pant, repeated after one second");
+                    if (tick == 110 || tick == 250) c.assertEquals(1L, one.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "One recording per exhaustion without overlapping repeats");
                     else c.assertTrue(one.stream().noneMatch(PlaySoundS2CPacket.class::isInstance), "Unexpected first pant tick="+tick);
-                    if (tick == 170) c.assertTrue(one.stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Stop exactly 40 ticks after exhaustion while movement continues");
-                    if (tick == 170 || tick == 190) c.assertEquals(1L, two.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Independent player exhaustion");
+                    if (tick == 150) c.assertTrue(one.stream().anyMatch(StopSoundS2CPacket.class::isInstance), "Stop exactly 40 ticks after exhaustion while movement continues");
+                    if (tick == 170) c.assertEquals(1L, two.stream().filter(PlaySoundS2CPacket.class::isInstance).count(), "Independent player exhaustion");
                     else c.assertTrue(two.stream().noneMatch(PlaySoundS2CPacket.class::isInstance), "Unexpected second pant tick="+tick);
-                    if (tick >= 130 && tick < 170 || tick >= 270) {
+                    if (tick >= 110 && tick < 150 || tick >= 250) {
                         c.assertTrue(HeavyBodyChallenge.cannotSprint(p), "Server blocks sprint throughout recovery");
                         p.setSprinting(true); c.assertFalse(p.isSprinting(), "Actual sprint Mixin blocks repeated attempts");
                     } else c.assertFalse(HeavyBodyChallenge.cannotSprint(p), "No sprint lock outside recovery");
-                    if (tick == 130 || tick == 170 || tick == 270) {
+                    if (tick == 60 || tick == 95 || tick == 110 || tick == 130 || tick == 150 || tick == 250) {
                         var state = one.stream().filter(HeavyBodyStatePayload.class::isInstance)
                                 .map(HeavyBodyStatePayload.class::cast).reduce((a, b) -> b).orElseThrow();
-                        c.assertEquals(tick == 170 ? 100 : 0, state.stamina(), "Immediate edge stamina snapshot");
-                        c.assertEquals(tick == 170 ? 0 : 40, state.recoveryTicks(), "Immediate edge cooldown snapshot");
+                        int expectedStamina = tick == 60 ? 50 : tick == 95 ? 15 : tick == 150 ? 100 : 0;
+                        int expectedRecovery = tick == 110 || tick == 250 ? 40 : tick == 130 ? 20 : 0;
+                        c.assertEquals(expectedStamina, state.stamina(), "No regeneration during brief walking, sprinting or exhaustion delay");
+                        c.assertEquals(expectedRecovery, state.recoveryTicks(), "Immediate edge cooldown snapshot");
                     }
-                    if (tick == 170) { p.setSprinting(true); c.assertTrue(p.isSprinting(), "Sprint immediately available after two seconds"); }
+                    if (tick == 150) { p.setSprinting(true); c.assertTrue(p.isSprinting(), "Sprint immediately available after two seconds"); }
                     if (tick == 280) {
                         s.activate("no_sprint");
                         var ended = packets(s, p);
