@@ -14,6 +14,7 @@ import net.minecraft.world.GameMode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Arrays;
 
 public final class MovementMemoryChallenge extends Challenge {
     public static final String ID = "movement_memory";
@@ -26,14 +27,15 @@ public final class MovementMemoryChallenge extends Challenge {
         final Object world;
         final GameMode mode;
         final long activation;
-        long sequence = -1;
-        int startedAt;
-        boolean holding;
+        final long[] sequence = new long[MovementMemoryPayload.DIRECTION_COUNT];
+        final int[] startedAt = new int[MovementMemoryPayload.DIRECTION_COUNT];
+        final boolean[] holding = new boolean[MovementMemoryPayload.DIRECTION_COUNT];
         Session(ServerPlayerEntity player, long activation) {
             this.player = player;
             world = player.getWorld();
             mode = player.interactionManager.getGameMode();
             this.activation = activation;
+            Arrays.fill(sequence, -1);
         }
         boolean matches(ServerPlayerEntity current, long serial) {
             return player == current && world == current.getWorld() && activation == serial
@@ -42,13 +44,13 @@ public final class MovementMemoryChallenge extends Challenge {
     }
 
     // Технические нюансы; не включать в описание для игрока.
-    // При переходе горизонтального ввода в ноль последнее направление удерживается 20 тиков. Новый ненулевой
-    // ввод сразу его заменяет. Действует на собственное наземное движение; вода, полёт, транспорт и открытые
+    // Каждая отпущенная клавиша движения удерживается независимо 20 тиков. Другие клавиши не отменяют
+    // её интервал; повторное нажатие обновляет только её память. Вода, полёт, транспорт и открытые
     // меню используют штатное управление.
     public MovementMemoryChallenge() {
         super(ID, "Ноги помнят",
                 "Ты двигаешься по инерции, ещё какое-то время.",
-                "После отпускания клавиш ты ещё секунду продолжаешь идти в прежнюю сторону.",
+                "Каждая клавиша движения продолжает действовать секунду после отпускания, даже при смене направления.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -62,25 +64,27 @@ public final class MovementMemoryChallenge extends Challenge {
     public static void receive(ServerPlayerEntity player, MovementMemoryPayload request) {
         var server = player.getServer();
         long serial = CurseCycleState.getServerState(server).getActivationSerial();
-        if (request.activation() != serial || request.sequence() < 0) return;
+        int direction = request.direction();
+        if (request.activation() != serial || request.sequence() < 0
+                || direction < 0 || direction >= MovementMemoryPayload.DIRECTION_COUNT) return;
         var sessions = SESSIONS.computeIfAbsent(server, ignored -> new HashMap<>());
         var session = sessions.get(player.getUuid());
         if (session == null || !session.matches(player, serial)) {
             session = new Session(player, serial);
             sessions.put(player.getUuid(), session);
         }
-        if (request.sequence() <= session.sequence) return;
-        session.sequence = request.sequence();
+        if (request.sequence() <= session.sequence[direction]) return;
+        session.sequence[direction] = request.sequence();
         boolean holding = request.holding() && eligible(player);
         // A newer sequence identifies the reply, not a new input transition. Only an actual
         // state change starts/cancels an interval; repeated holds cannot slide its deadline.
-        if (session.holding != holding) {
-            session.holding = holding;
-            if (holding) session.startedAt = server.getTicks();
-            send(session);
+        if (session.holding[direction] != holding) {
+            session.holding[direction] = holding;
+            if (holding) session.startedAt[direction] = server.getTicks();
+            send(session, direction);
         } else if (!holding && request.holding()) {
             // Reject a client's predicted hold when server eligibility disagrees.
-            send(session);
+            send(session, direction);
         }
     }
 
@@ -91,28 +95,39 @@ public final class MovementMemoryChallenge extends Challenge {
         sessions.values().removeIf(session -> {
             var player = server.getPlayerManager().getPlayer(session.player.getUuid());
             if (player == null || !session.matches(player, serial) || !eligible(player)) {
-                if (session.holding && player == session.player) { session.holding = false; send(session); }
+                if (player == session.player) release(session);
                 return true;
             }
-            if (session.holding && server.getTicks() - session.startedAt >= MEMORY_TICKS) {
-                session.holding = false;
-                send(session);
+            for (int direction = 0; direction < session.holding.length; direction++) {
+                if (session.holding[direction] && server.getTicks() - session.startedAt[direction] >= MEMORY_TICKS) {
+                    session.holding[direction] = false;
+                    send(session, direction);
+                }
             }
             return false;
         });
         if (sessions.isEmpty()) SESSIONS.remove(server);
     }
 
-    private static void send(Session session) {
+    private static void send(Session session, int direction) {
         ServerPlayNetworking.send(session.player,
-                new MovementMemoryPayload(session.activation, session.sequence, session.holding));
+                new MovementMemoryPayload(session.activation, session.sequence[direction], direction, session.holding[direction]));
+    }
+
+    private static void release(Session session) {
+        for (int direction = 0; direction < session.holding.length; direction++) {
+            if (session.holding[direction]) {
+                session.holding[direction] = false;
+                send(session, direction);
+            }
+        }
     }
 
     public static void forget(ServerPlayerEntity player) {
         var sessions = SESSIONS.get(player.getServer());
         if (sessions == null) return;
         var removed = sessions.remove(player.getUuid());
-        if (removed != null && removed.holding) { removed.holding = false; send(removed); }
+        if (removed != null) release(removed);
         if (sessions.isEmpty()) SESSIONS.remove(player.getServer());
     }
 

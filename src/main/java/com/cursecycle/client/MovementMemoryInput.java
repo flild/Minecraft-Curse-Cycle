@@ -8,6 +8,7 @@ import net.minecraft.client.input.Input;
 import net.minecraft.world.GameMode;
 
 import java.util.List;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 public final class MovementMemoryInput {
@@ -19,47 +20,64 @@ public final class MovementMemoryInput {
     /** Testable input state machine; no velocity, key binding, jump or sneak state is retained. */
     public static final class Memory {
         private long activation = -1, sequence;
-        private float forward, sideways;
-        private boolean moving, holding;
+        private final boolean[] pressed = new boolean[MovementMemoryPayload.DIRECTION_COUNT];
+        private final boolean[] held = new boolean[MovementMemoryPayload.DIRECTION_COUNT];
+        private final long[] requests = new long[MovementMemoryPayload.DIRECTION_COUNT];
 
         public void context(long serial) {
             if (activation != serial) { clear(); activation = serial; }
         }
-        public void clear() { forward = sideways = 0; moving = holding = false; sequence++; }
+        public void clear() {
+            Arrays.fill(pressed, false);
+            Arrays.fill(held, false);
+            Arrays.fill(requests, -1);
+        }
         public void reset() { clear(); activation = -1; }
         public void cancel(Consumer<MovementMemoryPayload> send) {
-            boolean pending = holding;
+            for (int direction = 0; direction < held.length; direction++) {
+                if (held[direction] && activation >= 0)
+                    send.accept(new MovementMemoryPayload(activation, ++sequence, direction, false));
+            }
             clear();
-            if (pending && activation >= 0) send.accept(new MovementMemoryPayload(activation, sequence, false));
         }
         public void receive(MovementMemoryPayload message) {
             if (message.sequence() == -1) { context(message.activation()); return; }
-            if (message.activation() == activation && message.sequence() == sequence && holding && !message.holding())
-                clear();
+            int direction = message.direction();
+            if (direction >= 0 && direction < held.length && message.activation() == activation
+                    && message.sequence() == requests[direction] && !message.holding())
+                held[direction] = false;
         }
         public void apply(Input input, float scale, Consumer<MovementMemoryPayload> send) {
             if (activation < 0) return;
-            if (input.movementForward != 0 || input.movementSideways != 0) {
-                if (holding) cancel(send);
-                forward = Math.signum(input.movementForward);
-                sideways = Math.signum(input.movementSideways);
-                moving = true;
-                return;
+            // Read the four flags before combining axes: W+S or A+D must retain both keys independently.
+            boolean[] current = {input.pressingForward, input.pressingBack, input.pressingLeft, input.pressingRight};
+            for (int direction = 0; direction < held.length; direction++) {
+                if (current[direction]) {
+                    if (held[direction]) {
+                        held[direction] = false;
+                        requests[direction] = ++sequence;
+                        send.accept(new MovementMemoryPayload(activation, sequence, direction, false));
+                    }
+                } else if (pressed[direction]) {
+                    held[direction] = true;
+                    requests[direction] = ++sequence;
+                    send.accept(new MovementMemoryPayload(activation, sequence, direction, true));
+                }
+                pressed[direction] = current[direction];
+                current[direction] |= held[direction];
             }
-            if (moving) {
-                moving = false;
-                holding = true;
-                send.accept(new MovementMemoryPayload(activation, ++sequence, true));
-            }
-            if (!holding) return;
-            input.movementForward = forward * scale;
-            input.movementSideways = sideways * scale;
-            input.pressingForward = forward > 0;
-            input.pressingBack = forward < 0;
-            input.pressingLeft = sideways > 0;
-            input.pressingRight = sideways < 0;
+            input.pressingForward = current[0];
+            input.pressingBack = current[1];
+            input.pressingLeft = current[2];
+            input.pressingRight = current[3];
+            input.movementForward = ((current[0] ? 1 : 0) - (current[1] ? 1 : 0)) * scale;
+            input.movementSideways = ((current[2] ? 1 : 0) - (current[3] ? 1 : 0)) * scale;
         }
-        public boolean holding() { return holding; }
+        public boolean holding() {
+            for (boolean direction : held) if (direction) return true;
+            return false;
+        }
+        public boolean rememberingForward() { return held[MovementMemoryPayload.FORWARD]; }
     }
 
     public static boolean affects(boolean synced, List<String> ids, GameMode mode, boolean alive,
@@ -88,7 +106,7 @@ public final class MovementMemoryInput {
         if (!shouldRemember(client, input)) { cancel(); return; }
         MEMORY.apply(input, slowDown ? factor : 1, MovementMemoryInput::send);
         // Vanilla normally ends sprint on released forward input. Synthetic movement must not retain that latch.
-        if (MEMORY.holding() && client != null && client.player != null && !client.options.sprintKey.isPressed())
+        if (MEMORY.rememberingForward() && client != null && client.player != null && !client.options.sprintKey.isPressed())
             client.player.setSprinting(false);
     }
 

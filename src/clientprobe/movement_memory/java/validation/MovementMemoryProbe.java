@@ -57,6 +57,15 @@ public final class MovementMemoryProbe implements PreLaunchEntrypoint {
     private static long sequence() throws Exception {
         return (long) get(MovementMemoryInput.Memory.class, get(MovementMemoryInput.class, null, "MEMORY"), "sequence");
     }
+    private static long[] requests() throws Exception {
+        return ((long[]) get(MovementMemoryInput.Memory.class, get(MovementMemoryInput.class, null, "MEMORY"), "requests")).clone();
+    }
+    private static void expireAll() throws Exception {
+        var pending = requests();
+        for (int direction = 0; direction < pending.length; direction++)
+            if (pending[direction] >= 0)
+                MovementMemoryInput.receive(new MovementMemoryPayload(serial, pending[direction], direction, false));
+    }
     private static void sync(List<String> ids, String direction) {
         ClientDataHolder.updateState(1, 20, ids, "", List.of(), direction);
         MovementMemoryInput.receive(new MovementMemoryPayload(++serial, -1, false));
@@ -105,25 +114,50 @@ public final class MovementMemoryProbe implements PreLaunchEntrypoint {
                     if (inverted) { f = -f; s = -s; }
                     float ef = blocked.equals("forward") ? Math.min(0, f) : f;
                     float es = blocked.equals("left") ? Math.min(0, s) : blocked.equals("right") ? Math.max(0, s) : s;
+                    boolean pf = (mask & (inverted ? 2 : 1)) != 0 && !blocked.equals("forward");
+                    boolean pb = (mask & (inverted ? 1 : 2)) != 0;
+                    boolean pl = (mask & (inverted ? 8 : 4)) != 0 && !blocked.equals("left");
+                    boolean pr = (mask & (inverted ? 4 : 8)) != 0 && !blocked.equals("right");
                     tick(input, 64, 1); long released = sequence();
                     for (int repeat = 0; repeat < 24; repeat++) {
                         float factor = repeat % 2 == 0 ? .3f : 1;
                         int fresh = 64 | (repeat % 2 == 0 ? 32 : 16);
                         tick(input, fresh, factor);
                         check(input.movementForward == ef * factor && input.movementSideways == es * factor, "Held signs, current scale, inversion then memory then block");
-                        check(input.pressingForward == (ef > 0) && input.pressingBack == (ef < 0)
-                                && input.pressingLeft == (es > 0) && input.pressingRight == (es < 0), "Fresh synthetic horizontal flags");
+                        check(input.pressingForward == pf && input.pressingBack == pb
+                                && input.pressingLeft == pl && input.pressingRight == pr, "Each key retained, including opposing keys");
                         check(input.jumping == ((fresh & 16) != 0) && input.sneaking == ((fresh & 32) != 0), "Jump and sneak never retained");
                         check(sequence() == released, "No repeat request while holding or after zero vector");
                     }
-                    MovementMemoryInput.receive(new MovementMemoryPayload(serial - 1, released, false));
-                    MovementMemoryInput.receive(new MovementMemoryPayload(serial, released - 1, false));
+                    var pending = requests();
+                    for (int direction = 0; direction < pending.length; direction++) {
+                        if (pending[direction] < 0) continue;
+                        MovementMemoryInput.receive(new MovementMemoryPayload(serial - 1, pending[direction], direction, false));
+                        MovementMemoryInput.receive(new MovementMemoryPayload(serial, pending[direction] - 1, direction, false));
+                    }
                     tick(input, 64, 1); check(input.movementForward == ef && input.movementSideways == es, "Stale end rejected");
-                    MovementMemoryInput.receive(new MovementMemoryPayload(serial, released, false)); zero(input); zero(input);
+                    expireAll(); zero(input); zero(input);
                 }
-            // Replacement, sprint latch, activation, and cancellation without retaining physical velocity.
-            arm(input); tick(input, 2 | 16, 1); check(input.movementForward == -1 && input.jumping, "Immediate reverse");
-            tick(input, 0, .2f); check(input.movementForward == -.2f, "New release owns reverse direction");
+            // D -> W preserves D; releasing W starts another interval, independent of D.
+            sync(List.of("movement_memory"), ""); tick(input, 8, 1); tick(input, 1 | 16, 1);
+            check(input.movementForward == 1 && input.movementSideways == -1 && input.jumping, "D -> W remains diagonal");
+            long oldRight = requests()[MovementMemoryPayload.RIGHT];
+            tick(input, 1 | 8 | 32, .3f);
+            check(input.movementForward == .3f && input.movementSideways == -.3f && input.sneaking && !input.jumping,
+                    "Repress D preserves current W, jump and sneak remain fresh");
+            tick(input, 1, 1); long freshRight = requests()[MovementMemoryPayload.RIGHT];
+            check(freshRight > oldRight, "Releasing D again creates its own new interval");
+            MovementMemoryInput.receive(new MovementMemoryPayload(serial, oldRight, MovementMemoryPayload.RIGHT, false));
+            tick(input, 1, 1); check(input.movementSideways == -1, "Old D reply cannot end new D interval");
+            tick(input, 0, .2f); long forward = requests()[MovementMemoryPayload.FORWARD];
+            MovementMemoryInput.receive(new MovementMemoryPayload(serial, freshRight, MovementMemoryPayload.RIGHT, false));
+            tick(input, 0, .2f); check(input.movementForward == .2f && input.movementSideways == 0, "D expires without ending W");
+            MovementMemoryInput.receive(new MovementMemoryPayload(serial, forward, MovementMemoryPayload.FORWARD, false)); zero(input);
+            arm(input); tick(input, 2 | 16, 1); check(input.movementForward == 0 && input.jumping, "Opposing held W and current S cancel");
+            var forwardRequest = requests()[MovementMemoryPayload.FORWARD];
+            MovementMemoryInput.receive(new MovementMemoryPayload(serial, forwardRequest, MovementMemoryPayload.FORWARD, false));
+            tick(input, 2, 1); check(input.movementForward == -1, "S takes effect when W expires");
+            tick(input, 0, .2f); check(input.movementForward == -.2f, "S has its own release interval");
             arm(input); sprinting = true; tick(input, 0, 1); check(!sprinting, "Released sprint not held");
             sprinting = true; tick(input, 64, 1); check(sprinting, "Current sprint key preserved");
             for (var next : GameMode.values()) {
@@ -180,7 +214,7 @@ public final class MovementMemoryProbe implements PreLaunchEntrypoint {
             set(net.minecraft.world.World.class, client.world, "isClient", true);
             sync(List.of("movement_memory", "heavy_body"), ""); tick(input, 1, 1); tick(input, 0, 1);
             check(com.cursecycle.client.HeavyBodyInput.moving(client), "Heavy body observes synthetic final movement");
-            MovementMemoryInput.receive(new MovementMemoryPayload(serial, sequence(), false)); zero(input);
+            expireAll(); zero(input);
             check(!com.cursecycle.client.HeavyBodyInput.moving(client), "End of memory also ends final movement intent");
             check(!MovementMemoryInput.shouldRemember(null, input), "Null client rejected");
             System.out.println("MOVEMENT_MEMORY_REVIEW_CLIENT_PASSED checks=" + checks + " ticks=" + ticks

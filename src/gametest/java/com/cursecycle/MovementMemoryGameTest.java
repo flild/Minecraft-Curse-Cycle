@@ -22,13 +22,69 @@ import java.util.List;
 public class MovementMemoryGameTest implements FabricGameTest {
     private static final String ID = MovementMemoryChallenge.ID;
     private static void request(ChallengeScenario s, ServerPlayerEntity p, long seq, boolean hold) {
-        var packet = new MovementMemoryPayload(s.state.getActivationSerial(), seq, hold);
+        request(s, p, seq, MovementMemoryPayload.FORWARD, hold);
+    }
+    private static void request(ChallengeScenario s, ServerPlayerEntity p, long seq, int direction, boolean hold) {
+        var packet = new MovementMemoryPayload(s.state.getActivationSerial(), seq, direction, hold);
         var buffer = new RegistryByteBuf(Unpooled.buffer(), p.getRegistryManager());
         try {
             MovementMemoryPayload.CODEC.encode(buffer, packet);
             MovementMemoryChallenge.receive(p, MovementMemoryPayload.CODEC.decode(buffer));
             s.context.assertEquals(0, buffer.readableBytes(), "C2S request codec consumed");
         } finally { buffer.release(); }
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "movement_memory_keys", tickLimit = 70)
+    public void separateKeyDeadlinesAndRepressRefresh(TestContext c) {
+        var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
+        var player = s.player(); s.activate(ID); var channel = s.channel(player); packets(channel);
+        request(s, player, 1, MovementMemoryPayload.RIGHT, true);
+        c.assertEquals(MovementMemoryPayload.RIGHT, packets(channel).getLast().direction(), "D reply identifies its key");
+        int start = server.getTicks();
+        c.waitAndRun(5, () -> {
+            try {
+                request(s, player, 2, MovementMemoryPayload.FORWARD, true); last(c, channel, 2, true);
+                request(s, player, 3, MovementMemoryPayload.LEFT, true); last(c, channel, 3, true);
+                request(s, player, 4, MovementMemoryPayload.BACK, true); last(c, channel, 4, true);
+            } catch (Throwable failure) { s.close(); throw failure; }
+        });
+        c.waitAndRun(10, () -> {
+            try {
+                request(s, player, 5, MovementMemoryPayload.RIGHT, false); last(c, channel, 5, false);
+                request(s, player, 6, MovementMemoryPayload.RIGHT, true); last(c, channel, 6, true);
+                request(s, player, 7, -1, true); request(s, player, 8, 4, true);
+                c.assertTrue(packets(channel).isEmpty(), "Invalid directions ignored");
+            } catch (Throwable failure) { s.close(); throw failure; }
+        });
+        c.waitAndRun(20, () -> {
+            try {
+                MovementMemoryChallenge.tick(server);
+                c.assertTrue(packets(channel).stream().noneMatch(p -> p.sequence() >= 0), "Repressed D survives original deadline");
+            } catch (Throwable failure) { s.close(); throw failure; }
+        });
+        c.waitAndRun(25, () -> {
+            try {
+                c.assertEquals(25, server.getTicks() - start, "Separate W/A/S deadline");
+                MovementMemoryChallenge.tick(server); var ended = packets(channel).stream().filter(p -> p.sequence() >= 0).toList();
+                c.assertEquals(3, ended.size(), "W/A/S expire independently of refreshed D");
+                c.assertTrue(ended.stream().allMatch(p -> !p.holding() && p.direction() != MovementMemoryPayload.RIGHT), "Only W/A/S ended");
+            } catch (Throwable failure) { s.close(); throw failure; }
+        });
+        c.waitAndRun(30, () -> {
+            try {
+                MovementMemoryChallenge.tick(server); var ended = packets(channel).getLast();
+                c.assertEquals(6L, ended.sequence(), "Fresh D interval expires once");
+                c.assertEquals(MovementMemoryPayload.RIGHT, ended.direction(), "D has its own deadline");
+                c.assertFalse(ended.holding(), "D ended");
+                for (int direction = 0; direction < MovementMemoryPayload.DIRECTION_COUNT; direction++)
+                    request(s, player, 10 + direction, direction, true);
+                packets(channel); MovementMemoryChallenge.forget(player);
+                var cancelled = packets(channel);
+                c.assertEquals(4, cancelled.size(), "Cleanup cancels all four intervals");
+                c.assertTrue(cancelled.stream().noneMatch(MovementMemoryPayload::holding), "Cleanup leaves no held keys");
+            } finally { s.close(); }
+            c.complete();
+        });
     }
     private static List<MovementMemoryPayload> packets(EmbeddedChannel channel) {
         channel.runPendingTasks(); channel.flush();
