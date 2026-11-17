@@ -20,12 +20,12 @@ class AttackRecoilChallengeTest {
         assertInstanceOf(AttackRecoilChallenge.class, challenge);
         assertFalse(challenge.getName().isBlank());
         assertFalse(challenge.getShortDescription().isBlank());
-        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
+        assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(challenge.getId())).count());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(challenge));
         challenge.setEnabled(false);
-        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(challenge));
     }
     @Test void doubleAndPersonalActivationPersistWithoutPerAttackState() {
         var ids = List.of(AttackRecoilChallenge.ID, "no_sprint");
