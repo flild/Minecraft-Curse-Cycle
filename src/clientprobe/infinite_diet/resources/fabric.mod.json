@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "infinite_diet_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "preLaunch": ["validation.InfiniteDietProbe"] }
+}

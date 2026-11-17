@@ -55,6 +55,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "InfiniteDietClientHungerManagerMixin",
     "OneHeartInGameHudMixin",
     "HeartbeatKeyboardMixin",
     "HeartbeatMouseMixin",

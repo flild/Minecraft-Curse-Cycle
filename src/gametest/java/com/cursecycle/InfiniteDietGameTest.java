@@ -190,7 +190,9 @@ public class InfiniteDietGameTest implements FabricGameTest {
 
             CycleManager.activateChallenge(server, state, InfiniteDietChallenge.ID);
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 1200));
-            CycleManager.activateChallenge(server, state, "test_easy");
+            CycleManager.activateChallenge(server, state, "no_sprint");
+            context.assertFalse(state.getActiveChallengeIds().contains(InfiniteDietChallenge.ID),
+                    "Switching to an enabled challenge stops the diet");
             new ItemStack(Items.COOKED_BEEF).finishUsing(world, player);
             assertNutrition(context, player, 19, 18.8F, "Food restores vanilla nutrition after stopping");
             context.assertTrue(player.hasStatusEffect(StatusEffects.SPEED), "Unrelated effects survive stopping");
@@ -198,7 +200,7 @@ public class InfiniteDietGameTest implements FabricGameTest {
             reconnectId = late.getUuid();
             CycleManager.activateChallenge(server, state, InfiniteDietChallenge.ID);
             manager.remove(late);
-            CycleManager.activateChallenge(server, state, "test_easy");
+            CycleManager.activateChallenge(server, state, "no_sprint");
             late = createPlayer(context, reconnectId, players);
             late.getHungerManager().add(2, 0.5F);
             assertNutrition(context, late, 10, 4, "Challenge ending while offline leaves no stale restriction");
