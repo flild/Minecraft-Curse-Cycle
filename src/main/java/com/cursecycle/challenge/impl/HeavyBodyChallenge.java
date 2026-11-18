@@ -23,7 +23,7 @@ public final class HeavyBodyChallenge extends Challenge {
     public static final String ID = "heavy_body";
     public static final float MULTIPLIER = 0.6F;
     public static final double MOVING_THRESHOLD = 0.02;
-    public static final int MAX_STAMINA = 100, RECOVERY_TICKS = 40;
+    public static final int MAX_STAMINA = 50, RECOVERY_TICKS = 40;
     public static final int REGEN_DELAY_TICKS = 20;
     public static final SoundEvent PANT = SoundEvent.of(Identifier.of("cursecycle", "heavy_body_pant"));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();

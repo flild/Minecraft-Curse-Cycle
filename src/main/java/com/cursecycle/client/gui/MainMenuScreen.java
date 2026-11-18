@@ -28,8 +28,8 @@ import java.util.List;
 
 /** The H-key journal also explains the mod and edits the server's timing settings. */
 public class MainMenuScreen extends Screen {
-    private static final int HOME = 0, ACTIVE = 1, NEXT = 2, HISTORY = 3, COMMANDS = 4, SETTINGS = 5;
-    private static final String[] TABS = {"home", "active", "next", "history", "commands", "settings"};
+    private static final int HOME = 0, ACTIVE = 1, NEXT = 2, HISTORY = 3, COMMANDS = 4, SETTINGS = 5, DEBUG = 6;
+    private static final String[] TABS = {"home", "active", "next", "history", "commands", "settings", "debug"};
     private static final List<SafeFloor> SAFE_FLOORS = List.of(
             new SafeFloor(new ItemStack(Items.RED_BED), "beds"),
             new SafeFloor(new ItemStack(Items.WHITE_WOOL), "wool"),
@@ -64,7 +64,8 @@ public class MainMenuScreen extends Screen {
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         int columns = panelWidth >= 400 ? 6 : 3;
-        bodyTop = top + (columns == 6 ? 65 : 92);
+        int tabRows = (TABS.length + columns - 1) / columns;
+        bodyTop = Math.max(top + 65, top + 35 + tabRows * 25 + 5);
         bodyBottom = top + panelHeight - 37;
         if (modal != null) {
             addDrawableChild(button(left + panelWidth - 80, top + panelHeight - 27, 68,
@@ -90,6 +91,8 @@ public class MainMenuScreen extends Screen {
             buildHome();
         } else if (activeTab == COMMANDS) {
             buildCommands();
+        } else if (activeTab == DEBUG) {
+            buildDebug();
         } else if (activeTab == ACTIVE) {
             for (String id : ClientDataHolder.getActiveChallengeIds()) addEntry(id, true);
         } else if (activeTab == NEXT) {
@@ -176,6 +179,38 @@ public class MainMenuScreen extends Screen {
         for (String command : List.of("trigger_spin", "activate_next", "activate", "setday", "reset"))
             paragraph("commands." + command, CurseStyle.TEXT);
         paragraph("commands.alias", CurseStyle.MUTED);
+    }
+
+    private void buildDebug() {
+        paragraph("debug.title", CurseStyle.BRONZE);
+        paragraph("debug.description", CurseStyle.TEXT);
+        paragraph("debug.permissions", CurseStyle.MUTED);
+
+        int row = contentHeight;
+        addSettingControl(button(left + 12, top + row, Math.min(150, panelWidth - 24),
+                Text.translatable("text.cursecycle.menu.debug.trigger_spin"),
+                b -> runDebugCommand("fdc trigger_spin")), row);
+        contentHeight += 29;
+        paragraph("debug.trigger_spin_help", CurseStyle.MUTED);
+
+        row = contentHeight;
+        addSettingControl(button(left + 12, top + row, Math.min(150, panelWidth - 24),
+                Text.translatable("text.cursecycle.menu.debug.activate_next"),
+                b -> runDebugCommand("fdc activate_next")), row);
+        contentHeight += 29;
+        paragraph("debug.activate_next_help", CurseStyle.MUTED);
+
+        row = contentHeight;
+        addSettingControl(button(left + 12, top + row, Math.min(150, panelWidth - 24),
+                Text.translatable("text.cursecycle.menu.debug.reset"),
+                b -> runDebugCommand("fdc reset")), row);
+        contentHeight += 29;
+        paragraph("debug.reset_help", CurseStyle.MUTED);
+    }
+
+    private void runDebugCommand(String command) {
+        if (client != null && client.getNetworkHandler() != null)
+            client.getNetworkHandler().sendChatCommand(command);
     }
 
     private void loadTimingDraft() {
@@ -348,7 +383,7 @@ public class MainMenuScreen extends Screen {
                 left + panelWidth - 13 - textRenderer.getWidth(label), top + 13, CurseStyle.MUTED);
         if (modal != null) {
             renderModal(context);
-        } else if (activeTab == HOME || activeTab == COMMANDS || activeTab == SETTINGS) {
+        } else if (activeTab == HOME || activeTab == COMMANDS || activeTab == DEBUG || activeTab == SETTINGS) {
             renderParagraphs(context);
         } else {
             context.enableScissor(left + 10, bodyTop, left + panelWidth - 10, bodyBottom);
@@ -368,7 +403,7 @@ public class MainMenuScreen extends Screen {
             }
         }
         super.render(context, mouseX, mouseY, delta);
-        if (modal == null && (activeTab == HOME || activeTab == COMMANDS) && contentHeight > bodyBottom - bodyTop)
+        if (modal == null && (activeTab == HOME || activeTab == COMMANDS || activeTab == DEBUG) && contentHeight > bodyBottom - bodyTop)
             context.drawTextWithShadow(textRenderer, Text.translatable("text.cursecycle.menu.scroll_hint"),
                     left + 14, top + panelHeight - 21, CurseStyle.MUTED);
         if (modal == null && activeTab == SETTINGS && !saveStatus.isEmpty())
