@@ -6,7 +6,6 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.server.network.ServerPlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -18,8 +17,7 @@ public abstract class AppliedDamageLivingEntityMixin {
         // Borrow a primary-attack receipt once; recursive damage owns a separate result,
         // including mobs and player targets without incoming-damage challenges.
         if (DamageHooks.claimAttackDamage(target, source)) return original.call(source, amount);
-        if (!DamageHooks.isPending(target)
-                && (!(target instanceof ServerPlayerEntity player) || !DamageHooks.needed(player)))
+        if (!DamageHooks.isPending(target) && !DamageHooks.needed(target, source))
             return original.call(source, amount);
         var receipt = DamageHooks.begin(target, source);
         boolean completed = false;
@@ -36,6 +34,6 @@ public abstract class AppliedDamageLivingEntityMixin {
     private void cursecycle$realReduction(LivingEntity target, float value, Operation<Void> original) {
         float health = target.getHealth(), absorption = target.getAbsorptionAmount();
         original.call(target, value);
-        if (target.getHealth() < health || target.getAbsorptionAmount() < absorption) DamageHooks.accepted(target);
+        DamageHooks.reduced(target, health, absorption);
     }
 }

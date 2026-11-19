@@ -3,6 +3,7 @@ package com.cursecycle.mixin;
 import com.cursecycle.challenge.DamageHooks;
 import com.cursecycle.challenge.DamageReceipt;
 import com.cursecycle.challenge.impl.AttackRecoilChallenge;
+import com.cursecycle.challenge.impl.PacifistChallenge;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Share;
@@ -25,7 +26,8 @@ public abstract class AttackRecoilPlayerEntityMixin {
     private boolean cursecycle$primaryHit(Entity target, DamageSource source, float amount,
                                          Operation<Boolean> original,
                                          @Share("cursecycle$primaryDamage") LocalRef<DamageReceipt> primary) {
-        if (!((Object) this instanceof ServerPlayerEntity player) || !AttackRecoilChallenge.eligible(player, target))
+        if (!((Object) this instanceof ServerPlayerEntity player) || !(target instanceof LivingEntity living)
+                || (!AttackRecoilChallenge.eligible(player, target) && PacifistChallenge.attacker(living, source) == null))
             return original.call(target, source, amount);
         var receipt = DamageHooks.beginAttack((LivingEntity) target, source);
         boolean completed = false;

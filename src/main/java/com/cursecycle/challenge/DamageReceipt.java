@@ -15,6 +15,7 @@ public final class DamageReceipt {
     public final ServerWorld world;
     public final Vec3d position;
     boolean accepted;
+    private float amount;
     boolean awaitingAttackDamage;
     DamageReceipt(LivingEntity target, DamageSource source) {
         this.target = target;
@@ -24,4 +25,14 @@ public final class DamageReceipt {
         position = target.getPos();
     }
     public boolean wasApplied() { return accepted; }
+    /** Actual HP plus absorption consumed, capped by each pool before totem restoration. */
+    public float amount() { return amount; }
+    void recordReduction(float health, float absorption) {
+        float reduction = Math.max(0, health - target.getHealth())
+                + Math.max(0, absorption - target.getAbsorptionAmount());
+        if (reduction > 0) {
+            accepted = true;
+            amount += reduction;
+        }
+    }
 }

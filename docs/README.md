@@ -60,6 +60,7 @@
 
 ### Сложные
 
+- [Пацифист](pacifist-testing.md) — `pacifist`.
 - [Да как ходить то!](inverted-keyboard-testing.md) — `inverted_keyboard`.
 - [Зато под водой дышать можно](gills-testing.md) — `gills`.
 - [Лучше бы вечная тошнота](inverted-mouse-testing.md) — `inverted_mouse`.

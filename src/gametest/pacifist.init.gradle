@@ -1,0 +1,28 @@
+// Keep the full source entrypoint list; isolate shared damage-path regression tests and world data.
+allprojects {
+    afterEvaluate {
+        def isolated = project.file('build/pacifist-gametest')
+        def metadata = new File(isolated, 'resources/fabric.mod.json')
+        sourceSets.gametest.resources.setSrcDirs([new File(isolated, 'resources')])
+        tasks.register('preparePacifistMetadata') {
+            inputs.file project.file('src/gametest/resources/fabric.mod.json')
+            outputs.file metadata
+            doLast {
+                def data = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+                data.entrypoints['fabric-gametest'] = [
+                    'com.cursecycle.PacifistGameTest',
+                    'com.cursecycle.AttackRecoilGameTest',
+                    'com.cursecycle.DamageSlotDropGameTest',
+                    'com.cursecycle.DamageTeleportGameTest'
+                ]
+                metadata.parentFile.mkdirs()
+                metadata.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)), 'UTF-8')
+            }
+        }
+        tasks.named('processGametestResources') { dependsOn tasks.named('preparePacifistMetadata') }
+        loom.runs.gametest {
+            runDir 'build/pacifist-gametest/run'
+            vmArg "-Dfabric-api.gametest.report-file=${new File(isolated, 'report.xml').absolutePath}"
+        }
+    }
+}

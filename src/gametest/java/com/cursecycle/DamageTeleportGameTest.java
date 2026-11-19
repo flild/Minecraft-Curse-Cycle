@@ -168,7 +168,7 @@ public class DamageTeleportGameTest implements FabricGameTest {
             teleportPackets(s, p);
             try { orb.onPlayerCollision(p); } finally { orb.discard(); }
             c.assertEquals(xp + 7, p.totalExperience, "Real orb XP granted");
-            c.assertEquals(19F, p.getHealth(), "Pickup damage accepted");
+            c.assertEquals(18F, p.getHealth(), "Pickup damage accepted");
             moved(c, p, origin);
             c.assertEquals(1, teleportPackets(s, p), "Actual XP source causes one teleport");
             s.activate("bitter_experience");
@@ -177,7 +177,7 @@ public class DamageTeleportGameTest implements FabricGameTest {
             world.spawnEntity(orb);
             p.experiencePickUpDelay = 0;
             try { orb.onPlayerCollision(p); } finally { orb.discard(); }
-            c.assertEquals(19F, p.getHealth(), "Partner still damages after teleport ends");
+            c.assertEquals(18F, p.getHealth(), "Partner still damages after teleport ends");
             at(c, p, origin, "Ending teleport leaves XP consequence unchanged");
             s.activate("test_easy");
             reset(p, world, origin);

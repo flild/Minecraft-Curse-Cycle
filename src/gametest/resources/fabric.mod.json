@@ -30,6 +30,7 @@
       "com.cursecycle.CraftingTaxGameTest",
       "com.cursecycle.HotbarShuffleGameTest",
       "com.cursecycle.AttackRecoilGameTest",
+      "com.cursecycle.PacifistGameTest",
       "com.cursecycle.BitterExperienceGameTest",
       "com.cursecycle.DamageTeleportGameTest",
       "com.cursecycle.DamageSlotDropGameTest",

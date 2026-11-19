@@ -15,6 +15,6 @@ public abstract class AppliedDamagePlayerEntityMixin {
     private void cursecycle$realReduction(PlayerEntity player, float value, Operation<Void> original) {
         float health = player.getHealth(), absorption = player.getAbsorptionAmount();
         original.call(player, value);
-        if (player.getHealth() < health || player.getAbsorptionAmount() < absorption) DamageHooks.accepted(player);
+        DamageHooks.reduced(player, health, absorption);
     }
 }

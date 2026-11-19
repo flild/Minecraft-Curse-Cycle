@@ -1,6 +1,7 @@
 package com.cursecycle.challenge;
 
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.challenge.impl.PacifistChallenge;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -13,6 +14,10 @@ public final class DamageHooks {
     private DamageHooks() {}
     public static boolean needed(ServerPlayerEntity player) {
         return ChallengeActivity.active(player, "damage_slot_drop") || ChallengeActivity.active(player, "damage_teleport");
+    }
+    public static boolean needed(LivingEntity target, DamageSource source) {
+        return (target instanceof ServerPlayerEntity player && needed(player))
+                || PacifistChallenge.attacker(target, source) != null;
     }
     public static DamageReceipt begin(LivingEntity target, DamageSource source) {
         var receipt = new DamageReceipt(target, source);
@@ -37,15 +42,19 @@ public final class DamageHooks {
         var receipt = pending.get().peek();
         return receipt != null && receipt.target == target;
     }
-    public static void accepted(LivingEntity target) {
+    public static void reduced(LivingEntity target, float health, float absorption) {
         var receipt = pending.get().peek();
-        if (receipt != null && receipt.target == target) receipt.accepted = true;
+        if (receipt != null && receipt.target == target) receipt.recordReduction(health, absorption);
     }
     public static void finish(DamageReceipt receipt, boolean completed) {
         var stack = pending.get();
         if (stack.pop() != receipt) throw new IllegalStateException("Unbalanced damage receipt");
         if (stack.isEmpty()) pending.remove();
-        if (!completed || !receipt.accepted || receipt.player == null || !receipt.player.isAlive()) return;
+        if (!completed || !receipt.accepted) return;
+        if (receipt.player != null && receipt.player.isAlive()) incoming(receipt);
+        PacifistChallenge.reflect(receipt);
+    }
+    private static void incoming(DamageReceipt receipt) {
         var server = receipt.player.getServer();
         var state = CurseCycleState.getServerState(server);
         var ids = new LinkedHashSet<>(state.getActiveChallengeIds());
