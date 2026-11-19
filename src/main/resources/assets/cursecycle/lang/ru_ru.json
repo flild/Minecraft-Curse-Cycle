@@ -1,4 +1,13 @@
 {
+  "text.cursecycle.simon_says.command": "Саймон говорит: %s · %s с",
+  "text.cursecycle.simon_says.jump": "прыгни",
+  "text.cursecycle.simon_says.crouch": "присядь",
+  "text.cursecycle.simon_says.stop": "стой полсекунды",
+  "text.cursecycle.simon_says.swap": "выбери другой предмет",
+  "text.cursecycle.simon_says.success": "Саймон: выполнено",
+  "text.cursecycle.simon_says.failure": "Саймон: время вышло",
+  "death.attack.cursecycle.simon_says": "%1$s не послушался Саймона",
+  "death.attack.cursecycle.simon_says.player": "%1$s не послушался Саймона, сражаясь с %2$s",
   "text.cursecycle.menu.safe_floor": "Безопасная опора",
   "text.cursecycle.menu.safe_floor.beds": "Кровати любого цвета",
   "text.cursecycle.menu.safe_floor.wool": "Шерсть любого цвета",

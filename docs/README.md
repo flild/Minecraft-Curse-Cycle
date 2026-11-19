@@ -40,6 +40,8 @@
 
 ### Средние
 
+- [Саймон говорит](simon-says-testing.md) — `simon_says`.
+
 - [Аптечная лотырея](random-potion-testing.md) — `random_potion`.
 - [Водобоязнь](floor-is-water-testing.md) — `floor_is_water`.
 - [Голый король](armor-disabled-testing.md) — `armor_disabled`.

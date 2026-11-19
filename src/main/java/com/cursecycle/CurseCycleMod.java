@@ -76,6 +76,19 @@ public class CurseCycleMod implements ModInitializer {
                 com.cursecycle.challenge.impl.MovementMemoryChallenge::clear);
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
                 com.cursecycle.challenge.impl.MovementMemoryChallenge.forget(handler.getPlayer()));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.SimonSaysChallenge::clear);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.cursecycle.challenge.impl.SimonSaysChallenge.forget(handler.getPlayer()));
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            if (entity instanceof ServerPlayerEntity player)
+                com.cursecycle.challenge.impl.SimonSaysChallenge.forget(player);
+        });
+        net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(
+                (player, origin, destination) -> {
+                    com.cursecycle.challenge.impl.SimonSaysChallenge.forget(player);
+                    com.cursecycle.challenge.impl.SimonSaysChallenge.sync(player);
+                });
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CurseCycleCommand.register(dispatcher));
 
         // Player Join Event -> sync state & re-apply active challenges
@@ -129,6 +142,7 @@ public class CurseCycleMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.AutoJumpChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeavyBodyChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeartbeatChallenge::tick);
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.SimonSaysChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.EndlessRaidChallenge::tick);
     }
 }

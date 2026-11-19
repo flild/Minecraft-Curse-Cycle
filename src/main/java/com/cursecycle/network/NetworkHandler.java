@@ -59,6 +59,7 @@ public class NetworkHandler {
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
         com.cursecycle.challenge.impl.HeartbeatChallenge.sync(player);
+        com.cursecycle.challenge.impl.SimonSaysChallenge.sync(player);
         if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID)) {
             ServerPlayNetworking.send(player, new HeavyBodyPayload(
                     CurseCycleState.getServerState(player.getServer()).getActivationSerial(), false));

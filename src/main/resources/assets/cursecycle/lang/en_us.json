@@ -1,4 +1,13 @@
 {
+  "text.cursecycle.simon_says.command": "Simon says: %s · %s s",
+  "text.cursecycle.simon_says.jump": "jump",
+  "text.cursecycle.simon_says.crouch": "crouch",
+  "text.cursecycle.simon_says.stop": "stand still for half a second",
+  "text.cursecycle.simon_says.swap": "select a different item",
+  "text.cursecycle.simon_says.success": "Simon: done",
+  "text.cursecycle.simon_says.failure": "Simon: time is up",
+  "death.attack.cursecycle.simon_says": "%1$s disobeyed Simon",
+  "death.attack.cursecycle.simon_says.player": "%1$s disobeyed Simon while fighting %2$s",
   "text.cursecycle.menu.safe_floor": "Safe surfaces",
   "text.cursecycle.menu.safe_floor.beds": "Beds of any color",
   "text.cursecycle.menu.safe_floor.wool": "Wool of any color",
