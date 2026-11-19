@@ -126,13 +126,13 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
             sync("silent_world"); check(SilentWorld.shouldMute(client), "Ending heavy preserves mute"); near(.25F, (float) speed.invoke(client.player, .6F));
             sync("heavy_body");
             HeavyBodyInput.receive(new HeavyBodyPayload(99, false));
-            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 100, 0));
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 50, 0));
             var canvas = (Canvas) unsafe.allocateInstance(Canvas.class);
             com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.fills == 0, "Full stamina hidden at rest");
             sprinting = true; com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.labels == 1 && canvas.filledWidth == 120 && canvas.dividers == 9, "Sprint reveals full segmented bronze bar");
-            canvas.clear(); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 50, 0));
+            canvas.clear(); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 25, 0));
             com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.filledWidth == 60 && canvas.dividers == 9, "Server stamina maps to half bar");
             HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 0, 40));
@@ -152,9 +152,9 @@ public final class HeavyBodyProbe implements PreLaunchEntrypoint {
             options.hudHidden = false; sync("heavy_body", "blind_hud");
             canvas.clear(); com.cursecycle.client.gui.HeavyBodyOverlay.render(canvas);
             check(canvas.fills == 1, "Blind HUD hides stamina consistently with other resources");
-            sync("heavy_body"); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(98, 100, 0));
+            sync("heavy_body"); HeavyBodyInput.receive(client, new HeavyBodyStatePayload(98, 50, 0));
             check(HeavyBodyChallenge.cannotSprint(client.player), "Stale state cannot unlock sprint");
-            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 100, 0));
+            HeavyBodyInput.receive(client, new HeavyBodyStatePayload(99, 50, 0));
             callback = new org.spongepowered.asm.mixin.injection.callback.CallbackInfo("setSprinting", true);
             sprintGate.invoke(client.player, true, callback); check(!callback.isCancelled(), "Server recovery unlocks sprint");
             for (int i = 0; i < 5; i++) HeavyBodyInput.stamina().tick();
