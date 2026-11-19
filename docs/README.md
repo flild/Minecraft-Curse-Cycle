@@ -69,6 +69,7 @@
 
 - [За тобой выехали](skeleton-hunter-testing.md) — `skeleton_hunter`.
 
+- [Гарантия закончилась](warranty-expired-testing.md) — `warranty_expired`.
 - [После меня хоть пожар](fire-trail-testing.md) — `fire_trail`.
 - [Кровавая повинность](blood-tribute-testing.md) — `blood_tribute`.
 - [Пацифист](pacifist-testing.md) — `pacifist`.
