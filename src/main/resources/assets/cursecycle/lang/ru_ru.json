@@ -1,4 +1,6 @@
 {
+  "text.cursecycle.skeleton_hunter.warning": "Охотник приближается: появление рядом не раньше чем через 5 секунд.",
+  "entity.cursecycle.skeleton_hunter": "Твой охотник",
   "text.cursecycle.simon_says.turn": "развернись",
   "text.cursecycle.simon_says.look_up": "посмотри вверх",
   "text.cursecycle.simon_says.look_down": "посмотри вниз",

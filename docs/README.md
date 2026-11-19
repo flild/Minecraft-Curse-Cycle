@@ -62,6 +62,8 @@
 
 ### Сложные
 
+- [За тобой выехали](skeleton-hunter-testing.md) — `skeleton_hunter`.
+
 - [Пацифист](pacifist-testing.md) — `pacifist`.
 - [Да как ходить то!](inverted-keyboard-testing.md) — `inverted_keyboard`.
 - [Зато под водой дышать можно](gills-testing.md) — `gills`.

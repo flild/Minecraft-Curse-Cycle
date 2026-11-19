@@ -1,4 +1,6 @@
 {
+  "text.cursecycle.skeleton_hunter.warning": "Your hunter is closing in: arrival nearby in at least 5 seconds.",
+  "entity.cursecycle.skeleton_hunter": "Your hunter",
   "text.cursecycle.simon_says.turn": "turn around",
   "text.cursecycle.simon_says.look_up": "look up",
   "text.cursecycle.simon_says.look_down": "look down",

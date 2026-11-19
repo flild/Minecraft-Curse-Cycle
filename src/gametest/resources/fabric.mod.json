@@ -11,6 +11,7 @@
       "com.cursecycle.NetheriteMobsGameTest",
       "com.cursecycle.HeartbeatGameTest",
       "com.cursecycle.SimonSaysGameTest",
+      "com.cursecycle.SkeletonHunterGameTest",
       "com.cursecycle.SilentWorldGameTest",
       "com.cursecycle.InvisibleMobsGameTest",
       "com.cursecycle.BlindHudGameTest",

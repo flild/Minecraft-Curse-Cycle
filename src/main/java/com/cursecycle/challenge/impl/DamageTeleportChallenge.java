@@ -70,7 +70,7 @@ public class DamageTeleportChallenge extends Challenge {
         return candidates(origin, directions).stream().filter(safe).findFirst();
     }
 
-    public static boolean isSafe(ServerPlayerEntity player, ServerWorld world, Vec3d position) {
+    public static boolean isSafe(net.minecraft.entity.Entity player, ServerWorld world, Vec3d position) {
         Box body = player.getBoundingBox().offset(position.subtract(player.getPos()));
         Box feet = new Box(body.minX, body.minY - 1.0E-6, body.minZ, body.maxX, body.minY, body.maxZ);
         if (feet.minY < world.getBottomY() || body.maxY > world.getTopY()
