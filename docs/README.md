@@ -40,6 +40,7 @@
 
 ### Средние
 
+- [Газ заклинило](stuck-throttle-testing.md) — `stuck_throttle`.
 - [Саймон говорит](simon-says-testing.md) — `simon_says`.
 
 - [Аптечная лотырея](random-potion-testing.md) — `random_potion`.

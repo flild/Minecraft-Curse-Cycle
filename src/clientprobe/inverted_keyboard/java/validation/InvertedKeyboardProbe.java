@@ -150,7 +150,15 @@ public final class InvertedKeyboardProbe implements PreLaunchEntrypoint {
             press(1 | 64); tick(input, false, .3f); check(input.movementForward == -1, "Memory sees inverted forward");
             press(64); tick(input, true, .3f); check(input.movementForward == -.3f && input.pressingBack, "Memory repeats inverted direction after release");
             sync("movement_memory"); press(1 | 64); tick(input, false, .3f);
-            press(64); tick(input, false, .3f); check(input.movementForward == 1, "Ending inversion preserves active memory");
+            press(64); tick(input, false, .3f);
+            check(input.movementForward == 0 && input.pressingForward && input.pressingBack,
+                    "Ending inversion preserves both the old back memory and the newly released forward memory");
+            // The old inverted direction has its own server deadline; expire only that direction.
+            var memoryField = MovementMemoryInput.class.getDeclaredField("MEMORY"); memoryField.setAccessible(true);
+            var requestsField = MovementMemoryInput.Memory.class.getDeclaredField("requests"); requestsField.setAccessible(true);
+            var pending = (long[]) requestsField.get(memoryField.get(null));
+            MovementMemoryInput.receive(new MovementMemoryPayload(71, pending[MovementMemoryPayload.BACK], MovementMemoryPayload.BACK, false));
+            press(64); tick(input, false, .3f); check(input.movementForward == 1, "Only expired back memory ends; forward memory remains");
             sync(ID); press(64); tick(input, false, .3f); check(input.movementForward == 0, "Ending memory retains no stale movement");
             check(!InvertedKeyboardInput.shouldInvert(null, input), "Null client rejected");
             System.out.println("INVERTED_KEYBOARD_REVIEW_CLIENT_PASSED checks=" + checks + " ticks=" + ticks

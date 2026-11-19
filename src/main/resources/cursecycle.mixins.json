@@ -61,6 +61,7 @@
     "AppliedDamagePlayerEntityMixin"
   ],
   "client": [
+    "StuckThrottleClientPlayerMixin",
     "InventoryLockdownHandledScreenMixin",
     "HeavyBodyGameRendererMixin",
     "InfiniteDietClientHungerManagerMixin",

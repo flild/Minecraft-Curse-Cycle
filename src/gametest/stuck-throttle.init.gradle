@@ -1,0 +1,28 @@
+// Isolate forced input and the three existing input/synchronization regressions.
+allprojects {
+    afterEvaluate {
+        def isolated = project.file('build/stuck-throttle-gametest')
+        def metadata = new File(isolated, 'resources/fabric.mod.json')
+        sourceSets.gametest.resources.setSrcDirs([new File(isolated, 'resources')])
+        tasks.register('prepareStuckThrottleMetadata') {
+            inputs.file project.file('src/gametest/resources/fabric.mod.json')
+            outputs.file metadata
+            doLast {
+                def data = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+                data.entrypoints['fabric-gametest'] = [
+                    'com.cursecycle.StuckThrottleGameTest',
+                    'com.cursecycle.InvertedKeyboardGameTest',
+                    'com.cursecycle.MovementMemoryGameTest',
+                    'com.cursecycle.BlockedDirectionGameTest'
+                ]
+                metadata.parentFile.mkdirs()
+                metadata.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)), 'UTF-8')
+            }
+        }
+        tasks.named('processGametestResources') { dependsOn tasks.named('prepareStuckThrottleMetadata') }
+        loom.runs.gametest {
+            runDir 'build/stuck-throttle-gametest/run'
+            vmArg "-Dfabric-api.gametest.report-file=${new File(isolated, 'report.xml').absolutePath}"
+        }
+    }
+}
