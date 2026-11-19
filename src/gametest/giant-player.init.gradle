@@ -1,0 +1,31 @@
+// Isolate giant-player geometry plus existing gravity, jump and safe-teleport regressions.
+allprojects {
+    afterEvaluate {
+        def isolated = project.file('build/giant-player-gametest')
+        def metadata = new File(isolated, 'resources/fabric.mod.json')
+        sourceSets.gametest.resources.setSrcDirs([new File(isolated, 'resources')])
+        tasks.register('prepareGiantPlayerMetadata') {
+            inputs.file project.file('src/gametest/resources/fabric.mod.json')
+            outputs.file metadata
+            doLast {
+                def data = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+                data.entrypoints['fabric-gametest'] = [
+                    'com.cursecycle.GiantPlayerGameTest',
+                    'com.cursecycle.TinyPlayerGameTest',
+                    'com.cursecycle.LowGravityGameTest',
+                    'com.cursecycle.GravityTenGameTest',
+                    'com.cursecycle.HeavyBodyGameTest',
+                    'com.cursecycle.AutoJumpGameTest',
+                    'com.cursecycle.DamageTeleportGameTest'
+                ]
+                metadata.parentFile.mkdirs()
+                metadata.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)), 'UTF-8')
+            }
+        }
+        tasks.named('processGametestResources') { dependsOn tasks.named('prepareGiantPlayerMetadata') }
+        loom.runs.gametest {
+            runDir 'build/giant-player-gametest/run'
+            vmArg "-Dfabric-api.gametest.report-file=${new File(isolated, 'report.xml').absolutePath}"
+        }
+    }
+}

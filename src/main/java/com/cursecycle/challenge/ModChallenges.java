@@ -36,6 +36,7 @@ import com.cursecycle.challenge.test.*;
 public class ModChallenges {
     public static void registerAll() {
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.TinyPlayerChallenge());
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.GiantPlayerChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.WarrantyExpiredChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.FireTrailChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.BloodTributeChallenge());

@@ -1,0 +1,28 @@
+// Isolated transformed CLIENT probe; never included in production source sets or JARs.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/giant_player')
+        def probeOutput = project.file('build/giant-player-client-probe')
+        tasks.register('compileGiantPlayerProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('giantPlayerProbeJar', Jar) {
+            dependsOn tasks.named('compileGiantPlayerProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/giant-player-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+        }
+        tasks.named('runClient') { dependsOn tasks.named('giantPlayerProbeJar') }
+    }
+}
