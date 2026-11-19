@@ -1,4 +1,5 @@
 {
+  "text.cursecycle.meteor_shower.warning": "Метеоритный дождь: покинь огненные кольца! Старт через 3 секунды.",
   "text.cursecycle.skeleton_hunter.warning": "Охотник приближается: появление рядом не раньше чем через 5 секунд.",
   "entity.cursecycle.skeleton_hunter": "Твой охотник",
   "text.cursecycle.simon_says.turn": "развернись",

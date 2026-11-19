@@ -64,6 +64,8 @@
 
 ### Сложные
 
+- [Метеослужба предупреждала](meteor-shower-testing.md) — `meteor_shower`.
+
 - [За тобой выехали](skeleton-hunter-testing.md) — `skeleton_hunter`.
 
 - [Пацифист](pacifist-testing.md) — `pacifist`.
