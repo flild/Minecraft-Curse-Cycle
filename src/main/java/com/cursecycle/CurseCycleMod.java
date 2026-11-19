@@ -45,6 +45,8 @@ public class CurseCycleMod implements ModInitializer {
         config.applyChallengeToggles();
         diagnostics.stage("registering gameplay events");
         ChallengeEventManager.registerEvents();
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) ->
+                com.cursecycle.challenge.impl.BuddingChallenge.died(entity));
 
         // Register payloads & commands
         diagnostics.stage("registering network payloads");

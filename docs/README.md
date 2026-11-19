@@ -40,6 +40,7 @@
 
 ### Средние
 
+- [Почкование](budding-testing.md) — `budding`.
 - [Газ заклинило](stuck-throttle-testing.md) — `stuck_throttle`.
 - [Саймон говорит](simon-says-testing.md) — `simon_says`.
 
