@@ -21,6 +21,7 @@
       "com.cursecycle.InvertedMouseGameTest",
       "com.cursecycle.AutoJumpGameTest",
       "com.cursecycle.GravityTenGameTest",
+      "com.cursecycle.LowGravityGameTest",
       "com.cursecycle.HeavyBodyGameTest",
       "com.cursecycle.MovementMemoryGameTest",
       "com.cursecycle.BlockedDirectionGameTest",

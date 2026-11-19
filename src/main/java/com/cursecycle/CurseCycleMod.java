@@ -50,6 +50,10 @@ public class CurseCycleMod implements ModInitializer {
         diagnostics.stage("registering network payloads");
         NetworkHandler.registerPayloads();
         diagnostics.stage("registering lifecycle events and commands");
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (entity instanceof net.minecraft.entity.LivingEntity living)
+                com.cursecycle.challenge.impl.LowGravityChallenge.reconcile(living);
+        });
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(
                 com.cursecycle.challenge.impl.SkeletonHunterChallenge::loaded);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register(

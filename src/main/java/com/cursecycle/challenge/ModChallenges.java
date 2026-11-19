@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.LowGravityChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SkeletonHunterChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SimonSaysChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.PacifistChallenge());

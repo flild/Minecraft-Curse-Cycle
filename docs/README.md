@@ -48,6 +48,7 @@
 - [Горький опыт](bitter-experience-testing.md) — `bitter_experience`.
 - [Жестокая диета](infinite-diet-testing.md) — `infinite_diet`.
 - [Земля тянет к себе](gravity-ten-testing.md) — `gravity_ten`.
+- [Добро пожаловать на Луну](low-gravity-testing.md) — `low_gravity`.
 - [Их здесь нет](invisible-mobs-testing.md) — `invisible_mobs`.
 - [Конфига симпла](offset-crosshair-testing.md) — `offset_crosshair`.
 - [Курчу верчу запутать хочу](hotbar-shuffle-testing.md) — `hotbar_shuffle`.

@@ -3,6 +3,9 @@
   "package": "com.cursecycle.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "LowGravityLivingEntityMixin",
+    "LowGravityProjectileMixin",
+    "LowGravityExplosionMixin",
     "SkeletonHunterMobMixin",
     "SkeletonHunterSkeletonMixin",
     "EndlessRaidBadOmenMixin",

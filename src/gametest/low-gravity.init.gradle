@@ -1,0 +1,30 @@
+// Isolate new physics plus existing gravity, jump, recoil and damage regressions.
+allprojects {
+    afterEvaluate {
+        def isolated = project.file('build/low-gravity-gametest')
+        def metadata = new File(isolated, 'resources/fabric.mod.json')
+        sourceSets.gametest.resources.setSrcDirs([new File(isolated, 'resources')])
+        tasks.register('prepareLowGravityMetadata') {
+            inputs.file project.file('src/gametest/resources/fabric.mod.json')
+            outputs.file metadata
+            doLast {
+                def data = new groovy.json.JsonSlurper().parse(project.file('src/gametest/resources/fabric.mod.json'))
+                data.entrypoints['fabric-gametest'] = [
+                    'com.cursecycle.LowGravityGameTest',
+                    'com.cursecycle.GravityTenGameTest',
+                    'com.cursecycle.HeavyBodyGameTest',
+                    'com.cursecycle.AutoJumpGameTest',
+                    'com.cursecycle.AttackRecoilGameTest',
+                    'com.cursecycle.PacifistGameTest'
+                ]
+                metadata.parentFile.mkdirs()
+                metadata.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data)), 'UTF-8')
+            }
+        }
+        tasks.named('processGametestResources') { dependsOn tasks.named('prepareLowGravityMetadata') }
+        loom.runs.gametest {
+            runDir 'build/low-gravity-gametest/run'
+            vmArg "-Dfabric-api.gametest.report-file=${new File(isolated, 'report.xml').absolutePath}"
+        }
+    }
+}
