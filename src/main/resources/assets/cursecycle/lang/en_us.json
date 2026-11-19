@@ -1,4 +1,10 @@
 {
+  "text.cursecycle.blood_tribute.warning": "Blood tribute: kill a mob within %s s",
+  "text.cursecycle.blood_tribute.overdue": "Blood tribute: overdue. Kill a mob to stop losing health",
+  "text.cursecycle.blood_tribute.paid": "Blood tribute: kill counted. Three minutes remaining",
+  "death.attack.cursecycle.blood_tribute": "%1$s failed to pay the blood tribute",
+  "death.attack.cursecycle.blood_tribute.player": "%1$s failed to pay the blood tribute while fighting %2$s",
+
   "text.cursecycle.meteor_shower.warning": "Meteor shower: leave the fire rings! Meteors launch in 3 seconds.",
   "text.cursecycle.skeleton_hunter.warning": "Your hunter is closing in: arrival nearby in at least 5 seconds.",
   "entity.cursecycle.skeleton_hunter": "Your hunter",

@@ -12,6 +12,14 @@ import java.util.LinkedHashSet;
 public final class DamageHooks {
     private static final ThreadLocal<ArrayDeque<DamageReceipt>> pending = ThreadLocal.withInitial(ArrayDeque::new);
     private DamageHooks() {}
+    /** Last direct melee/projectile source only; historical kill credit, pets and traps do not qualify. */
+    public static ServerPlayerEntity directPlayerAttacker(DamageSource source) {
+        if (!(source.getAttacker() instanceof ServerPlayerEntity player)) return null;
+        boolean melee = source.isOf(net.minecraft.entity.damage.DamageTypes.PLAYER_ATTACK) && source.getSource() == player;
+        boolean projectile = source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_PROJECTILE)
+                && source.getSource() instanceof net.minecraft.entity.projectile.ProjectileEntity;
+        return melee || projectile ? player : null;
+    }
     public static boolean needed(ServerPlayerEntity player) {
         return ChallengeActivity.active(player, "damage_slot_drop") || ChallengeActivity.active(player, "damage_teleport");
     }

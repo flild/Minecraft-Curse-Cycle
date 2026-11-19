@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.BloodTributeChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.BuddingChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.MeteorShowerChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.StuckThrottleChallenge());

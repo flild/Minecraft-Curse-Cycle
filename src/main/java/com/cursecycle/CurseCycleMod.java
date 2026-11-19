@@ -45,8 +45,10 @@ public class CurseCycleMod implements ModInitializer {
         config.applyChallengeToggles();
         diagnostics.stage("registering gameplay events");
         ChallengeEventManager.registerEvents();
-        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) ->
-                com.cursecycle.challenge.impl.BuddingChallenge.died(entity));
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            com.cursecycle.challenge.impl.BuddingChallenge.died(entity);
+            com.cursecycle.challenge.impl.BloodTributeChallenge.died(entity, source);
+        });
 
         // Register payloads & commands
         diagnostics.stage("registering network payloads");
@@ -120,6 +122,9 @@ public class CurseCycleMod implements ModInitializer {
                 });
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CurseCycleCommand.register(dispatcher));
 
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.BloodTributeChallenge::clear);
+
         // Player Join Event -> sync state & re-apply active challenges
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
@@ -168,6 +173,7 @@ public class CurseCycleMod implements ModInitializer {
 
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.BloodTributeChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.MeteorShowerChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.SkeletonHunterChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.AutoJumpChallenge::tick);

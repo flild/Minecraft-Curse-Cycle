@@ -1,4 +1,10 @@
 {
+  "text.cursecycle.blood_tribute.warning": "Кровавая повинность: убей моба за %s с",
+  "text.cursecycle.blood_tribute.overdue": "Кровавая повинность: срок истёк. Убей моба, чтобы остановить потерю здоровья",
+  "text.cursecycle.blood_tribute.paid": "Кровавая повинность: убийство засчитано. Новый срок — три минуты",
+  "death.attack.cursecycle.blood_tribute": "%1$s не выплатил кровавую повинность",
+  "death.attack.cursecycle.blood_tribute.player": "%1$s не выплатил кровавую повинность, сражаясь с %2$s",
+
   "text.cursecycle.meteor_shower.warning": "Метеоритный дождь: покинь огненные кольца! Старт через 3 секунды.",
   "text.cursecycle.skeleton_hunter.warning": "Охотник приближается: появление рядом не раньше чем через 5 секунд.",
   "entity.cursecycle.skeleton_hunter": "Твой охотник",

@@ -5,15 +5,13 @@ import com.cursecycle.challenge.ChallengeActivity;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeScope;
 import com.cursecycle.challenge.DamageReceipt;
+import com.cursecycle.challenge.DamageHooks;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageType;
-import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.decoration.ArmorStandEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 
@@ -31,11 +29,9 @@ public final class PacifistChallenge extends Challenge {
 
     /** Attribution alone is insufficient: old fire/kill credit, pets, Thorns and explosions are indirect. */
     public static ServerPlayerEntity attacker(LivingEntity target, DamageSource source) {
-        if (target instanceof ArmorStandEntity || !(source.getAttacker() instanceof ServerPlayerEntity player)
-                || player.isRemoved() || !ChallengeActivity.active(player, ID)) return null;
-        boolean melee = source.isOf(DamageTypes.PLAYER_ATTACK) && source.getSource() == player;
-        boolean projectile = source.isIn(DamageTypeTags.IS_PROJECTILE) && source.getSource() instanceof ProjectileEntity;
-        return melee || projectile ? player : null;
+        var player = DamageHooks.directPlayerAttacker(source);
+        return target instanceof ArmorStandEntity || player == null || player.isRemoved()
+                || !ChallengeActivity.active(player, ID) ? null : player;
     }
 
     public static void reflect(DamageReceipt receipt) {
