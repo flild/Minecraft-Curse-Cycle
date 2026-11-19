@@ -14,12 +14,14 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.text.TranslatableTextContent;
+import net.minecraft.util.Hand;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.World;
 
@@ -264,6 +266,99 @@ public class SimonSaysGameTest implements FabricGameTest {
             command(p, Action.CROUCH); packets(s.channel(p));
             s.activate("no_sprint");
             c.assertTrue(packets(s.channel(p)).stream().anyMatch(packet -> packet.content().getString().isEmpty()), "End clears pending HUD");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_turn", tickLimit = 40)
+    public void turnUsesRelativeDirectionAndWrapsYaw(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); p.setYaw(350); var phase = command(p, Action.TURN);
+            p.setYaw(350 + 360); step(p); pending(c, phase, true);
+            p.setYaw(350 + 149); step(p); pending(c, phase, true);
+            p.setYaw(350 - 150); deadline(p, 100); pending(c, phase, false);
+            c.assertEquals(20F, p.getHealth(), "Turn across zero succeeds at inclusive threshold");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_look", tickLimit = 40)
+    public void lookCommandsRequireEnteringTargetAfterIssue(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); p.setPitch(-80); var phase = command(p, Action.LOOK_UP);
+            step(p); pending(c, phase, true);
+            p.setPitch(-59); step(p); pending(c, phase, true);
+            p.setPitch(-60); step(p); pending(c, phase, false);
+            p.setPitch(80); phase = command(p, Action.LOOK_DOWN);
+            step(p); pending(c, phase, true);
+            p.setPitch(59); step(p); pending(c, phase, true);
+            p.setPitch(60); deadline(p, 100); pending(c, phase, false);
+            phase = command(p, Action.LOOK_UP); p.setPitch(90); deadline(p, 101);
+            pending(c, phase, false); c.assertEquals(16F, p.getHealth(), "Wrong direction does not succeed");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_swing", tickLimit = 40)
+    public void vanillaSwingPacketOnlyCompletesItsCurrentCommand(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s);
+            p.networkHandler.onHandSwing(new HandSwingC2SPacket(Hand.MAIN_HAND));
+            var phase = command(p, Action.SWING); step(p); pending(c, phase, true);
+            deadline(p, 100);
+            p.networkHandler.onHandSwing(new HandSwingC2SPacket(Hand.OFF_HAND));
+            pending(c, phase, false);
+            phase = command(p, Action.CROUCH); step(p);
+            p.networkHandler.onHandSwing(new HandSwingC2SPacket(Hand.MAIN_HAND));
+            pending(c, phase, true);
+            phase = command(p, Action.SWING); deadline(p, 101);
+            p.networkHandler.onHandSwing(new HandSwingC2SPacket(Hand.MAIN_HAND));
+            pending(c, phase, false); c.assertEquals(16F, p.getHealth(), "Late swing cannot undo penalty");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_double", tickLimit = 40)
+    public void doubleActionsRequireTwoFreshTransitionsAndSeparateJumpTicks(TestContext c) {
+        var s = new ChallengeScenario(c); var p = ready(s);
+        try {
+            p.setSneaking(true); var phase = command(p, Action.DOUBLE_CROUCH); step(p); pending(c, phase, true);
+            p.setSneaking(false); step(p); p.setSneaking(true); step(p); pending(c, phase, true);
+            p.setSneaking(false); step(p); p.setSneaking(true); step(p); pending(c, phase, false);
+            p.setSneaking(false); phase = command(p, Action.DOUBLE_JUMP); step(p);
+            p.jump(); p.jump(); pending(c, phase, true);
+            c.runAtTick(2, () -> {
+                try {
+                    p.jump(); pending(c, session(p), false);
+                    c.assertEquals(20F, p.getHealth(), "Second later jump succeeds without penalty");
+                    c.complete();
+                } finally { s.close(); }
+            });
+        } catch (Throwable error) { s.close(); throw error; }
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_walk", tickLimit = 40)
+    public void walkingCountsHorizontalStepsButNotTeleportOrVerticalMovement(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); var phase = command(p, Action.WALK);
+            p.setPosition(p.getX() + 100, p.getY(), p.getZ()); step(p); pending(c, phase, true);
+            p.setPosition(p.getX(), p.getY() + 10, p.getZ()); step(p); pending(c, phase, true);
+            for (int i = 0; i < 5; i++) { p.setPosition(p.getX() + .5, p.getY(), p.getZ()); step(p); }
+            pending(c, phase, true);
+            p.setPosition(p.getX() + .5, p.getY(), p.getZ()); step(p); pending(c, phase, false);
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_sprint", tickLimit = 40)
+    public void sprintNeedsNewStartAndMovementAndMustBePossible(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); p.setSprinting(true); var phase = command(p, Action.SPRINT);
+            p.setPosition(p.getX() + .2, p.getY(), p.getZ()); step(p); pending(c, phase, true);
+            p.setSprinting(false); step(p); p.setSprinting(true); step(p); pending(c, phase, true);
+            p.setPosition(p.getX() + .2, p.getY(), p.getZ()); step(p); pending(c, phase, false);
+            s.activate("double_challenge:simon_says,no_sprint");
+            c.assertFalse(SimonSaysChallenge.availableActions(p).contains(Action.SPRINT), "Forbidden sprint is excluded");
+            s.activate("double_challenge:simon_says,no_jumping");
+            c.assertFalse(SimonSaysChallenge.availableActions(p).contains(Action.DOUBLE_JUMP), "Both jump tasks are excluded");
+            s.activate(ID); p.getHungerManager().setFoodLevel(6);
+            c.assertFalse(SimonSaysChallenge.availableActions(p).contains(Action.SPRINT), "Too hungry to sprint");
+            c.assertEquals(12, Action.values().length, "Twelve commands total");
         } c.complete();
     }
 

@@ -1,4 +1,12 @@
 {
+  "text.cursecycle.simon_says.turn": "turn around",
+  "text.cursecycle.simon_says.look_up": "look up",
+  "text.cursecycle.simon_says.look_down": "look down",
+  "text.cursecycle.simon_says.swing": "swing your hand",
+  "text.cursecycle.simon_says.double_jump": "jump twice",
+  "text.cursecycle.simon_says.double_crouch": "crouch twice",
+  "text.cursecycle.simon_says.walk": "walk three blocks",
+  "text.cursecycle.simon_says.sprint": "start sprinting",
   "text.cursecycle.simon_says.command": "Simon says: %s · %s s",
   "text.cursecycle.simon_says.jump": "jump",
   "text.cursecycle.simon_says.crouch": "crouch",

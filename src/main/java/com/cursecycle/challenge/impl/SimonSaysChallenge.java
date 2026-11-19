@@ -11,6 +11,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.*;
@@ -23,12 +24,15 @@ public final class SimonSaysChallenge extends Challenge {
             Identifier.of("cursecycle", ID));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
 
-    public enum Action { JUMP, CROUCH, STOP, SWAP }
+    public enum Action { JUMP, CROUCH, STOP, SWAP, TURN, LOOK_UP, LOOK_DOWN, SWING,
+        DOUBLE_JUMP, DOUBLE_CROUCH, WALK, SPRINT }
 
     public SimonSaysChallenge() {
         super(ID, "Саймон говорит", "Выполняй случайные команды за пять секунд.",
-                "Каждые 60–90 секунд прыгни, присядь, остановись на полсекунды или выбери другой предмет "
-                        + "в хотбаре. На выполнение пять секунд; за провал теряешь два сердца.",
+                "Каждые 60–90 секунд выполняй случайную команду: прыгни, присядь, остановись, смени предмет, "
+                        + "развернись, посмотри вверх или вниз, махни рукой, прыгни или присядь дважды, "
+                        + "пройди три блока или начни бежать. На выполнение пять секунд; "
+                        + "за провал теряешь два сердца.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -44,6 +48,11 @@ public final class SimonSaysChallenge extends Challenge {
         Vec3d position;
         ItemStack held = ItemStack.EMPTY;
         boolean sneaking;
+        float yaw;
+        boolean lookUpArmed, lookDownArmed;
+        boolean sprintArmed;
+        int jumps, crouches, lastJumpTick;
+        double walked;
 
         Session(ServerPlayerEntity p) {
             player = p;
@@ -81,9 +90,17 @@ public final class SimonSaysChallenge extends Challenge {
 
     /** Only commands possible with the player's current companions and inventory. */
     public static List<Action> availableActions(ServerPlayerEntity p) {
-        var actions = new ArrayList<>(List.of(Action.CROUCH));
-        if (!ChallengeActivity.active(p, NoJumpingChallenge.ID) && HeavyBodyChallenge.onFoot(p))
+        var actions = new ArrayList<>(List.of(Action.CROUCH, Action.DOUBLE_CROUCH, Action.TURN,
+                Action.LOOK_UP, Action.LOOK_DOWN, Action.SWING));
+        if (!ChallengeActivity.active(p, NoJumpingChallenge.ID) && HeavyBodyChallenge.onFoot(p)) {
             actions.add(Action.JUMP);
+            actions.add(Action.DOUBLE_JUMP);
+        }
+        if (HeavyBodyChallenge.onFoot(p)) {
+            actions.add(Action.WALK);
+            if (!ChallengeActivity.active(p, NoSprintChallenge.ID) && !HeavyBodyChallenge.cannotSprint(p)
+                    && p.getHungerManager().getFoodLevel() > 6) actions.add(Action.SPRINT);
+        }
         if (!ChallengeActivity.active(p, "stuck_throttle") && !ChallengeActivity.active(p, AutoJumpChallenge.ID)
                 && !ChallengeActivity.active(p, AdhdNoStandingStillChallenge.ID)) actions.add(Action.STOP);
         for (int i = 0; i < 9; i++) {
@@ -106,6 +123,13 @@ public final class SimonSaysChallenge extends Challenge {
         s.slot = s.player.getInventory().selectedSlot;
         s.held = s.player.getMainHandStack().copy();
         s.sneaking = s.player.isSneaking();
+        s.yaw = s.player.getYaw();
+        s.lookUpArmed = s.player.getPitch() > -60;
+        s.lookDownArmed = s.player.getPitch() < 60;
+        s.sprintArmed = !s.player.isSprinting();
+        s.jumps = s.crouches = 0;
+        s.lastJumpTick = s.player.getServer().getTicks() - 1;
+        s.walked = 0;
         s.stillTicks = 0;
         send(s);
     }
@@ -123,10 +147,22 @@ public final class SimonSaysChallenge extends Challenge {
     }
     /** Reuse the existing hook after LivingEntity.jump installs a real impulse. */
     public static void jumped(ServerPlayerEntity p) {
+        observed(p, Action.JUMP);
+    }
+    /** Called by the vanilla hand-swing receiver after its main-thread check. */
+    public static void swung(ServerPlayerEntity p) {
+        observed(p, Action.SWING);
+    }
+    private static void observed(ServerPlayerEntity p, Action action) {
         var sessions = SESSIONS.get(p.getServer());
         var s = sessions == null ? null : sessions.get(p.getUuid());
-        if (s != null && s.matches(p) && active(p) && s.action == Action.JUMP
-                && s.age() > s.issued && s.age() <= s.issued + WINDOW) complete(s);
+        if (s == null || !s.matches(p) || !active(p) || s.age() <= s.issued || s.age() > s.issued + WINDOW) return;
+        if (action == Action.JUMP && s.action == Action.DOUBLE_JUMP) {
+            int now = p.getServer().getTicks();
+            if (s.lastJumpTick == now) return;
+            s.lastJumpTick = now;
+            if (++s.jumps == 2) complete(s);
+        } else if (s.action == action) complete(s);
     }
 
     /** Ordinary sync is idempotent and cannot extend a command's deadline. */
@@ -162,8 +198,9 @@ public final class SimonSaysChallenge extends Challenge {
                 continue;
             }
             boolean success = switch (s.action) {
-                case JUMP -> false;
+                case JUMP, DOUBLE_JUMP, SWING -> false;
                 case CROUCH -> p.isSneaking() && !s.sneaking;
+                case DOUBLE_CROUCH -> p.isSneaking() && !s.sneaking && ++s.crouches >= 2;
                 case STOP -> {
                     s.stillTicks = consecutive && p.getPos().squaredDistanceTo(s.position) <= 0.0001
                             ? s.stillTicks + 1 : 0;
@@ -171,7 +208,21 @@ public final class SimonSaysChallenge extends Challenge {
                 }
                 case SWAP -> p.getInventory().selectedSlot != s.slot
                         && !ItemStack.areItemsAndComponentsEqual(s.held, p.getMainHandStack());
+                case TURN -> Math.abs(MathHelper.wrapDegrees(p.getYaw() - s.yaw)) >= 150;
+                case LOOK_UP -> s.lookUpArmed && p.getPitch() <= -60;
+                case LOOK_DOWN -> s.lookDownArmed && p.getPitch() >= 60;
+                case WALK -> {
+                    double distance = p.getPos().subtract(s.position).horizontalLength();
+                    // Ignore discontinuities such as a teleport; ordinary footsteps still count after it.
+                    if (consecutive && distance <= 1) s.walked += distance;
+                    yield s.walked >= 3;
+                }
+                case SPRINT -> s.sprintArmed && p.isSprinting()
+                        && p.getPos().subtract(s.position).horizontalLengthSquared() > 0.0001;
             };
+            if (p.getPitch() > -60) s.lookUpArmed = true;
+            if (p.getPitch() < 60) s.lookDownArmed = true;
+            if (!p.isSprinting()) s.sprintArmed = true;
             s.sneaking = p.isSneaking();
             s.position = p.getPos();
             if (success) complete(s);

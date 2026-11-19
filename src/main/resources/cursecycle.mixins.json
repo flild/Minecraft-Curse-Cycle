@@ -12,6 +12,7 @@
     "NetheriteMobsEntityMixin",
     "HeartbeatServerPlayerMixin",
     "AutoJumpLivingEntityMixin",
+    "SimonSaysServerPlayNetworkHandlerMixin",
     "GravityTenLivingEntityMixin",
     "HeavyBodyLivingEntityMixin",
     "NoBlockPlacingBlockItemMixin",

@@ -1,4 +1,12 @@
 {
+  "text.cursecycle.simon_says.turn": "развернись",
+  "text.cursecycle.simon_says.look_up": "посмотри вверх",
+  "text.cursecycle.simon_says.look_down": "посмотри вниз",
+  "text.cursecycle.simon_says.swing": "махни рукой",
+  "text.cursecycle.simon_says.double_jump": "прыгни дважды",
+  "text.cursecycle.simon_says.double_crouch": "присядь дважды",
+  "text.cursecycle.simon_says.walk": "пройди три блока",
+  "text.cursecycle.simon_says.sprint": "начни бежать",
   "text.cursecycle.simon_says.command": "Саймон говорит: %s · %s с",
   "text.cursecycle.simon_says.jump": "прыгни",
   "text.cursecycle.simon_says.crouch": "присядь",
