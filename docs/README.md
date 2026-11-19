@@ -69,6 +69,7 @@
 
 - [За тобой выехали](skeleton-hunter-testing.md) — `skeleton_hunter`.
 
+- [После меня хоть пожар](fire-trail-testing.md) — `fire_trail`.
 - [Кровавая повинность](blood-tribute-testing.md) — `blood_tribute`.
 - [Пацифист](pacifist-testing.md) — `pacifist`.
 - [Да как ходить то!](inverted-keyboard-testing.md) — `inverted_keyboard`.

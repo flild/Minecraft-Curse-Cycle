@@ -288,7 +288,7 @@ public class FragileFloorGameTest implements FabricGameTest {
                 var nbt = manager.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
                 var loaded = CurseCycleState.createFromNbt(nbt.getCompound("data"), world().getRegistryManager());
                 c.assertTrue(loaded.getActiveChallengeIds().contains(ID), "Activation on disk");
-                c.assertTrue(loaded.getChallengeData().isEmpty(), "No unfinished clocks persisted");
+                c.assertTrue(!loaded.getChallengeData().contains(ID), "No unfinished clocks persisted");
                 new FragileFloorChallenge().onTick(server(), late.player);
                 intact(late, "Fresh implementation has no old contact");
             });
@@ -318,7 +318,7 @@ public class FragileFloorGameTest implements FabricGameTest {
             var saved = manager.readNbt(CurseCycleState.STATE_KEY, null, SharedConstants.getGameVersion().getSaveVersion().getId());
             var loaded = CurseCycleState.createFromNbt(saved.getCompound("data"), world().getRegistryManager());
             manager.set(CurseCycleState.STATE_KEY, loaded);
-            c.assertTrue(loaded.getChallengeData().isEmpty(), "Unfinished contacts are absent from actual disk state");
+            c.assertTrue(!loaded.getChallengeData().contains(ID), "Unfinished fragile_floor contacts are absent from actual disk state");
         }
         void foreignState(Fixture f) {
             var named = new ItemStack(Items.DIAMOND, 17);

@@ -125,6 +125,19 @@ public class CurseCycleMod implements ModInitializer {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.BloodTributeChallenge::clear);
 
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(
+                com.cursecycle.challenge.impl.FireTrailChallenge::clear);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.FireTrailChallenge::clear);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.cursecycle.challenge.impl.FireTrailChallenge.forget(handler.getPlayer()));
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            if (entity instanceof ServerPlayerEntity player)
+                com.cursecycle.challenge.impl.FireTrailChallenge.forget(player);
+        });
+        net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(
+                (player, origin, destination) -> com.cursecycle.challenge.impl.FireTrailChallenge.forget(player));
+
         // Player Join Event -> sync state & re-apply active challenges
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
@@ -173,6 +186,7 @@ public class CurseCycleMod implements ModInitializer {
 
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.FireTrailChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.BloodTributeChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.MeteorShowerChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.SkeletonHunterChallenge::tick);
