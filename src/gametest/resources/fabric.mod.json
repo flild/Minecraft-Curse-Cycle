@@ -6,6 +6,7 @@
   "environment": "server",
   "entrypoints": {
     "fabric-gametest": [
+      "com.cursecycle.TinyPlayerGameTest",
       "com.cursecycle.WarrantyExpiredGameTest",
       "com.cursecycle.FireTrailGameTest",
       "com.cursecycle.BloodTributeGameTest",
