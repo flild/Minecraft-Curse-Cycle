@@ -55,6 +55,8 @@ public class CurseCycleMod implements ModInitializer {
         NetworkHandler.registerPayloads();
         diagnostics.stage("registering lifecycle events and commands");
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.FloorIsLavaChallenge::clear);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.BlackHoleChallenge::clear);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
                 com.cursecycle.challenge.impl.MeteorShowerChallenge::clear);
@@ -197,6 +199,7 @@ public class CurseCycleMod implements ModInitializer {
 
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.FloorIsLavaPlacements::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.DroughtChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.FireTrailChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.BloodTributeChallenge::tick);

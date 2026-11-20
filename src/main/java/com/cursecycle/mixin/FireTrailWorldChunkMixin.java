@@ -1,6 +1,7 @@
 package com.cursecycle.mixin;
 
 import com.cursecycle.challenge.impl.FireTrailChallenge;
+import com.cursecycle.challenge.FloorIsLavaPlacements;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.ChunkSection;
@@ -16,6 +17,7 @@ public abstract class FireTrailWorldChunkMixin {
     private BlockState cursecycle$observeReplacement(ChunkSection section, int x, int y, int z, BlockState next,
                                                     BlockPos pos, BlockState state, boolean moved) {
         var old = section.setBlockState(x, y, z, next);
+        FloorIsLavaPlacements.replaced((WorldChunk) (Object) this, pos, old, next);
         FireTrailChallenge.replaced((WorldChunk) (Object) this, pos, old, next);
         return old;
     }

@@ -3,6 +3,7 @@ package com.cursecycle.challenge.impl;
 import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeDifficulty;
 import com.cursecycle.challenge.ChallengeScope;
+import com.cursecycle.challenge.FloorIsLavaPlacements;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageType;
@@ -36,7 +37,8 @@ public class FloorIsLavaChallenge extends Challenge {
     private record DamagePulse(ServerPlayerEntity player, int age) {}
 
     // Технические нюансы; не включать в описание для игрока.
-    // Кровати, шерсть, ковры и снопы сена безопасны, в том числе во время сна. Остальная твёрдая опора
+    // Отмеченные установки текущего раунда, кровати, шерсть, ковры и снопы сена безопасны.
+    // Учёт установок ограничен и не сохраняется между раундами/запусками. Остальная твёрдая опора
     // включает блоки, полублоки, ступени и заборы. Урон — 3 единицы при касании и далее раз в 20
     // тиков; повторное касание не ускоряет его. Броня, щит, защитные чары, сопротивление, огнестойкость и
     // неуязвимость после удара или входа не защищают. Поглощение и тотемы работают штатно. Без опоры под
@@ -45,8 +47,8 @@ public class FloorIsLavaChallenge extends Challenge {
     // транспорт.
     public FloorIsLavaChallenge() {
         super(ID, "Пол — это лава!",
-                "Пол обжигает. Спасайся на кроватях, шерсти, шерстяных коврах и снопах сена.",
-                "Касание твёрдого пола отнимает полтора сердца каждую секунду. Кровати, шерсть, шерстяные ковры и снопы сена безопасны; в кровати можно спать.",
+                "Пол обжигает. Ставь блоки во время испытания, чтобы создать безопасную опору.",
+                "Касание твёрдого пола отнимает полтора сердца каждую секунду. Блоки, поставленные игроками во время текущего испытания, безопасны. После завершения испытания или перезапуска сервера отметки сбрасываются. Учёт ограничен: при его переполнении новые блоки остаются опасными. Кровати, шерсть, шерстяные ковры и снопы сена всегда безопасны; в кровати можно спать.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -63,6 +65,7 @@ public class FloorIsLavaChallenge extends Challenge {
         var world = player.getServerWorld();
         var support = world.findSupportingBlockPos(player, feet);
         if (support.isEmpty()) return;
+        if (FloorIsLavaPlacements.isSafe(world, support.get())) return;
         var floor = world.getBlockState(support.get());
         if (floor.isIn(BlockTags.BEDS) || floor.isIn(BlockTags.WOOL)
                 || floor.isIn(BlockTags.WOOL_CARPETS) || floor.isOf(Blocks.HAY_BLOCK)) return;
@@ -83,8 +86,11 @@ public class FloorIsLavaChallenge extends Challenge {
     @Override
     public void onStop(MinecraftServer server, ServerPlayerEntity player) {
         if (player == null) {
+            FloorIsLavaPlacements.clear(server);
             lastPulses.clear();
         } else {
+            // The shared marks may still protect another PERSONAL recipient. The
+            // activation serial and server tick clear them when the round actually ends.
             lastPulses.remove(player.getUuid());
             player.sendMessage(Text.literal("[Curse-Cycle] Испытание «Пол — это лава!» завершено.")
                     .formatted(Formatting.GRAY), false);
@@ -94,5 +100,21 @@ public class FloorIsLavaChallenge extends Challenge {
     @Override
     public void onPlayerLeave(MinecraftServer server, ServerPlayerEntity player) {
         if (player != null) lastPulses.remove(player.getUuid());
+    }
+
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        if (!enabled) {
+            FloorIsLavaPlacements.clearAll();
+            lastPulses.clear();
+        }
+    }
+
+    public static void clear(MinecraftServer server) {
+        FloorIsLavaPlacements.clear(server);
+        var challenge = com.cursecycle.challenge.ChallengeRegistry.get(ID);
+        if (challenge instanceof FloorIsLavaChallenge lava)
+            lava.lastPulses.values().removeIf(pulse -> pulse.player().getServer() == server);
     }
 }

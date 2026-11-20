@@ -1,6 +1,7 @@
 package com.cursecycle;
 
 import com.cursecycle.challenge.ChallengeRegistry;
+import com.cursecycle.challenge.FloorIsLavaPlacements;
 import com.cursecycle.challenge.impl.FloorIsLavaChallenge;
 import com.cursecycle.state.CurseCycleState;
 import com.cursecycle.state.CycleManager;
@@ -35,6 +36,9 @@ import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.DyeColor;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.World;
@@ -42,6 +46,135 @@ import net.minecraft.world.World;
 import java.util.UUID;
 
 public class FloorIsLavaGameTest implements FabricGameTest {
+    @GameTest(templateName = EMPTY_STRUCTURE)
+    public void playerPlacementIsRoundLocalAndReplacementsReleaseMarks(TestContext context) {
+        var world = context.getWorld();
+        var floor = context.getAbsolutePos(new BlockPos(2, 3, 2));
+        try (var scenario = new ChallengeScenario(context)) {
+            var player = scenario.player();
+            var visitor = scenario.player();
+            var lava = ChallengeRegistry.get(FloorIsLavaChallenge.ID);
+            world.setBlockState(floor.down(), Blocks.STONE.getDefaultState());
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Inactive placements are not recorded");
+            scenario.activate(FloorIsLavaChallenge.ID);
+            move(player, floor, 0.5, 1, 0.5);
+            lava.onTick(world.getServer(), player);
+            health(context, player, 17, "A block placed before the round remains dangerous");
+
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.OFF_HAND);
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "A successful offhand placement is recorded");
+            move(visitor, floor, 0.5, 1, 0.5);
+            lava.onTick(world.getServer(), visitor);
+            health(context, visitor, 20, "A player's platform also protects other players");
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world.getServer().getWorld(World.NETHER), floor),
+                    "Coordinates in other dimensions do not inherit safety");
+            lava.onPlayerLeave(world.getServer(), player);
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "Disconnecting does not clear the round's marks");
+            scenario.activate(FloorIsLavaChallenge.ID);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Reactivating the same challenge starts fresh");
+
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.OAK_SLAB, Hand.MAIN_HAND);
+            world.setBlockState(floor, world.getBlockState(floor).with(SlabBlock.WATERLOGGED, true));
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "Property changes retain a placed block's mark");
+            world.setBlockState(floor, Blocks.STONE.getDefaultState());
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Replacement by another block clears safety");
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            world.breakBlock(floor, false);
+            world.setBlockState(floor, Blocks.STONE.getDefaultState());
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Destroyed marks cannot exempt later blocks at the same position");
+
+            scenario.activate("double_challenge:the_floor_is_lava,no_block_placing");
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            move(player, floor, 3.5, 1, 3.5);
+            player.setStackInHand(Hand.MAIN_HAND, new ItemStack(Items.STONE));
+            useBlock(player, floor.down(), Hand.MAIN_HAND);
+            context.assertTrue(world.getBlockState(floor).isAir(), "Control: the other challenge rejects placement");
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Rejected interactions do not create marks");
+
+            scenario.activate(FloorIsLavaChallenge.ID);
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            lava.setEnabled(false);
+            lava.setEnabled(true);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Disabling clears all placement data");
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            scenario.activate("test_easy");
+            FloorIsLavaPlacements.tick(world.getServer());
+            scenario.activate(FloorIsLavaChallenge.ID);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Ending the round clears its data");
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            FloorIsLavaChallenge.clear(world.getServer());
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Server-stop cleanup drops all marks");
+        } finally {
+            ChallengeRegistry.get(FloorIsLavaChallenge.ID).setEnabled(true);
+            FloorIsLavaPlacements.clear(world.getServer());
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            world.setBlockState(floor.down(), Blocks.AIR.getDefaultState());
+        }
+        context.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE)
+    public void personalAssignmentsMultiblocksAndEmptyServerCleanup(TestContext context) {
+        var world = context.getWorld();
+        var floor = context.getAbsolutePos(new BlockPos(2, 3, 2));
+        try (var scenario = new ChallengeScenario(context)) {
+            var player = scenario.player();
+            var recipient = scenario.player();
+            scenario.state.getPersonalActiveChallengeIds(recipient.getUuid()).add(FloorIsLavaChallenge.ID);
+            scenario.state.getPersonalActiveChallengeIds(player.getUuid()).add(FloorIsLavaChallenge.ID);
+            world.setBlockState(floor.down(), Blocks.STONE.getDefaultState());
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.OAK_DOOR, Hand.MAIN_HAND);
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "Personal-only assignment enables placement tracking");
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor.up()), "The upper door half is tracked too");
+            scenario.state.getPersonalActiveChallengeIds(player.getUuid()).clear();
+            ChallengeRegistry.get(FloorIsLavaChallenge.ID).onStop(world.getServer(), player);
+            FloorIsLavaPlacements.tick(world.getServer());
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "Ending one personal assignment preserves another recipient's platforms");
+            scenario.state.getPersonalActiveChallengeIds(recipient.getUuid()).clear();
+            FloorIsLavaPlacements.tick(world.getServer());
+            scenario.state.getPersonalActiveChallengeIds(recipient.getUuid()).add(FloorIsLavaChallenge.ID);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Ending the final personal assignment clears marks");
+            world.setBlockState(floor.up(), Blocks.AIR.getDefaultState());
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            place(context, player, floor, Items.STONE, Hand.MAIN_HAND);
+            context.assertTrue(FloorIsLavaPlacements.isSafe(world, floor), "Control: the new personal round records placements");
+            var manager = world.getServer().getPlayerManager();
+            manager.remove(player);
+            manager.remove(recipient);
+            scenario.state.getPersonalActiveChallengeIds(recipient.getUuid()).clear();
+            FloorIsLavaPlacements.tick(world.getServer());
+            scenario.state.getPersonalActiveChallengeIds(recipient.getUuid()).add(FloorIsLavaChallenge.ID);
+            context.assertFalse(FloorIsLavaPlacements.isSafe(world, floor), "Cleanup works without online players or onStop callbacks");
+        } finally {
+            FloorIsLavaPlacements.clear(world.getServer());
+            world.setBlockState(floor.up(), Blocks.AIR.getDefaultState());
+            world.setBlockState(floor, Blocks.AIR.getDefaultState());
+            world.setBlockState(floor.down(), Blocks.AIR.getDefaultState());
+        }
+        context.complete();
+    }
+
+    private static void place(TestContext context, ServerPlayerEntity player, BlockPos pos,
+                              net.minecraft.item.Item item, Hand hand) {
+        move(player, pos, 3.5, 1, 3.5);
+        player.setStackInHand(hand, new ItemStack(item));
+        useBlock(player, pos.down(), hand);
+        context.assertTrue(!context.getWorld().getBlockState(pos).isAir(), "Control: vanilla places " + item);
+    }
+
+    private static void useBlock(ServerPlayerEntity player, BlockPos base, Hand hand) {
+        var hit = new BlockHitResult(Vec3d.ofCenter(base).add(0, 0.5, 0), Direction.UP, base, false);
+        player.interactionManager.interactBlock(player, player.getServerWorld(), player.getStackInHand(hand), hand, hit);
+    }
+
     @GameTest(templateName = EMPTY_STRUCTURE)
     public void safeSurfacesSleepingAndReturnToFloor(TestContext context) {
         var world = context.getWorld();
