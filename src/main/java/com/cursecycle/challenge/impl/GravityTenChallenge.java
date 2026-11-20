@@ -14,7 +14,7 @@ public final class GravityTenChallenge extends Challenge {
     // жидкости и элитры сохраняют механику, но их составляющая гравитации тоже масштабируется. Урон от падения
     // умножается.
     public GravityTenChallenge() {
-        super(ID, "Земля тянет к себе",
+        super(ID, "Как на Юпитере",
                 "Гравитация стала втрое сильнее.",
                 "Представь, что ты юпитире. К земле притягиваешься быстрее, а приземления стали больнее.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
