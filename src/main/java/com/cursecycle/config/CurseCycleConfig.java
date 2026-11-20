@@ -21,13 +21,14 @@ public class CurseCycleConfig {
         return FabricLoader.getInstance().getConfigDir().resolve("cursecycle.json").toFile();
     }
 
-    public int challengeIntervalDays = 5;
-    public int noticeLeadTimeDays = 1;
+    public double challengeIntervalDays = 5;
+    public double noticeLeadTimeDays = 1;
     public int initialPreparationSeconds = 60;
     public int maxActiveChallenges = 1;
     public boolean allowDuplicatesInHistory = true;
     public boolean enableWheelAnimation = true;
     public boolean enableHudOverlay = true;
+    public int hudScalePercent = 100;
     public int hudPositionX = 10;
     public int hudPositionY = 10;
     public String wheelSoundPath = "minecraft:block.amethyst_block.hit";
@@ -94,10 +95,12 @@ public class CurseCycleConfig {
     }
 
     public void validate() {
-        if (challengeIntervalDays < 1) challengeIntervalDays = 5;
+        if (!TimingSettings.isValidInterval(challengeIntervalDays)) challengeIntervalDays = 5;
         initialPreparationSeconds = Math.max(0, initialPreparationSeconds);
+        if (!Double.isFinite(noticeLeadTimeDays)) noticeLeadTimeDays = 1;
         noticeLeadTimeDays = Math.clamp(noticeLeadTimeDays, 0, challengeIntervalDays);
         maxActiveChallenges = Math.max(1, maxActiveChallenges);
+        hudScalePercent = Math.clamp(hudScalePercent, 50, 100);
         hudPositionX = Math.max(0, hudPositionX);
         hudPositionY = Math.max(0, hudPositionY);
         if (challengeToggles == null) challengeToggles = new HashMap<>();
@@ -121,6 +124,14 @@ public class CurseCycleConfig {
         if (wheelFinishSoundPath == null || Identifier.tryParse(wheelFinishSoundPath) == null) {
             wheelFinishSoundPath = "minecraft:block.respawn_anchor.charge";
         }
+    }
+
+    public long intervalTicks() {
+        return TimingSettings.daysToTicks(challengeIntervalDays);
+    }
+
+    public long noticeTicks() {
+        return TimingSettings.daysToTicks(noticeLeadTimeDays);
     }
 
     private static boolean validWeights(List<Integer> weights) {

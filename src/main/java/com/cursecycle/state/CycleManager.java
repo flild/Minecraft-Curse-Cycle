@@ -121,7 +121,7 @@ public class CycleManager {
         timeOfDay = Math.max(0, timeOfDay);
         state.setCurrentDay(timeOfDay / 24000L + 1);
         state.setTotalInGameTicks(timeOfDay);
-        long intervalTicks = config.challengeIntervalDays * 24000L;
+        long intervalTicks = config.intervalTicks();
         long cycleTicks = cycleTicks(state, timeOfDay);
         long currentCycle = cycleTicks / intervalTicks;
         long ticksInCycle = cycleTicks % intervalTicks;
@@ -167,7 +167,7 @@ public class CycleManager {
             state.setSpinTriggeredForCurrentCycle(false);
         }
 
-        long spinTriggerTick = intervalTicks - config.noticeLeadTimeDays * 24000L;
+        long spinTriggerTick = intervalTicks - config.noticeTicks();
         if (ticksInCycle >= spinTriggerTick && state.getLastSpinCycle() < currentCycle + 1) {
             RouletteSelector.WheelResult result = selectUpcomingChallenge(state, config, timeOfDay);
             if (result != null) announce.accept(result);
@@ -196,7 +196,7 @@ public class CycleManager {
                 state.setInitialPreparationTicks(0);
                 state.setInitialWheelTicks(WheelTiming.DURATION_TICKS);
             }
-            state.setLastSpinCycle(cycleTicks(state, timeOfDay) / (config.challengeIntervalDays * 24000L) + 1);
+            state.setLastSpinCycle(cycleTicks(state, timeOfDay) / config.intervalTicks() + 1);
             state.setSpinTriggeredForCurrentCycle(true);
         }
         return result;
@@ -219,7 +219,7 @@ public class CycleManager {
             return state.getInitialPreparationTicks() >= 0 ? state.getInitialPreparationTicks()
                     : Math.max(0, config.initialPreparationSeconds) * 20L;
         }
-        long intervalTicks = config.challengeIntervalDays * 24000L;
+        long intervalTicks = config.intervalTicks();
         // The countdown belongs to the active interval. Merely crossing a day boundary
         // must not advertise a fresh interval before its replacement has actually started.
         long elapsed = cycleTicks(state, timeOfDay);

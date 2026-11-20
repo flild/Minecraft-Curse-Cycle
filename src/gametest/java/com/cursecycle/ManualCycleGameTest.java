@@ -492,8 +492,8 @@ public class ManualCycleGameTest implements FabricGameTest {
     public void configuredGameDaysAnnounceThenReplaceTheHudStateOnEveryAutomaticChange(TestContext c) {
         var server = c.getWorld().getServer();
         var config = CurseCycleMod.getConfig();
-        int oldInterval = config.challengeIntervalDays;
-        int oldNotice = config.noticeLeadTimeDays;
+        double oldInterval = config.challengeIntervalDays;
+        double oldNotice = config.noticeLeadTimeDays;
         long oldTime = server.getOverworld().getTimeOfDay();
         try (var scenario = new ChallengeScenario(c)) {
             config.challengeIntervalDays = 3;

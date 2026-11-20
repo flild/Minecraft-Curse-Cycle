@@ -163,7 +163,7 @@ public class MainMenuScreen extends Screen {
         paragraph("home.rules", CurseStyle.TEXT);
         var snapshot = ClientTimingSettings.get();
         if (snapshot != null)
-            paragraph("home.timing", CurseStyle.MUTED, snapshot.preparationSeconds(), snapshot.intervalDays(), snapshot.noticeDays());
+            paragraph("home.timing", CurseStyle.MUTED, snapshot.preparationSeconds(), formatDays(snapshot.intervalDays()), formatDays(snapshot.noticeDays()));
         paragraph("home.use_title", CurseStyle.BRONZE);
         paragraph("home.use", CurseStyle.TEXT,
                 com.cursecycle.CurseCycleClient.openMenuKeyBinding.getBoundKeyLocalizedText());
@@ -217,14 +217,19 @@ public class MainMenuScreen extends Screen {
         var snapshot = ClientTimingSettings.get();
         if (snapshot == null) return;
         baseline = snapshot.settings();
-        timingDraft = new String[]{Integer.toString(baseline.intervalDays()), Integer.toString(baseline.noticeDays()),
+        timingDraft = new String[]{formatDays(baseline.intervalDays()), formatDays(baseline.noticeDays()),
                 Integer.toString(baseline.preparationSeconds())};
+    }
+
+    private static String formatDays(double days) {
+        return java.math.BigDecimal.valueOf(days).stripTrailingZeros().toPlainString();
     }
 
     private TimingSettings parsedDraft() {
         if (timingDraft == null) return null;
         try {
-            var settings = new TimingSettings(Integer.parseInt(timingDraft[0]), Integer.parseInt(timingDraft[1]),
+            var settings = new TimingSettings(Double.parseDouble(timingDraft[0].replace(',', '.')),
+                    Double.parseDouble(timingDraft[1].replace(',', '.')),
                     Integer.parseInt(timingDraft[2]));
             return settings.isValid() ? settings : null;
         } catch (NumberFormatException ignored) { return null; }
@@ -247,9 +252,10 @@ public class MainMenuScreen extends Screen {
             int index = i;
             var field = new TextFieldWidget(textRenderer, controlsX, bodyTop + row, 96, 20,
                     Text.translatable("text.cursecycle.menu.setting." + labels[i]));
-            field.setMaxLength(10);
+            field.setMaxLength(index < 2 ? 24 : 10);
             field.setText(timingDraft == null ? "" : timingDraft[i]);
-            field.setTextPredicate(value -> value.chars().allMatch(Character::isDigit));
+            field.setTextPredicate(value -> index < 2 ? value.matches("[0-9]*([.,][0-9]*)?")
+                    : value.chars().allMatch(Character::isDigit));
             field.setChangedListener(value -> { timingDraft[index] = value; saveStatus = ""; updateApplyButton(); });
             field.setEditable(snapshot != null && snapshot.editable() && !saving);
             addSettingControl(field, row);
@@ -264,6 +270,20 @@ public class MainMenuScreen extends Screen {
         addSettingControl(button(controlsX, bodyTop + rowY, 96, switchText(config.enableHudOverlay), b -> {
             config.enableHudOverlay = !config.enableHudOverlay; config.save(); clearAndInit();
         }), rowY);
+        rowY += 29;
+        final int scaleY = rowY;
+        settingLabel("hud_scale", rowY);
+        var smaller = button(controlsX, bodyTop + scaleY, 26, Text.literal("-"), b -> {
+            config.hudScalePercent = Math.max(50, config.hudScalePercent - 10); config.save(); clearAndInit();
+        });
+        smaller.active = config.hudScalePercent > 50;
+        addSettingControl(smaller, rowY);
+        var larger = button(controlsX + 70, bodyTop + scaleY, 26, Text.literal("+"), b -> {
+            config.hudScalePercent = Math.min(100, config.hudScalePercent + 10); config.save(); clearAndInit();
+        });
+        larger.active = config.hudScalePercent < 100;
+        addSettingControl(larger, rowY);
+        settingControls.add(new SettingControl(null, rowY, config.hudScalePercent + "%"));
         rowY += 29;
         final int xY = rowY;
         settingLabel("hud_x", rowY);
@@ -308,7 +328,7 @@ public class MainMenuScreen extends Screen {
 
     private void settingValue(int value, int row) {
         // A separate narrow text column between the +/- buttons.
-        settingControls.add(new SettingControl(null, row, value));
+        settingControls.add(new SettingControl(null, row, Integer.toString(value)));
     }
 
     private void addSettingControl(ClickableWidget widget, int row) {
@@ -445,7 +465,7 @@ public class MainMenuScreen extends Screen {
             }
         }
         for (var control : settingControls) if (control.value != null)
-            context.drawCenteredTextWithShadow(textRenderer, Integer.toString(control.value), left + panelWidth - 64,
+            context.drawCenteredTextWithShadow(textRenderer, control.value, left + panelWidth - 64,
                     bodyTop + control.offset - scroll + 6, CurseStyle.MUTED);
         context.disableScissor();
         drawScroll(context, scroll, contentHeight, bodyTop, bodyBottom);
@@ -534,6 +554,6 @@ public class MainMenuScreen extends Screen {
     private record Entry(String rawId, Challenge challenge, String name, String desc, String feedback,
                          boolean rules, int offset, int height) {}
     private record Paragraph(List<OrderedText> lines, int offset, int color) {}
-    private record SettingControl(ClickableWidget widget, int offset, Integer value) {}
+    private record SettingControl(ClickableWidget widget, int offset, String value) {}
     private record SafeFloor(ItemStack stack, String key) {}
 }

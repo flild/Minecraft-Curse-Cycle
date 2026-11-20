@@ -12,6 +12,37 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CurseCycleConfigTest {
     @Test
+    void fractionalDaysSurviveJsonRoundTripAndLegacyWholeDaysStillLoad() {
+        var gson = new Gson();
+        for (String json : List.of("{\"challengeIntervalDays\":2.5,\"noticeLeadTimeDays\":0.5}",
+                "{\"challengeIntervalDays\":2,\"noticeLeadTimeDays\":1}")) {
+            var config = gson.fromJson(json, CurseCycleConfig.class);
+            config.validate();
+            var reloaded = gson.fromJson(gson.toJson(config), CurseCycleConfig.class);
+            reloaded.validate();
+            assertEquals(config.challengeIntervalDays, reloaded.challengeIntervalDays);
+            assertEquals(config.noticeLeadTimeDays, reloaded.noticeLeadTimeDays);
+        }
+        var config = gson.fromJson("{\"challengeIntervalDays\":0.5,\"noticeLeadTimeDays\":1}", CurseCycleConfig.class);
+        config.validate();
+        assertEquals(0.5, config.challengeIntervalDays);
+        assertEquals(0.5, config.noticeLeadTimeDays);
+        assertEquals(12_000, config.intervalTicks());
+    }
+
+    @Test
+    void nonFiniteAndSubTickDaysRecoverToSafeDefaults() {
+        for (double days : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 0.000001}) {
+            var config = new CurseCycleConfig();
+            config.challengeIntervalDays = days;
+            config.noticeLeadTimeDays = Double.NaN;
+            config.validate();
+            assertEquals(5, config.challengeIntervalDays);
+            assertEquals(1, config.noticeLeadTimeDays);
+        }
+    }
+
+    @Test
     void preparationDefaultsApplyToOldConfigsAndNegativeValuesAreClamped() {
         var legacy = new Gson().fromJson("{}", CurseCycleConfig.class);
         legacy.validate();

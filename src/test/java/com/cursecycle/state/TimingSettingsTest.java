@@ -8,10 +8,31 @@ import static org.junit.jupiter.api.Assertions.*;
 class TimingSettingsTest {
     @Test void rejectsInvalidTimesAndNoticeBeyondInterval() {
         assertTrue(new TimingSettings(1, 0, 0).isValid());
+        assertTrue(new TimingSettings(2.5, 0.5, 60).isValid());
+        assertTrue(new TimingSettings(0.5, 0.5, 0).isValid());
+        assertTrue(new TimingSettings(TimingSettings.MIN_INTERVAL_DAYS, 0, 0).isValid());
         assertTrue(new TimingSettings(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE).isValid());
         for (var settings : new TimingSettings[]{new TimingSettings(0, 0, 60), new TimingSettings(-1, 0, 60),
-                new TimingSettings(5, -1, 60), new TimingSettings(5, 6, 60), new TimingSettings(5, 1, -1)})
+                new TimingSettings(5, -1, 60), new TimingSettings(5, 6, 60), new TimingSettings(5, 1, -1),
+                new TimingSettings(0.5, 0.6, 60), new TimingSettings(0.000001, 0, 60),
+                new TimingSettings(Double.NaN, 0, 60), new TimingSettings(Double.POSITIVE_INFINITY, 0, 60),
+                new TimingSettings(5, Double.NaN, 60), new TimingSettings(5, Double.POSITIVE_INFINITY, 60),
+                new TimingSettings((double) Integer.MAX_VALUE + 1, 0, 60)})
             assertFalse(settings.isValid());
+    }
+
+    @Test void fractionalIntervalChangeRestartsCountdownWithoutLosingTheWinner() {
+        var state = new CurseCycleState();
+        state.restartCycleAt(0);
+        state.getActiveChallengeIds().add("no_sprint");
+        state.setNextChallengeId("no_jumping");
+        var next = new TimingSettings(2.5, 0.5, 60);
+        CycleManager.applyTimingChange(state, new TimingSettings(5, 1, 60), next, 119_999);
+        var config = new CurseCycleConfig();
+        next.applyTo(config);
+        assertEquals(60_000, CycleManager.ticksUntilNext(state, config, 119_999));
+        assertEquals(12_000, config.noticeTicks());
+        assertEquals("no_jumping", state.getNextChallengeId());
     }
 
     @Test void newIntervalRetainsEffectsHistoryPoolAndPromisedWinner() {

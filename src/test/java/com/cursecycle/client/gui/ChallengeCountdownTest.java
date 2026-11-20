@@ -4,6 +4,22 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChallengeCountdownTest {
+    @Test void regularCountdownSwitchesToClockOnlyBelowOneGameDay() {
+        assertFalse(ChallengeCountdown.isUnderOneDay(24_001));
+        assertFalse(ChallengeCountdown.isUnderOneDay(24_000));
+        assertTrue(ChallengeCountdown.isUnderOneDay(23_999));
+        assertEquals("20:00", ChallengeCountdown.clockTime(23_999));
+        assertEquals("10:00", ChallengeCountdown.clockTime(12_000));
+        assertEquals("03:22", ChallengeCountdown.clockTime(4_040));
+        assertEquals("03:22", ChallengeCountdown.clockTime(4_039));
+        assertEquals("01:00", ChallengeCountdown.clockTime(1_199));
+        assertEquals("00:59", ChallengeCountdown.clockTime(1_180));
+        assertEquals("00:01", ChallengeCountdown.clockTime(1));
+        assertTrue(ChallengeCountdown.isUnderOneDay(0));
+        assertEquals("00:00", ChallengeCountdown.clockTime(0));
+        assertEquals("00:00", ChallengeCountdown.clockTime(-1));
+    }
+
     @Test void preparationUsesMinutesAndSecondsRoundedUp() {
         assertEquals("1:00", ChallengeCountdown.preparationTime(1200));
         assertEquals("1:00", ChallengeCountdown.preparationTime(1199));

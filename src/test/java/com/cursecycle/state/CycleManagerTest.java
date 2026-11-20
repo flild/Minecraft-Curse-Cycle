@@ -46,6 +46,38 @@ class CycleManagerTest {
     }
 
     @Test
+    void fractionalDaysAnnounceAndActivateAtExactTickBoundariesAcrossCycles() {
+        for (double duration : new double[]{2.5, 0.5}) {
+            config.challengeIntervalDays = duration;
+            config.noticeLeadTimeDays = duration == 2.5 ? 0.5 : 0.25;
+            state = new CurseCycleState();
+            state.getActiveChallengeIds().add("no_sprint");
+            long origin = 1234;
+            state.restartCycleAt(origin);
+            long interval = Math.round(duration * 24_000);
+            long notice = Math.round(config.noticeLeadTimeDays * 24_000);
+            for (int cycle = 0; cycle < 3; cycle++) {
+                long start = origin + cycle * interval;
+                events.clear();
+                advance(start + interval - notice - 1);
+                assertTrue(events.isEmpty());
+                assertEquals(notice + 1, CycleManager.ticksUntilNext(state, config, start + interval - notice - 1));
+                advance(start + interval - notice);
+                String promised = state.getNextChallengeId();
+                assertNotNull(promised);
+                assertEquals(List.of("announce:" + promised), events);
+                events.clear();
+                advance(start + interval - 1);
+                assertTrue(events.isEmpty());
+                advance(start + interval);
+                assertEquals(List.of("activate:" + promised), events);
+                assertEquals(cycle + 1, state.getLastActivatedCycle());
+                assertEquals(interval, CycleManager.ticksUntilNext(state, config, start + interval));
+            }
+        }
+    }
+
+    @Test
     void timeJumpActivatesThePromisedChallengeBeforeAnnouncingTheNextOne() {
         advance(0);
         advance(96000);

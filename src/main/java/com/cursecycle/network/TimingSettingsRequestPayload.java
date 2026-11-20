@@ -8,13 +8,13 @@ import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
-public record TimingSettingsRequestPayload(boolean save, int intervalDays, int noticeDays,
+public record TimingSettingsRequestPayload(boolean save, double intervalDays, double noticeDays,
                                          int preparationSeconds) implements CustomPayload {
-    public static final Id<TimingSettingsRequestPayload> ID = new Id<>(Identifier.of(CurseCycleMod.MOD_ID, "timing_request"));
+    public static final Id<TimingSettingsRequestPayload> ID = new Id<>(Identifier.of(CurseCycleMod.MOD_ID, "timing_request_v2"));
     public static final PacketCodec<RegistryByteBuf, TimingSettingsRequestPayload> CODEC = PacketCodec.tuple(
             PacketCodecs.BOOL, TimingSettingsRequestPayload::save,
-            PacketCodecs.VAR_INT, TimingSettingsRequestPayload::intervalDays,
-            PacketCodecs.VAR_INT, TimingSettingsRequestPayload::noticeDays,
+            PacketCodecs.DOUBLE, TimingSettingsRequestPayload::intervalDays,
+            PacketCodecs.DOUBLE, TimingSettingsRequestPayload::noticeDays,
             PacketCodecs.VAR_INT, TimingSettingsRequestPayload::preparationSeconds,
             TimingSettingsRequestPayload::new);
 
