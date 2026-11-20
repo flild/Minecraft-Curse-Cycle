@@ -1,9 +1,6 @@
 heavy_body_pant.ogg
-Source: "Breathing Tired" by mikeask
-https://opengameart.org/content/breathing-tired
-Original file: https://opengameart.org/sites/default/files/breathing%20tired.wav
-License: CC0 1.0 Universal
-https://creativecommons.org/publicdomain/zero/1.0/
+Source: user-provided sound-01426_Ar7EyFFi.mp3
+Author and license: not specified in the supplied file.
 
-Changes: first 2 seconds, stereo mixed to mono, DC offset removed,
-peak normalized to 0.9, 25 ms fade in/out, encoded as Ogg Vorbis at 44100 Hz.
+Changes: full recording, stereo mixed to mono,
+encoded as Ogg Vorbis at 44100 Hz.

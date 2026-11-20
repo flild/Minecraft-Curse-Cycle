@@ -24,16 +24,21 @@ import net.minecraft.text.Text;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.JumpingMount;
 import net.minecraft.entity.attribute.EntityAttribute;
 import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.passive.HorseEntity;
 import net.minecraft.entity.player.HungerManager;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.tag.TagKey;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.Arm;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.util.profiler.DummyProfiler;
 import net.minecraft.util.profiler.Profiler;
@@ -51,7 +56,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Executes the three transformed resource methods, capturing actual vanilla texture/text output. */
+/** Executes transformed resource and hotbar methods, capturing vanilla draw calls. */
 public final class BlindHudProbe implements PreLaunchEntrypoint {
     private static final String ID = "blind_hud";
     private static GameMode mode = GameMode.SURVIVAL;
@@ -73,7 +78,14 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
         @Override public Profiler getProfiler() { return DummyProfiler.INSTANCE; }
     }
     public static class Player extends ClientPlayerEntity {
+        private PlayerInventory probeInventory;
         public Player() { super(null, null, null, null, null, false, false); }
+        @Override public PlayerInventory getInventory() {
+            if (probeInventory == null) probeInventory = new PlayerInventory(this);
+            return probeInventory;
+        }
+        @Override public ItemStack getOffHandStack() { return getInventory().offHand.get(0); }
+        @Override public Arm getMainArm() { return Arm.RIGHT; }
         @Override public boolean isAlive() { return alive; }
         @Override public float getHealth() { return health; }
         @Override public float getAbsorptionAmount() { return absorption; }
@@ -110,6 +122,9 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
     public static class Font extends TextRenderer {
         public Font() { super(null, false); }
         @Override public int getWidth(String text) { return text.length() * 6; }
+        @Override public List<net.minecraft.text.OrderedText> wrapLines(net.minecraft.text.StringVisitable text, int width) {
+            return List.of(Text.literal(text.getString()).asOrderedText());
+        }
     }
     public static class Debug extends DebugHud {
         public Debug() { super(null); }
@@ -136,11 +151,22 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
             draws.add("text:" + text + ":" + x + ":" + y + ":" + color);
             return 0;
         }
+        @Override public void drawItem(LivingEntity entity, ItemStack stack, int x, int y, int seed) {
+            draws.add("item:" + stack.getItem() + ":" + x + ":" + y);
+        }
+        @Override public void drawItemInSlot(TextRenderer font, ItemStack stack, int x, int y) {
+            draws.add("slot:" + stack.getCount() + ":" + x + ":" + y);
+        }
         @Override public void fill(int x1, int y1, int x2, int y2, int color) {
             draws.add("fill:" + x1 + ":" + y1 + ":" + x2 + ":" + y2 + ":" + color);
         }
         @Override public void drawCenteredTextWithShadow(TextRenderer font, Text text, int x, int y, int color) {
             draws.add("label:" + text + ":" + x + ":" + y);
+        }
+        @Override public void drawCenteredTextWithShadow(TextRenderer font, net.minecraft.text.OrderedText text, int x, int y, int color) {
+            var label = new StringBuilder();
+            text.accept((index, style, codePoint) -> { label.appendCodePoint(codePoint); return true; });
+            draws.add("label:" + label + ":" + x + ":" + y);
         }
     }
     private static void set(Object target, Class<?> owner, String name, Object value) throws Exception {
@@ -265,18 +291,54 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
         for (String name : List.of("renderStatusBars", "renderExperienceBar", "renderExperienceLevel")) result.addAll(draw(name));
         return result;
     }
+    private static void hotbar() throws Exception {
+        client.options.getAttackIndicator().setValue(AttackIndicator.HOTBAR);
+        var inventory = client.player.getInventory();
+        for (int slot = 0; slot < 9; slot++) inventory.main.set(slot, new ItemStack(Items.STONE, slot + 1));
+        inventory.offHand.set(0, new ItemStack(Items.TORCH, 12));
+        inventory.selectedSlot = 2;
+        for (var currentMode : GameMode.values()) {
+            mode = currentMode;
+            sync("no_sprint");
+            var baseline = draw("renderHotbar");
+            check(baseline.stream().filter(s -> s.startsWith("item:")).count() == 10,
+                    "Positive control: all nine items and offhand");
+            for (String kind : List.of("hotbar:", "hotbar_selection", "hotbar_offhand", "hotbar_attack_indicator", "slot:12:"))
+                check(baseline.stream().anyMatch(s -> s.contains(kind)), "Positive hotbar control for " + kind);
+            sync(ID);
+            var actual = draw("renderHotbar");
+            check(currentMode.isSurvivalLike() ? actual.isEmpty() : actual.equals(baseline),
+                    "Hotbar hidden only in Survival/Adventure, including items/offhand/attack indicator");
+            check(inventory.selectedSlot == 2 && inventory.main.get(2).getCount() == 3
+                    && inventory.offHand.get(0).getCount() == 12, "Filtering preserves inventory and selection");
+        }
+        mode = GameMode.SURVIVAL;
+        sync("no_sprint");
+        var before = draw("renderHotbar");
+        sync(ID);
+        inventory.selectedSlot = 7;
+        inventory.offHand.get(0).setCount(5);
+        check(draw("renderHotbar").isEmpty(), "Selection and count updates remain hidden");
+        sync("no_sprint");
+        var after = draw("renderHotbar");
+        check(!after.equals(before) && after.stream().anyMatch(s -> s.startsWith("slot:5:")),
+                "Ending restores current selection and item counts");
+        sync(ID);
+        ClientDataHolder.reset();
+        check(draw("renderHotbar").equals(after), "Sync reset restores hotbar");
+    }
     private static void audit() throws Exception {
         var node = new ClassNode();
         new ClassReader(Files.readAllBytes(Path.of(".mixin.out/class/net/minecraft/client/gui/hud/InGameHud.class"))).accept(node, 0);
         int calls = 0;
         for (var method : node.methods) for (var instruction : method.instructions) {
             if (instruction instanceof MethodInsnNode call && call.name.contains("cursecycle$hidePersonalResources")) {
-                check(List.of("renderStatusBars", "renderExperienceBar", "renderExperienceLevel").contains(method.name),
+                check(List.of("renderStatusBars", "renderExperienceBar", "renderExperienceLevel", "renderHotbar").contains(method.name),
                         "Only the specified resource paths have the production filter");
                 calls++;
             }
         }
-        check(calls == 3, "All three render paths transformed exactly once");
+        check(calls == 4, "All four render paths transformed exactly once");
         int predicates = 0;
         for (var method : node.methods) {
             boolean readsHidden = false;
@@ -403,6 +465,7 @@ public final class BlindHudProbe implements PreLaunchEntrypoint {
             check(mountHealth.equals(draw("renderMountHealth")) && mountJump.equals(draw("renderMountJumpBar")), "Transport draws unchanged");
             check(resources().isEmpty(), "Own resources still hidden on transport");
             pairBoundariesAndRepeatedSync(options);
+            hotbar();
             System.out.println("BLIND_HUD_CLIENT_PROBE_PASSED checks=" + checks + " renderCalls=" + renderCalls);
             System.exit(0);
         } catch (Throwable error) {

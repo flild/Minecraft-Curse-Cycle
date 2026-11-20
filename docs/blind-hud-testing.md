@@ -2,12 +2,14 @@
 
 ## Реализация
 
-EASY/GLOBAL, название и оба описания совпадают с актуальным JSON.
+EASY/GLOBAL; описания включают скрытие хотбара.
 `BlindHudInGameHudMixin` зарегистрирован только в client-разделе. В Minecraft
 1.21.1 `renderStatusBars` рисует личные сердца (включая поглощение, poison,
 wither, frozen и hardcore), броню, еду и воздух. Отмена этого метода не затрагивает
-отдельные `renderMountHealth`, `renderMountJumpBar` и `renderHotbar`.
-`renderExperienceBar` и `renderExperienceLevel` отменяются отдельно.
+отдельные `renderMountHealth` и `renderMountJumpBar`.
+`renderExperienceBar`, `renderExperienceLevel` и `renderHotbar` отменяются отдельно.
+Хотбар скрывается целиком: фон, выделение, предметы и их количества, слот второй
+руки и индикатор атаки у хотбара. Выбор и использование предметов продолжают работать.
 Общий `render`/`renderMainHud` и отрисовка остальных элементов не перехватываются.
 
 `BlindHud.shouldApply` читает текущие synced effective ID, world/player/manager,
@@ -16,6 +18,23 @@ wither, frozen и hardcore), броню, еду и воздух. Отмена э
 Сохранение активности и GLOBAL/PERSONAL/double используют существующую систему;
 JOIN/DISCONNECT сбрасывают `ClientDataHolder`. Восстановление рендера всегда
 использует актуальные значения, F1 и остальные пользовательские настройки.
+
+## Проверка скрытия хотбара — 2026-11-20
+
+Команда: `./gradlew.bat build runClient --offline -I src/clientprobe/blind_hud/init.gradle`.
+Сборка успешна; JUnit 220/220, failures/errors/skipped = 0.
+CLIENT: `BLIND_HUD_CLIENT_PROBE_PASSED checks=2089 renderCalls=5627`.
+ASM подтверждает четыре перехваченных метода. Настоящий `renderHotbar`
+проверен в четырёх режимах: фон, выделение, девять предметов, количества,
+offhand и индикатор атаки скрыты в Survival/Adventure; Creative/Spectator
+сохраняют контрольный вывод. После изменения выбранного слота и количества
+предметов завершение и reset показывают текущие данные.
+
+Обновлена тестовая заглушка шрифта для текущего `HeartbeatOverlay`: первый
+запуск остановился на отсутствующем TextHandler старого fixture.
+Перенос строк заглушка не моделирует. Остальные ограничения preLaunch-стенда
+ниже сохраняются; обычный клиент с окном не запускался.
+Лог: `build/blind-hud-toolbar-final.log`.
 
 ## Исторические проверки реализации (не доказательства ревью 28)
 
@@ -89,9 +108,10 @@ gate; полный одновременный геймплей этих испы
 1. В живом Survival с бронёй, absorption, эффектом, неполными ресурсами и XP:
    `/fdc activate blind_hud`; получить урон, поесть, подобрать XP, погрузиться
    в воду и выйти на сушу. Не должно быть личных ресурсов или заменяющих подсказок.
-2. Проверить хотбар/выбор/число предметов/offhand, прицел и оба варианта attack
+2. Проверить, что хотбар/выделение/число предметов/offhand и attack indicator у
+   хотбара скрыты, а выбор и использование предметов работают. Прицел и его attack
    indicator, чат, эффекты, bossbar, HUD испытаний, меню H, инвентарь/контейнеры,
-   экран смерти. На лошади здоровье и прыжок остаются видимыми.
+   экран смерти остаются доступны. На лошади здоровье и прыжок остаются видимыми.
 3. Переключить F1, размер окна/GUI scale; завершить через `/fdc activate no_sprint`
    при F1, затем вернуть HUD. Должны показаться актуальные значения; options.txt
    должен сохранить пользовательские настройки. Проверить Creative/Spectator,
@@ -181,7 +201,8 @@ Verifier/restore: `build/blind-hud-review-{verifier,restore}.log`.
 
 ## Статическая стоимость и оставшиеся ограничения ревью
 
-До трёх gates на кадр: O(K) contains по synced IDs, cancel O(1).
+После добавления скрытия хотбара — до четырёх gates на кадр:
+O(K) contains по synced IDs, cancel O(1).
 Inactive тоже выполняет injected callback/context/mode/alive checks;
 Cancellable CallbackInfo имеет цену. Нет своих maps/timers/packet/save/NBT/
 player-world refs или сканирования entities/chunks. Active пропускает vanilla

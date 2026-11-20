@@ -23,7 +23,9 @@ public final class HeavyBodyChallenge extends Challenge {
     public static final String ID = "heavy_body";
     public static final float MULTIPLIER = 0.6F;
     public static final double MOVING_THRESHOLD = 0.02;
-    public static final int MAX_STAMINA = 50, RECOVERY_TICKS = 40;
+    public static final int MAX_STAMINA = 50;
+    // Full heavy_body_pant.ogg: 130095 samples / 44100 Hz, rounded up to a whole server tick.
+    public static final int RECOVERY_TICKS = 59;
     public static final int REGEN_DELAY_TICKS = 20;
     public static final SoundEvent PANT = SoundEvent.of(Identifier.of("cursecycle", "heavy_body_pant"));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
@@ -31,12 +33,12 @@ public final class HeavyBodyChallenge extends Challenge {
     // Технические нюансы; не включать в описание для игрока.
     // Скорость наземного движения и начальная вертикальная скорость обычного прыжка составляют 60% от значения
     // с учётом других эффектов. Спринт расходует 50 единиц за 50 тиков; после 20 тиков без расхода отдых возвращает 2 за тик.
-    // При истощении спринт блокируется на 40 тиков: 20 тиков паузы, затем восстановление до полного запаса.
+    // При истощении спринт блокируется на 59 тиков до конца звукового семпла: 20 тиков паузы, затем восстановление до полного запаса.
     public HeavyBodyChallenge() {
         super(ID, "На массе",
                 "Бегаешь медленнее, прыгаешь ниже и запыхиваешься.",
                 "Бегаешь медленнее и прыгаешь ниже. Спринт расходует выносливость. Когда она заканчивается, "
-                        + "на две секунды сбивается дыхание, темнеет в глазах и нельзя бежать. "
+                        + "на 2,95 секунды сбивается дыхание, темнеет в глазах и нельзя бежать. "
                         + "Выносливость начинает восстанавливаться через секунду после остановки спринта.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }

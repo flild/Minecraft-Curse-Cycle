@@ -15,8 +15,9 @@ public abstract class BlindHudInGameHudMixin {
     @Shadow @Final private MinecraftClient client;
 
     // In 1.21.1 status bars contain only the player's hearts (all variants and
-    // absorption), armor, food and air. Mount health/jump and hotbar are separate.
-    @Inject(method = {"renderStatusBars", "renderExperienceBar", "renderExperienceLevel"},
+    // absorption), armor, food and air. Hotbar is filtered separately;
+    // mount health and jump remain visible.
+    @Inject(method = {"renderStatusBars", "renderExperienceBar", "renderExperienceLevel", "renderHotbar"},
             at = @At("HEAD"), cancellable = true)
     private void cursecycle$hidePersonalResources(CallbackInfo ci) {
         if (BlindHud.shouldApply(client)) ci.cancel();

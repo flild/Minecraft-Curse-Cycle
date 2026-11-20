@@ -24,12 +24,13 @@ class HeavyBodyTest {
         var b = new HeavyBodyChallenge.Breathing();
         for (int i = 1; i < 50; i++) { assertFalse(b.tick(true)); assertEquals(50-i, b.stamina()); }
         assertTrue(b.tick(true)); assertTrue(b.panting());
-        assertEquals(0, b.stamina()); assertEquals(40, b.recoveryTicks());
-        for (int i = 1; i < 20; i++) { assertFalse(b.tick(true)); assertTrue(b.panting()); }
+        assertEquals(0, b.stamina()); assertEquals(HeavyBodyChallenge.RECOVERY_TICKS, b.recoveryTicks());
+        for (int i = 1; i < HeavyBodyChallenge.REGEN_DELAY_TICKS; i++) { assertFalse(b.tick(true)); assertTrue(b.panting()); }
         assertFalse(b.tick(true));
         assertEquals(0, b.stamina());
-        for (int i = 1; i < 20; i++) {
-            assertFalse(b.tick(false)); assertTrue(b.panting()); assertEquals(i * 50 / 20, b.stamina());
+        int regenTicks = HeavyBodyChallenge.RECOVERY_TICKS - HeavyBodyChallenge.REGEN_DELAY_TICKS;
+        for (int i = 1; i < regenTicks; i++) {
+            assertFalse(b.tick(false)); assertTrue(b.panting()); assertEquals(i * 50 / regenTicks, b.stamina());
         }
         assertFalse(b.tick(false)); assertFalse(b.panting());
         assertEquals(50, b.stamina());
@@ -49,9 +50,10 @@ class HeavyBodyTest {
         assertEquals(45, b.stamina());
         for (int i = 0; i < 44; i++) assertFalse(b.tick(true));
         assertTrue(b.tick(true));
-        for (int i = 1; i <= 40; i++) {
-            b.tick(true); assertEquals(i < 40, b.panting());
-            assertEquals(Math.max(0, (i - 20) * 50 / 20), b.stamina());
+        for (int i = 1; i <= HeavyBodyChallenge.RECOVERY_TICKS; i++) {
+            b.tick(true); assertEquals(i < HeavyBodyChallenge.RECOVERY_TICKS, b.panting());
+            assertEquals(Math.max(0, (i - HeavyBodyChallenge.REGEN_DELAY_TICKS) * 50
+                    / (HeavyBodyChallenge.RECOVERY_TICKS - HeavyBodyChallenge.REGEN_DELAY_TICKS)), b.stamina());
         }
     }
     @Test void spendingRestartsDelayAndNeverRegeneratesBetweenSprintSamples() {
@@ -72,8 +74,8 @@ class HeavyBodyTest {
     }
     @Test void clientStateRejectsStaleActivationAndFadesWithoutUnlockingEarly() {
         var s = new HeavyBodyInput.Stamina();
-        assertFalse(s.receive(new HeavyBodyStatePayload(7, 0, 40)));
-        s.context(7); assertTrue(s.receive(new HeavyBodyStatePayload(7, 0, 40)));
+        assertFalse(s.receive(new HeavyBodyStatePayload(7, 0, HeavyBodyChallenge.RECOVERY_TICKS)));
+        s.context(7); assertTrue(s.receive(new HeavyBodyStatePayload(7, 0, HeavyBodyChallenge.RECOVERY_TICKS)));
         for (int i = 0; i < 500; i++) s.tick();
         assertTrue(s.exhausted()); assertTrue(s.visible()); assertEquals(.6F, s.darkness(), .00001);
         assertFalse(s.receive(new HeavyBodyStatePayload(6, 50, 0))); assertTrue(s.exhausted());
