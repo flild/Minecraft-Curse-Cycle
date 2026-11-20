@@ -21,7 +21,7 @@ public class RandomPotionChallenge extends Challenge {
     // уровень — I. Продолжительный эффект длится до следующего выбора, мгновенный применяется один раз. Список
     // фиксирован, дополнительных штрафов нет.
     public RandomPotionChallenge() {
-        super(ID, "Аптечная лотырея",
+        super(ID, "Аптечная лотерея",
                 "Каждые " + INTERVAL_SECONDS + " секунд — случайный эффект зелья.",
                 "Раз в " + INTERVAL_SECONDS + " секунд тебе достаётся случайный эффект. Повезёт или станет хуже — как выпадет.", ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }

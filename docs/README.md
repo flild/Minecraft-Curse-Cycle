@@ -44,7 +44,7 @@
 - [Газ заклинило](stuck-throttle-testing.md) — `stuck_throttle`.
 - [Саймон говорит](simon-says-testing.md) — `simon_says`.
 
-- [Аптечная лотырея](random-potion-testing.md) — `random_potion`.
+- [Аптечная лотерея](random-potion-testing.md) — `random_potion`.
 - [Водобоязнь](floor-is-water-testing.md) — `floor_is_water`.
 - [Голый король](armor-disabled-testing.md) — `armor_disabled`.
 - [Горький опыт](bitter-experience-testing.md) — `bitter_experience`.
