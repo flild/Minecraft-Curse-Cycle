@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "meteor_shower_visual_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "validation.MeteorShowerProbe"
+    ]
+  }
+}

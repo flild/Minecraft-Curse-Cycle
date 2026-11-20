@@ -1,0 +1,9 @@
+Explosion03.png - Explosion effects and more
+Author: Soluna Software
+Source: https://opengameart.org/content/explosion-effects-and-more
+Download: https://opengameart.org/sites/default/files/Explosion03.png
+License selected: CC0 1.0 Universal (the author also offers CC-BY 3.0).
+https://creativecommons.org/publicdomain/zero/1.0/
+Author notice: Use this as you like. You do not need to credit me.
+Original SHA256: 7e7f5233315cdbff5976632f5ac169ded76b205ed3549b1768476aa41646f61d
+Stored unmodified as textures/effect/meteor_fire.png. 512x512 RGBA, 4x4 atlas.

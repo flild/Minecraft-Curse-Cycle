@@ -63,7 +63,7 @@ public class MeteorShowerGameTest implements FabricGameTest {
     }
     private static boolean advance(Object m, long now) { return (Boolean) invoke("advance", m, now); }
     private static void impact(TestContext c, Object m) {
-        for (int i = 0; i < 40; i++) if (advance(m, 60L + i)) return;
+        for (int i = 0; i < 55; i++) if (advance(m, 60L + i) || (Long) get(m, "impactedAt") >= 0) return;
         c.throwGameTestException("No bounded impact");
     }
 
@@ -121,7 +121,7 @@ public class MeteorShowerGameTest implements FabricGameTest {
             c.assertTrue(((Vec3d) get(m, "position")).equals(a.target.add(0, 24, 0)), "Stationary for 60 ticks");
             for (long t = 60; t < 75; t++) c.assertFalse(advance(m, t), "Flight precedes contact");
             c.assertTrue(c.getWorld().getBlockState(a.base).isOf(Blocks.DIRT), "No damage in flight");
-            c.assertTrue(advance(m, 75), "Contact exactly on step 16 at 1.5 blocks/tick");
+            advance(m, 75); c.assertEquals(75L, (Long) get(m, "impactedAt"), "Contact exactly on step 16 at 1.5 blocks/tick");
             c.assertTrue(pig.getHealth() < 10, "Real explosion damages mob");
             c.assertTrue(c.getWorld().getBlockState(a.base).isAir(), "Real explosion removes dirt");
             a.s.activate("test_easy");
@@ -130,7 +130,7 @@ public class MeteorShowerGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_roof")
-    public void existingRoofIsMarkedAndNewRoofInterceptsFlight(TestContext c) {
+    public void caveFloorIsMarkedAndNewRoofInterceptsMeteor(TestContext c) {
         try (var a = new Arena(c)) {
             var p = a.player(); var observer = a.player(); observer.changeGameMode(GameMode.CREATIVE); a.activate(ID);
             for (int x = -14; x <= 14; x++) for (int z = -14; z <= 14; z++) a.block(a.base.add(x, 7, z), Blocks.OBSIDIAN);
@@ -140,18 +140,19 @@ public class MeteorShowerGameTest implements FabricGameTest {
                 while (a.s.channel(client).readOutbound() != null) { }
             }
             invoke("issue", phase, owner, 0L);
-            c.assertEquals(3, meteors(phase).size(), "Three real surface selections");
+            int count = meteors(phase).size();
+            c.assertTrue(count >= 5 && count <= 10, "Complete 5–10 wave selected inside cave");
             for (var client : List.of(p, observer)) {
                 a.s.channel(client).runPendingTasks(); a.s.channel(client).flush();
                 var packets = new ArrayList<Object>(); Object packet;
                 while ((packet = a.s.channel(client).readOutbound()) != null) packets.add(packet);
                 var particles = packets.stream().filter(ParticleS2CPacket.class::isInstance)
                         .map(ParticleS2CPacket.class::cast).filter(v -> v.getParameters().getType() == ParticleTypes.FLAME).toList();
-                c.assertEquals(36, particles.size(), "All three rings reach owner and nearby observer");
+                c.assertEquals(count * 12, particles.size(), "Every warning reaches owner and nearby observer");
                 for (var m : meteors(phase)) {
                     Vec3d target = (Vec3d) get(m, "target");
                     long ring = particles.stream().filter(v -> Math.abs(v.getY() - target.y - .12) < .001
-                            && Math.abs(new Vec3d(v.getX(), target.y, v.getZ()).distanceTo(target) - 1.5) < .001).count();
+                            && Math.abs(new Vec3d(v.getX(), target.y, v.getZ()).distanceTo(target) - 1.8) < .001).count();
                     c.assertEquals(12L, ring, "Particle packets fix the actual landing centre");
                 }
                 if (client == p) c.assertTrue(packets.stream().anyMatch(v -> v instanceof GameMessageS2CPacket message
@@ -160,12 +161,15 @@ public class MeteorShowerGameTest implements FabricGameTest {
             }
             for (var m : meteors(phase)) {
                 var target = (Vec3d) get(m, "target");
-                c.assertTrue(Math.abs(target.y - (a.base.getY() + 8)) < .001, "Highest roof is marked");
+                c.assertTrue(Math.abs(target.y - (a.base.getY() + 1)) < .001, "Local cave floor is marked, not roof");
                 double radius = target.subtract(p.getPos()).horizontalLength();
-                c.assertTrue(radius >= 4 && radius <= 12, "Candidate radius");
+                c.assertTrue(radius <= 12, "Candidate radius");
+                c.assertTrue((Boolean) get(m, "geyser"), "All underground targets erupt");
+                c.assertTrue((Double) get(m, "height") < 7, "Plume clipped to cave ceiling");
             }
             var pig = a.pig(a.target); var m = meteor(p, a.target, 0);
-            impact(c, m); // An obstacle added above an already marked lower surface intercepts it.
+            set(m, "geyser", false); set(m, "position", a.target.add(0, 24, 0));
+            impact(c, m); // A new roof intercepts a meteor aimed at a previously exposed floor.
             c.assertTrue(c.getWorld().getBlockState(a.base.up(7)).isOf(Blocks.OBSIDIAN), "Vanilla resistance");
             c.assertTrue(c.getWorld().getBlockState(a.base).isOf(Blocks.DIRT), "No through-roof crater");
             c.assertTrue(pig.getHealth() == 10, "Roof blocks damage below");
@@ -195,17 +199,17 @@ public class MeteorShowerGameTest implements FabricGameTest {
             var phase = storm(a.server);
             for (var owner : sessions(phase).values()) set(owner, "next", 0L);
             step(a.server); int first = meteors(phase).size();
-            c.assertTrue(first > 0 && first <= 3, "One shower search per tick for seven players");
+            c.assertTrue(first >= 5 && first <= 10, "One shower search per tick for seven players");
             MeteorShowerChallenge.tick(a.server);
             c.assertEquals(first, meteors(phase).size(), "Duplicate tick does no work");
             for (int i = 0; i < 30; i++) {
                 for (var owner : sessions(phase).values()) set(owner, "next", 0L);
-                step(a.server); c.assertTrue(meteors(phase).size() <= 12, "Global queue cap");
+                step(a.server); c.assertTrue(meteors(phase).size() <= 40, "Global queue cap");
             }
-            c.assertTrue(MeteorShowerChallenge.SEARCH_ATTEMPTS == 24, "Bounded candidate budget");
+            c.assertTrue(MeteorShowerChallenge.SEARCH_ATTEMPTS == 64, "Bounded candidate budget");
             for (int i = 0; i < meteors(phase).size(); i++) for (int j = i + 1; j < meteors(phase).size(); j++)
                 c.assertTrue(((Vec3d) get(meteors(phase).get(i), "target")).squaredDistanceTo(
-                        (Vec3d) get(meteors(phase).get(j), "target")) >= 16, "Nearby owners do not duplicate a point");
+                        (Vec3d) get(meteors(phase).get(j), "target")) >= MeteorShowerChallenge.MIN_SPACING * MeteorShowerChallenge.MIN_SPACING, "Nearby owners do not duplicate a point");
         } c.complete();
     }
 
@@ -318,32 +322,118 @@ public class MeteorShowerGameTest implements FabricGameTest {
         var a = new Arena(c); var p = a.player(); a.activate(ID);
         var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
         long scheduled = (Long) get(owner, "next");
-        c.assertTrue(scheduled >= 600 && scheduled <= 900, "30–45 second first interval");
-        c.runAtTick(580, () -> {
+        c.assertTrue(scheduled == 80, "Four second initial preparation before the first warning");
+        c.runAtTick(60, () -> {
             c.getWorld().setTimeOfDay(c.getWorld().getTimeOfDay() + 24000);
             c.assertTrue(meteors(phase).isEmpty(), "No early shower despite time jump");
         });
         // The first issue is on the real tick with age == scheduled. Inspect one tick later.
         c.runAtTick((int) scheduled + 3, () -> {
             try {
-                c.assertEquals(3, meteors(phase).size(), "Real registered server event issued three points");
-                var m = meteors(phase).getFirst();
-                c.assertEquals(scheduled, (Long) get(m, "issued"), "No duplicate issue or clock drift");
+                c.assertTrue(meteors(phase).size() >= 5 && meteors(phase).size() <= 10, "Registered server event issued full wave");
+                var m = meteors(phase).stream().filter(v -> !(Boolean) get(v, "geyser")).findFirst().orElseThrow();
+                c.assertTrue((Long) get(m, "issued") >= scheduled && (Long) get(m, "issued") <= scheduled + 27, "Bounded warning staggering");
                 long next = (Long) get(owner, "next");
-                c.assertTrue(next - scheduled >= 600 && next - scheduled <= 900, "Next interval starts at warning");
+                c.assertTrue(next - scheduled >= 240 && next - scheduled <= 360, "Next interval starts at warning");
                 Vec3d target = (Vec3d) get(m, "target"); var block = BlockPos.ofFloored(target.add(0, -.01, 0));
                 p.setPosition(a.target.add(0, 40, 0)); var pig = a.pig(target.add(.7, 0, 0));
                 c.runAtTick((int) scheduled + 55, () -> {
                     c.assertTrue(pig.getHealth() == 10 && c.getWorld().getBlockState(block).isOf(Blocks.DIRT), "Actual warning harmless");
                 });
-                c.runAtTick((int) scheduled + 85, () -> {
+                c.runAtTick((int) scheduled + 130, () -> {
                     try {
                         c.assertTrue(pig.getHealth() < 10, "Real timed impact hurts target");
                         c.assertTrue(c.getWorld().getBlockState(block).isAir(), "Real timed crater");
-                        c.assertTrue(meteors(phase).isEmpty(), "All three flights finish and retire"); c.complete();
+                        c.assertTrue(meteors(phase).isEmpty(), "All meteors and geysers retire"); c.complete();
                     } finally { a.close(); }
                 });
             } catch (Throwable e) { a.close(); throw e; }
         });
     }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_geyser")
+    public void geyserWarningBlastColumnDamageLiftAndRetirement(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); p.setPosition(a.target.add(12, 0, 0)); a.activate(ID);
+            // Explosion-resistant floor and low roof isolate the sustained column from crater edits.
+            for (int x = -3; x <= 3; x++) for (int z = -3; z <= 3; z++) a.block(a.base.add(x, 0, z), Blocks.OBSIDIAN);
+            a.block(a.base.up(5), Blocks.OBSIDIAN);
+            var m = meteor(p, a.target, 0); set(m, "geyser", true);
+            for (long t = 0; t < 60; t++) c.assertFalse(advance(m, t), "All warning ticks harmless");
+            c.assertTrue((Long) get(m, "impactedAt") == -1, "No premature eruption");
+            advance(m, 60); c.assertTrue((Long) get(m, "impactedAt") == 60, "Erupts from floor at warning end");
+            var pig = a.pig(a.target.add(.5, 1, 0));
+            var outside = a.pig(a.target.add(2.2, 1, 0));
+            var above = a.pig(a.target.add(.5, 5, 0));
+            advance(m, 70);
+            c.assertTrue(pig.getHealth() < 10 && pig.isOnFire(), "Sustained column deals actual fire damage");
+            c.assertTrue(pig.getVelocity().y >= .65 && pig.velocityModified, "Jet lifts and requests velocity packet");
+            c.assertTrue(outside.getHealth() == 10 && above.getHealth() == 10, "Cylinder radius and solid ceiling bound damage");
+            c.assertTrue((Double) get(m, "height") < 4.1, "Column stops under roof");
+            c.assertTrue(advance(m, 90), "Bounded eruption retires at 30 ticks");
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_geyser_cover")
+    public void geyserRespectsWallsFireResistanceAndMissingFloor(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); p.setPosition(a.target.add(12, 0, 0)); a.activate(ID);
+            var m = meteor(p, a.target, 0); set(m, "geyser", true); advance(m, 60);
+            var resistant = a.pig(a.target.add(0, 1, .7));
+            resistant.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 200));
+            var sheltered = a.pig(a.target.add(1.5, 1, 0));
+            a.block(a.base.add(1, 1, 0), Blocks.OBSIDIAN); a.block(a.base.add(1, 2, 0), Blocks.OBSIDIAN);
+            advance(m, 70);
+            c.assertTrue(resistant.getHealth() == 10 && sheltered.getHealth() == 10, "Resistance and a new barrier stop column damage");
+            var missing = meteor(p, a.target.add(0, 3, 0), 0); set(missing, "geyser", true);
+            c.assertTrue(advance(missing, 60), "Removed support cancels vent without lower-floor explosion");
+            c.assertTrue((Long) get(missing, "impactedAt") == -1, "No unannounced new target");
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_wave_atomic")
+    public void wavesHaveFiveToTenAndNeverEmitAPartialWave(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); a.activate(ID); var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
+            for (int wave = 0; wave < 12; wave++) {
+                meteors(phase).clear(); invoke("issue", phase, owner, 0L);
+                c.assertTrue(meteors(phase).size() >= 5 && meteors(phase).size() <= 10, "Full wave count");
+                c.assertTrue(meteors(phase).stream().anyMatch(m -> (Boolean) get(m, "geyser")), "Open ground includes geysers");
+                c.assertTrue(meteors(phase).stream().anyMatch(m -> !(Boolean) get(m, "geyser")), "Open ground includes meteors");
+            }
+            meteors(phase).clear();
+            for (int i = 0; i < 32; i++) meteors(phase).add(meteor(p, a.target.add(i * 4, 0, 0), 0));
+            invoke("issue", phase, owner, 0L);
+            c.assertEquals(32, meteors(phase).size(), "Capacity pressure defers whole wave");
+            meteors(phase).clear();
+            // A narrow safe island cannot fit five spaced centres; no one-point wave is created.
+            for (int x = -14; x <= 14; x++) for (int z = -14; z <= 14; z++) if (x != 0 || z != 0) a.block(a.base.add(x, 0, z), Blocks.AIR);
+            invoke("issue", phase, owner, 0L);
+            c.assertTrue(meteors(phase).isEmpty(), "Insufficient accessible floors cause a bounded retry");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_column_callback")
+    public void lethalColumnCancelsRemainingDirectHits(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); p.setPosition(a.target.add(12, 0, 0)); a.activate(ID);
+            var m = meteor(p, a.target, 0); set(m, "geyser", true); advance(m, 60);
+            p.setPosition(a.target.add(0, 1, 0)); p.setHealth(1); p.timeUntilRegen = 0;
+            var pig = a.pig(a.target.add(.5, 1, 0));
+            advance(m, 70);
+            c.assertTrue(p.getHealth() <= 0, "Column can kill owner");
+            c.assertTrue(storm(a.server) == null, "Synchronous death cancels session");
+            c.assertTrue(pig.getHealth() == 10, "No direct column hits after owner deactivation");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_column_cap")
+    public void denseColumnHasBoundedEntityCollection(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); p.setPosition(a.target.add(12, 0, 0)); a.activate(ID);
+            var m = meteor(p, a.target, 0); set(m, "geyser", true); advance(m, 60);
+            var pigs = new ArrayList<PigEntity>();
+            for (int i = 0; i < 40; i++) pigs.add(a.pig(a.target.add(.25, 1, .25)));
+            advance(m, 70);
+            c.assertEquals(32L, pigs.stream().filter(pig -> pig.getHealth() < 10).count(), "Exactly 32 direct targets in a dense jet");
+        } c.complete();
+    }
+
 }
