@@ -15,11 +15,13 @@ import java.util.*;
 public final class FireTrailChallenge extends Challenge {
     public static final String ID = "fire_trail";
     public static final int LIFETIME = 100, INTERVAL = 4, MAX_FIRES = 256, PLACEMENT_BUDGET = 16, LOADED_MARGIN = 24;
+    public static final int DELAY = 10;
+    private static final int MAX_PENDING = (DELAY + INTERVAL - 1) / INTERVAL;
     private static final Map<MinecraftServer, Trail> TRAILS = new HashMap<>();
     public FireTrailChallenge() {
         super(ID, "Призрачный гонщик",
-                "Огненая поступь за тобой.",
-                "За тобой остаётся огненный след на 5 секунд.",
+                "Огненная поступь за тобой.",
+                "Огонь появляется через полсекунды после шага, если ты отошёл, и гаснет через 5 секунд.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     private static final class Session {
@@ -28,12 +30,14 @@ public final class FireTrailChallenge extends Challenge {
         final GameMode mode;
         Vec3d position;
         int sampled;
+        final Deque<Pending> pending = new ArrayDeque<>();
         Session(ServerPlayerEntity p, int now) {
             player = p; world = p.getServerWorld(); mode = p.interactionManager.getGameMode();
             position = p.getPos(); sampled = now;
         }
     }
     private record Site(ServerWorld world, BlockPos pos) {}
+    private record Pending(BlockPos pos, int sampled) {}
     private record Fire(Session owner, int placed) {}
     private static final class Trail {
         final CurseCycleState state;
@@ -58,11 +62,17 @@ public final class FireTrailChallenge extends Challenge {
                 if (!world.getChunkManager().isChunkLoaded(x, z)) return false;
         return true;
     }
-    private static void place(Trail t, Session s, int now) {
+    private static void schedule(Session s, int now) {
         var p = s.player;
         var pos = BlockPos.ofFloored(p.getX(), p.getY() + 1.0E-6, p.getZ());
         if (p.hasVehicle() || p.isTouchingWater() || p.isInLava() || !available(s.world, pos)
                 || !s.world.getBlockState(pos).isAir() || FragileFloorChallenge.supports(p).isEmpty()) return;
+        if (s.pending.size() < MAX_PENDING) s.pending.addLast(new Pending(pos.toImmutable(), now));
+    }
+    private static void place(Trail t, Session s, BlockPos pos, int now) {
+        // A stopped player, a slow step across an edge, or a return must never ignite their feet.
+        if (s.player.getBoundingBox().intersects(new Box(pos)) || !available(s.world, pos)
+                || !s.world.getBlockState(pos).isAir()) return;
         var fireState = Blocks.FIRE.getDefaultState();
         if (!fireState.canPlaceAt(s.world, pos)) return;
         fireState = AbstractFireBlock.getState(s.world, pos);
@@ -99,6 +109,8 @@ public final class FireTrailChallenge extends Challenge {
         if (!(chunk.getWorld() instanceof ServerWorld world)) return;
         var t = TRAILS.get(world.getServer());
         if (t == null) return;
+        for (var s : t.sessions.values()) if (s.world == world)
+            s.pending.removeIf(pending -> new ChunkPos(pending.pos).equals(chunk.getPos()));
         for (var site : List.copyOf(t.fires.keySet())) {
             if (site.world == world && new ChunkPos(site.pos).equals(chunk.getPos())) {
                 t.fires.remove(site);
@@ -132,15 +144,25 @@ public final class FireTrailChallenge extends Challenge {
         int budget = PLACEMENT_BUDGET;
         for (int i = 0; i < sessions.size(); i++) {
             var s = sessions.get(Math.floorMod(t.cursor + i, sessions.size()));
-            if (now - s.sampled < INTERVAL) continue;
-            var position = s.player.getPos(); s.sampled = now;
+            var position = s.player.getPos();
             var displacement = position.subtract(s.position);
+            // Drop delayed work on teleports even between movement samples.
+            if (displacement.lengthSquared() > 16) {
+                s.position = position; s.sampled = now; s.pending.clear(); continue;
+            }
+            while (!s.pending.isEmpty() && now - s.pending.peekFirst().sampled >= DELAY) {
+                var pending = s.pending.removeFirst();
+                // Due entries are consumed even under saturation; no catch-up burst later.
+                if (budget > 0 && t.fires.size() < MAX_FIRES) {
+                    budget--; place(t, s, pending.pos, now);
+                }
+            }
+            if (now - s.sampled < INTERVAL) continue;
+            s.sampled = now;
             // Accumulate small steps too: sneaking must not bypass the trail's distance threshold.
-            if (displacement.lengthSquared() > 16) { s.position = position; continue; }
             if (displacement.horizontalLengthSquared() < .04) continue;
             s.position = position;
-            // No interpolation or delayed work on teleports/saturation. Standing never renews fire.
-            if (budget > 0 && t.fires.size() < MAX_FIRES) { budget--; place(t, s, now); }
+            if (t.fires.size() < MAX_FIRES) schedule(s, now);
         }
         t.cursor = sessions.isEmpty() ? 0 : Math.floorMod(t.cursor + PLACEMENT_BUDGET, sessions.size());
         if (t.sessions.isEmpty() && t.fires.isEmpty()) TRAILS.remove(server);

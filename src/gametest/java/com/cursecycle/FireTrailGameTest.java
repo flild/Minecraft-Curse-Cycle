@@ -33,6 +33,31 @@ public class FireTrailGameTest implements FabricGameTest {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
     private static Map<?, ?> fires(ServerPlayerEntity p) { return (Map<?, ?>) get(trail(p), "fires"); }
+    private static Deque<?> pending(ServerPlayerEntity p) {
+        return (Deque<?>) get(((Map<?, ?>) get(trail(p), "sessions")).get(p.getUuid()), "pending");
+    }
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void agePending(ServerPlayerEntity p, int ticks) {
+        var t = trail(p);
+        if (t == null) return;
+        for (var s : ((Map<?, ?>) get(t, "sessions")).values()) {
+            var queue = (Deque) get(s, "pending");
+            var entries = List.copyOf(queue); queue.clear();
+            for (var entry : entries) {
+                try { var ctor = entry.getClass().getDeclaredConstructors()[0]; ctor.setAccessible(true);
+                    queue.addLast(ctor.newInstance(get(entry, "pos"), p.getServer().getTicks() - ticks));
+                } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+            }
+        }
+    }
+    private static void tickAgain(ServerPlayerEntity p) {
+        var t = trail(p);
+        if (t != null) set(t, "lastTick", p.getServer().getTicks() - 1);
+        FireTrailChallenge.tick(p.getServer());
+    }
+    private static void mature(ServerPlayerEntity p) {
+        agePending(p, FireTrailChallenge.DELAY); tickAgain(p);
+    }
     /** Synchronous boundaries reset only sample/duplicate guards, not actual server time. */
     private static void step(ServerPlayerEntity p) {
         var t = trail(p);
@@ -73,7 +98,9 @@ public class FireTrailGameTest implements FabricGameTest {
         }
         BlockPos walk() { return walk(p); }
         BlockPos walk(ServerPlayerEntity player) {
-            player.setPosition(player.getPos().add(1, 0, 0)); player.setOnGround(true); step(player); return player.getBlockPos();
+            player.setPosition(player.getPos().add(1, 0, 0)); player.setOnGround(true); step(player);
+            var pos = player.getBlockPos();
+            player.setPosition(player.getPos().add(1, 0, 0)); mature(player); return pos;
         }
         BlockPos lit() { var pos = walk(); assertFire(pos, "Movement placed actual vanilla fire"); return pos; }
         void fire(BlockPos pos) { c.getWorld().setBlockState(pos, Blocks.FIRE.getDefaultState(), Block.NOTIFY_ALL); }
@@ -93,14 +120,69 @@ public class FireTrailGameTest implements FabricGameTest {
             a.lit(); a.p.setPosition(a.p.getPos().add(1, 0, 0));
             for (int i = 0; i < 5; i++) FireTrailChallenge.tick(a.p.getServer());
             c.assertEquals(1, fires(a.p).size(), "One world pass per actual tick");
-            step(a.p); c.assertEquals(2, fires(a.p).size(), "Next sample accepted");
+            step(a.p); c.assertEquals(1, fires(a.p).size(), "Next sample waits for delay");
+            a.p.setPosition(a.p.getPos().add(1, 0, 0)); mature(a.p);
+            c.assertEquals(2, fires(a.p).size(), "Next sample placed after leaving and delay");
             a.p.setPosition(a.p.getPos().add(8, 0, 0)); step(a.p);
             c.assertEquals(2, fires(a.p).size(), "Teleport does not paint a line");
             FireTrailChallenge.clear(a.p.getServer()); a.ready(a.p); step(a.p);
             for (int i = 0; i < 2; i++) { a.p.setPosition(a.p.getPos().add(.075, 0, 0)); step(a.p); }
             c.assertEquals(0, fires(a.p).size(), "Small movement accumulated below threshold");
             a.p.setPosition(a.p.getPos().add(.075, 0, 0)); step(a.p);
-            c.assertEquals(1, fires(a.p).size(), "Slow continuous movement also leaves fire");
+            c.assertEquals(1, pending(a.p).size(), "Slow continuous movement also schedules fire");
+            mature(a.p); c.assertEquals(0, fires(a.p).size(), "Slow movement within the same block cannot ignite feet");
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fire_trail")
+    public void delayStandingEdgesAndReturnNeverIgniteFeet(TestContext c) {
+        try (var a = new Arena(c)) {
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east())); step(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Movement does not ignite immediately");
+            agePending(a.p, FireTrailChallenge.DELAY - 1); tickAgain(a.p);
+            c.assertEquals(0, fires(a.p).size(), "No fire before ten ticks");
+            mature(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Stopping on the sampled block never ignites it");
+            c.assertTrue(pending(a.p).isEmpty(), "Skipped fire is discarded instead of waiting underfoot");
+
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east()).add(.35, 0, 0)); step(a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(2)).add(-.35, 0, 0)); mature(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Crossing the block edge is insufficient while the body overlaps");
+
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(3))); step(a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(4))); tickAgain(a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(3))); mature(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Returning before ignition protects the owner too");
+
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(4))); step(a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(5)));
+            agePending(a.p, FireTrailChallenge.DELAY - 1); tickAgain(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Even a vacated block waits for the full delay");
+            mature(a.p); a.assertFire(a.base.east(4), "Vacated block ignites at ten ticks");
+            c.assertFalse(a.p.isOnFire(), "Placing the trail does not ignite its owner");
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fire_trail")
+    public void delayedSitesRevalidateAndCancelWithOwner(TestContext c) {
+        try (var a = new Arena(c)) {
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east())); step(a.p);
+            c.getWorld().setBlockState(a.base.east(), Blocks.DIAMOND_BLOCK.getDefaultState());
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(2))); mature(a.p);
+            c.assertTrue(c.getWorld().getBlockState(a.base.east()).isOf(Blocks.DIAMOND_BLOCK), "Late block is never overwritten");
+
+            step(a.p); c.getWorld().setBlockState(a.base.east(2).down(), Blocks.AIR.getDefaultState());
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(3))); mature(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Lost support prevents delayed placement");
+
+            step(a.p); a.p.setPosition(a.p.getPos().add(8, 0, 0)); mature(a.p);
+            c.assertTrue(pending(a.p).isEmpty(), "Teleport drops delayed work");
+            c.assertEquals(0, fires(a.p).size(), "Teleport cannot restore pending trail");
+
+            a.ready(a.p); step(a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.south())); step(a.p);
+            c.assertFalse(pending(a.p).isEmpty(), "Owner has delayed work before stop");
+            ChallengeRegistry.get(ID).onStop(a.p.getServer(), a.p);
+            a.p.setPosition(Vec3d.ofBottomCenter(a.base.south(2))); mature(a.p);
+            c.assertEquals(0, fires(a.p).size(), "Stopped owner cannot place queued fire");
         } c.complete();
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "fire_trail")
@@ -226,10 +308,10 @@ public class FireTrailGameTest implements FabricGameTest {
                 // This fixture extends beyond the empty template. Prepare the production
                 // portal-search margin for every owner; random test origins may cross a chunk edge.
                 int margin = FireTrailChallenge.LOADED_MARGIN;
-                for (int x = (a.base.getX() - margin) >> 4; x <= (a.base.getX() + 22 + margin) >> 4; x++)
+                for (int x = (a.base.getX() - margin) >> 4; x <= (a.base.getX() + 40 + margin) >> 4; x++)
                     for (int z = (a.base.getZ() - margin) >> 4; z <= (a.base.getZ() + 22 + margin) >> 4; z++)
                         c.getWorld().getChunk(x, z);
-                for (var pos : BlockPos.iterate(a.base.add(0, -1, 0), a.base.add(22, 0, 22)))
+                for (var pos : BlockPos.iterate(a.base.add(0, -1, 0), a.base.add(40, 0, 22)))
                     c.getWorld().setBlockState(pos, pos.getY() < a.base.getY() ? Blocks.NETHERRACK.getDefaultState() : Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
                 FireTrailChallenge.clear(a.p.getServer());
                 for (int i = 0; i < 20; i++) {
@@ -239,7 +321,9 @@ public class FireTrailGameTest implements FabricGameTest {
                 for (int round = 0; round < 18; round++) {
                     int before = fires(a.p).size();
                     for (var p : all) p.setPosition(p.getPos().add(1, 0, 0));
-                    step(a.p); int after = fires(a.p).size();
+                    step(a.p);
+                    for (var p : all) p.setPosition(p.getPos().add(1, 0, 0));
+                    mature(a.p); int after = fires(a.p).size();
                     c.assertTrue(after - before <= 16 && after <= 256, "Shared per-tick work and queue bounded");
                     if (round == 0) c.assertEquals(16, after, "Exactly sixteen placements across twenty owners");
                 }
@@ -247,7 +331,7 @@ public class FireTrailGameTest implements FabricGameTest {
                 age(a.p, 100); step(a.p); c.assertEquals(0, fires(a.p).size(), "No catch-up after capacity is freed");
             } finally {
                 FireTrailChallenge.clear(a.p.getServer());
-                for (var pos : BlockPos.iterate(a.base.add(0, -1, 0), a.base.add(22, 0, 22)))
+                for (var pos : BlockPos.iterate(a.base.add(0, -1, 0), a.base.add(40, 0, 22)))
                     c.getWorld().setBlockState(pos, Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
             }
         } c.complete();
@@ -272,10 +356,17 @@ public class FireTrailGameTest implements FabricGameTest {
     public void realServerClockExpiresAfterFiveSeconds(TestContext c) {
         var a = new Arena(c); final int began = a.p.getServer().getTicks();
         c.runAtTick(4, () -> { a.p.setPosition(Vec3d.ofBottomCenter(a.base.east())); a.p.setOnGround(true); });
-        c.runAtTick(6, () -> { try { a.assertFire(a.base.east(), "Actual END_SERVER_TICK placement"); } catch (Throwable e) { a.close(); throw e; } });
-        c.runAtTick(102, () -> { try { a.assertFire(a.base.east(), "Before 100 ticks since placement"); } catch (Throwable e) { a.close(); throw e; } });
-        c.runAtTick(106, () -> { try {
+        c.runAtTick(6, () -> { try { c.assertTrue(c.getWorld().getBlockState(a.base.east()).isAir(), "Actual clock: no immediate fire"); } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(8, () -> a.p.setPosition(Vec3d.ofBottomCenter(a.base.east(2))));
+        c.runAtTick(13, () -> { try { c.assertTrue(c.getWorld().getBlockState(a.base.east()).isAir(), "Actual clock: delay has not elapsed"); } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(16, () -> { try { a.assertFire(a.base.east(), "Actual END_SERVER_TICK delayed placement");
+            c.assertTrue(c.getWorld().getBlockState(a.base.east(2)).isAir(), "Standing owner has no fire underfoot");
+        } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(112, () -> { try { a.assertFire(a.base.east(), "Before 100 ticks since delayed placement"); } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(116, () -> { try {
             c.assertTrue(c.getWorld().getBlockState(a.base.east()).isAir(), "Actual five-second expiry");
+            c.assertTrue(c.getWorld().getBlockState(a.base.east(2)).isAir(), "Standing never ignites the final block");
+            c.assertFalse(a.p.isOnFire(), "Actual clock: owner remains unburned after stopping");
             c.assertTrue(a.p.getServer().getTicks() - began >= 100, "Actual clock advanced"); c.complete();
         } finally { a.close(); } });
     }

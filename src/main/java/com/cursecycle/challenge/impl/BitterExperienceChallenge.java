@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
 
 public class BitterExperienceChallenge extends Challenge {
     public static final String ID = "bitter_experience";
-    private static final float DAMAGE = 2.0F;
+    private static final float DAMAGE = 4.0F;
     public static final RegistryKey<DamageType> DAMAGE_TYPE = RegistryKey.of(RegistryKeys.DAMAGE_TYPE,
             Identifier.of("cursecycle", ID));
 
