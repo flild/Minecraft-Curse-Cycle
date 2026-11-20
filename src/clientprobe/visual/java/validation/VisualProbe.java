@@ -11,7 +11,9 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.util.ScreenshotRecorder;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
@@ -28,6 +30,10 @@ public final class VisualProbe implements ClientModInitializer {
     private int checks;
 
     @Override public void onInitializeClient() {
+        if (Boolean.getBoolean("cursecycle.hudScaleProbe")) {
+            initializeHudScaleProbe();
+            return;
+        }
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             try {
                 if (!started) {
@@ -131,6 +137,81 @@ public final class VisualProbe implements ClientModInitializer {
                 throw new RuntimeException(failure);
             }
         });
+    }
+
+    private void initializeHudScaleProbe() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            try {
+                if (!started) {
+                    if (client.getOverlay() != null || client.currentScreen == null) return;
+                    started = true;
+                    client.options.pauseOnLostFocus = false;
+                    client.options.getMaxFps().setValue(60);
+                    GLFW.glfwHideWindow(client.getWindow().getHandle());
+                    ClientDataHolder.updateState(26, 7600, List.of("heartbeat", "heavy_body"),
+                            DOUBLE, List.of(), "forward");
+                    client.setScreen(new Screen(Text.literal("HUD scale fixture")) {
+                        @Override public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+                            context.fill(0, 0, width, height, 0xFF25252E);
+                            // Vanilla landmarks for judging the real overlay sizes without loading a world.
+                            context.drawGuiTexture(Identifier.ofVanilla("hud/hotbar"), width / 2 - 91, height - 22, 182, 22);
+                            context.drawGuiTexture(Identifier.ofVanilla("hud/crosshair"), width / 2 - 7, height / 2 - 7, 15, 15);
+                            CurseCycleHudOverlay.render(context, new CurseCycleConfig(), 7600,
+                                    List.of("heartbeat", "heavy_body"), DOUBLE);
+                            Text key = ticks >= 25 && ticks < 35 ? longKeyLabel()
+                                    : InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_B).getLocalizedText();
+                            String label = ticks >= 35 ? "accepted" : ticks >= 25 ? "grace" : "beat";
+                            HeartbeatOverlay.renderFeedback(context, Text.translatable("text.cursecycle.heartbeat." + label,
+                                    key, 3), ticks >= 25 && ticks < 35 ? 40 : 121, 120, ticks >= 35);
+                            HeavyBodyOverlay.renderStamina(context, ticks >= 35 ? 0 : 25, ticks >= 35);
+                        }
+                    });
+                }
+                ticks++;
+                switch (ticks) {
+                    case 5 -> capture(client, "hud-scale-2");
+                    case 10 -> resize(client, 2560, 1440, 6);
+                    case 15 -> {
+                        check(client.getWindow().getScaleFactor() == 6, "actual GUI scale 6 at 2560x1440");
+                        capture(client, "hud-scale-6-wide");
+                    }
+                    case 20 -> resize(client, 1920, 1440, 6);
+                    case 25 -> {
+                        check(client.getWindow().getScaleFactor() == 6, "actual GUI scale 6 at 1920x1440");
+                        capture(client, "hud-scale-6-narrow");
+                    }
+                    case 30 -> {
+                        var label = Text.translatable("text.cursecycle.heartbeat.grace", longKeyLabel(), 3);
+                        var lines = client.textRenderer.wrapLines(label, 166);
+                        check(lines.size() > 1, "long bound-key label wraps");
+                        check(lines.stream().allMatch(line -> client.textRenderer.getWidth(line) <= 166), "wrapped label fits panel");
+                        capture(client, "hud-scale-6-long-key");
+                    }
+                    case 35 -> resize(client, 854, 480, 2);
+                    case 40 -> {
+                        capture(client, "hud-scale-small");
+                        System.out.println("CURSECYCLE_HUD_SCALE_PROBE_PASSED checks=" + checks);
+                        client.scheduleStop();
+                    }
+                }
+            } catch (Throwable failure) {
+                failure.printStackTrace();
+                System.out.println("CURSECYCLE_HUD_SCALE_PROBE_FAILED");
+                client.scheduleStop();
+                throw new RuntimeException(failure);
+            }
+        });
+    }
+
+    private Text longKeyLabel() {
+        // Deliberately long synthetic binding label to exercise wrapping in either language.
+        return Text.literal("Дополнительная кнопка мыши 12");
+    }
+
+    private void resize(MinecraftClient client, int width, int height, int guiScale) {
+        client.getWindow().setWindowedSize(width, height);
+        client.options.getGuiScale().setValue(guiScale);
+        client.onResolutionChanged();
     }
 
     private List<ButtonWidget> buttons(MinecraftClient client) {

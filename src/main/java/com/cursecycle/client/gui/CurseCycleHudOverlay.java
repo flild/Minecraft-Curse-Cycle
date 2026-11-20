@@ -21,7 +21,8 @@ public final class CurseCycleHudOverlay {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!config.enableHudOverlay || client.options.hudHidden) return;
         var renderer = client.textRenderer;
-        float scale = Math.clamp(config.hudScalePercent, 50, 100) / 100f;
+        float scale = HudLayout.scale(context.getScaledWindowWidth(), context.getScaledWindowHeight())
+                * Math.clamp(config.hudScalePercent, 50, 100) / 100f;
         int width = Math.min(202, (int) ((context.getScaledWindowWidth() - 12) / scale));
         if (width < 80) return;
         int textWidth = width - 38;

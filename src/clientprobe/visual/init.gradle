@@ -20,6 +20,7 @@ allprojects {
             destinationDirectory = probeOutput
         }
         loom.runs.client {
+            if (project.hasProperty('hudScaleProbe')) vmArg '-Dcursecycle.hudScaleProbe=true'
             runDir 'build/visual-client-probe/run'
             vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
             programArg '--width'
