@@ -1,5 +1,5 @@
 {
-  "text.cursecycle.black_hole.warning": "Чёрная дыра! Отойди от центра, через 3 секунды начнёт затягивать.",
+  "text.cursecycle.black_hole.warning": "Чёрная дыра формируется! Через 3 секунды начнёт преследовать и затягивать всё в радиусе 24 блоков.",
   "text.cursecycle.blood_tribute.warning": "Резня: осталось %s с, чтобы убить моба",
   "text.cursecycle.blood_tribute.overdue": "Время вышло! Убей моба, чтобы перестать терять здоровье",
   "text.cursecycle.blood_tribute.paid": "Убийство засчитано. До следующей жертвы — %s с",

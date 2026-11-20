@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "black_hole_visual_validation",
+  "version": "1",
+  "environment": "client",
+  "entrypoints": { "client": ["validation.BlackHoleProbe"] }
+}

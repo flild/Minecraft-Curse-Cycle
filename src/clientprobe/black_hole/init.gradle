@@ -1,0 +1,44 @@
+// Real integrated server and OpenGL captures of the black hole; excluded from production artifacts.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/black_hole')
+        def probeOutput = project.file('build/black-hole-client-probe')
+        tasks.register('compileBlackHoleProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('blackHoleProbeJar', Jar) {
+            dependsOn tasks.named('compileBlackHoleProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/black-hole-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+            programArg '--width'
+            programArg '1280'
+            programArg '--height'
+            programArg '800'
+        }
+        tasks.register('prepareBlackHoleOptions') {
+            doLast {
+                def options = new File(probeOutput, 'run/options.txt')
+                def settings = [lang: 'ru_ru', guiScale: '2', pauseOnLostFocus: 'false',
+                                maxFps: '60', onboardAccessibility: 'false', fullscreen: 'false']
+                def lines = options.exists() ? options.readLines('UTF-8') : []
+                lines = lines.findAll { line -> !settings.keySet().any { key -> line.startsWith(key + ':') } }
+                lines.addAll(settings.collect { key, value -> key + ':' + value })
+                options.parentFile.mkdirs()
+                options.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+            }
+        }
+        tasks.named('runClient') { dependsOn tasks.named('blackHoleProbeJar'), tasks.named('prepareBlackHoleOptions') }
+    }
+}

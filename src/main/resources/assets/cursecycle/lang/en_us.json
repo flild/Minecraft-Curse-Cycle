@@ -1,5 +1,5 @@
 {
-  "text.cursecycle.black_hole.warning": "Black hole: leave the marked centre! Attraction starts in 3 seconds.",
+  "text.cursecycle.black_hole.warning": "A black hole is forming! In 3 seconds it will pursue you and pull everything within 24 blocks.",
   "text.cursecycle.blood_tribute.warning": "Blood tribute: kill a mob within %s s",
   "text.cursecycle.blood_tribute.overdue": "Blood tribute: overdue. Kill a mob to stop losing health",
   "text.cursecycle.blood_tribute.paid": "Blood tribute: kill counted. %s seconds remaining",

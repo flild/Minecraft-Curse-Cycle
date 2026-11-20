@@ -32,13 +32,18 @@ public class CurseCycleClient implements ClientModInitializer {
     }
 
     private void initializeClient(StartupDiagnostics diagnostics) {
+        com.cursecycle.client.BlackHoleRenderer.initialize();
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.BlackHoleStatePayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.BlackHoleVisuals.receive(context.client(), payload)));
         diagnostics.stage("registering connection events");
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            com.cursecycle.client.BlackHoleVisuals.clear();
             ClientDataHolder.reset();
             com.cursecycle.client.ClientTimingSettings.reset();
             ForcedThirdPersonCamera.apply(client);
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            com.cursecycle.client.BlackHoleVisuals.clear();
             ClientDataHolder.reset();
             com.cursecycle.client.ClientTimingSettings.reset();
             ForcedThirdPersonCamera.apply(client);
@@ -57,6 +62,7 @@ public class CurseCycleClient implements ClientModInitializer {
 
         diagnostics.stage("registering client ticks");
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            com.cursecycle.client.BlackHoleVisuals.tick(client);
             com.cursecycle.client.HeartbeatInput.tick(client);
             com.cursecycle.client.HeavyBodyInput.tick(client);
             com.cursecycle.client.MovementMemoryInput.validate(client);

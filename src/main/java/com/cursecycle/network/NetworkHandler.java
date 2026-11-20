@@ -14,6 +14,7 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playS2C().register(BlackHoleStatePayload.ID, BlackHoleStatePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(TimingSettingsRequestPayload.ID, TimingSettingsRequestPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TimingSettingsPayload.ID, TimingSettingsPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(TimingSettingsRequestPayload.ID, (payload, context) -> {
