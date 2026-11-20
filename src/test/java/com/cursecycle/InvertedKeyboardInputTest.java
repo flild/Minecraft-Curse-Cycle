@@ -6,6 +6,7 @@ import com.cursecycle.challenge.ChallengeScope;
 import com.cursecycle.challenge.ChallengeUtils;
 import com.cursecycle.challenge.ModChallenges;
 import com.cursecycle.challenge.impl.InvertedKeyboardChallenge;
+import com.cursecycle.challenge.impl.UpsideDownCameraChallenge;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.InvertedKeyboardInput;
 import net.minecraft.client.input.Input;
@@ -63,11 +64,12 @@ class InvertedKeyboardInputTest {
     }
 
     @Test void eligibilityRequiresSyncedLivingSurvivalOrAdventureAndCurrentServerId() {
-        for (var mode : GameMode.values()) {
+        for (var ids : List.of(List.of(ID, ID, "no_sprint"), List.of(UpsideDownCameraChallenge.ID),
+                List.of(ID, UpsideDownCameraChallenge.ID))) for (var mode : GameMode.values()) {
             assertEquals(mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE,
-                    InvertedKeyboardInput.affects(true, List.of(ID, ID, "no_sprint"), mode, true));
-            assertFalse(InvertedKeyboardInput.affects(false, List.of(ID), mode, true));
-            assertFalse(InvertedKeyboardInput.affects(true, List.of(ID), mode, false));
+                    InvertedKeyboardInput.affects(true, ids, mode, true));
+            assertFalse(InvertedKeyboardInput.affects(false, ids, mode, true));
+            assertFalse(InvertedKeyboardInput.affects(true, ids, mode, false));
             assertFalse(InvertedKeyboardInput.affects(true, List.of("no_sprint"), mode, true));
         }
         assertFalse(InvertedKeyboardInput.affects(true, List.of(ID), null, true));
@@ -83,6 +85,10 @@ class InvertedKeyboardInputTest {
         ClientDataHolder.updateState(3, 60, List.of(ID), "", List.of());
         assertTrue(active());
         assertFalse(InvertedKeyboardInput.shouldInvert(null, new Input()));
+        ClientDataHolder.updateState(4, 80, List.of(UpsideDownCameraChallenge.ID), "", List.of());
+        assertTrue(active());
+        ClientDataHolder.updateState(5, 100, List.of("no_sprint"), "", List.of(UpsideDownCameraChallenge.ID));
+        assertFalse(active());
     }
 
     private boolean active() {

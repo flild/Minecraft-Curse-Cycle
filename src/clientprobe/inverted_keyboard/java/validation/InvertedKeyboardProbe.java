@@ -23,6 +23,7 @@ import java.util.List;
 /** Real transformed input and gates; synthetic client/world/player accessors, no window or connection. */
 public final class InvertedKeyboardProbe implements PreLaunchEntrypoint {
     private static final String ID = "inverted_keyboard";
+    private static final String UPSIDE_DOWN = "upside_down_camera";
     private static boolean alive = true, riding, water, lava, climbing, elytra;
     private static GameMode mode = GameMode.SURVIVAL;
     private static final PlayerAbilities ABILITIES = new PlayerAbilities();
@@ -86,20 +87,25 @@ public final class InvertedKeyboardProbe implements PreLaunchEntrypoint {
             check(java.util.Arrays.stream(KeyboardInput.class.getDeclaredMethods())
                     .anyMatch(m -> m.getName().contains("cursecycle$invertKeyboard")), "Production Mixin transformed KeyboardInput");
             // No test Mixin or replacement of shouldInvert: every tick passes through the real gate.
-            for (boolean active : new boolean[]{false, true, true, false, true}) {
-                sync(active ? ID : "no_sprint");
+            for (var ids : List.of(List.of("no_sprint"), List.of(ID), List.of(ID, ID),
+                    List.of("no_sprint"), List.of(UPSIDE_DOWN), List.of(UPSIDE_DOWN, UPSIDE_DOWN),
+                    List.of(ID, UPSIDE_DOWN), List.of(ID), List.of(ID, UPSIDE_DOWN),
+                    List.of(UPSIDE_DOWN), List.of("no_sprint"))) {
+                sync(ids.toArray(String[]::new));
+                boolean invertForward = ids.contains(ID);
+                boolean invertSideways = invertForward || ids.contains(UPSIDE_DOWN);
                 for (int mask = 0; mask < 128; mask++) for (float factor : new float[]{1, .3f, .2f}) {
                     press(mask);
                     for (int repeat = 0; repeat < 3; repeat++) {
                         tick(input, factor != 1, factor);
                         float f = (((mask & 1) != 0 ? 1 : 0) - ((mask & 2) != 0 ? 1 : 0)) * factor;
                         float s = (((mask & 4) != 0 ? 1 : 0) - ((mask & 8) != 0 ? 1 : 0)) * factor;
-                        check(input.movementForward == f * (active ? -1 : 1)
-                                && input.movementSideways == s * (active ? -1 : 1), "Axes and opposing keys");
-                        check(input.pressingForward == ((mask & (active ? 2 : 1)) != 0)
-                                && input.pressingBack == ((mask & (active ? 1 : 2)) != 0)
-                                && input.pressingLeft == ((mask & (active ? 8 : 4)) != 0)
-                                && input.pressingRight == ((mask & (active ? 4 : 8)) != 0), "Boat direction flags");
+                        check(input.movementForward == f * (invertForward ? -1 : 1)
+                                && input.movementSideways == s * (invertSideways ? -1 : 1), "Axes and opposing keys");
+                        check(input.pressingForward == ((mask & (invertForward ? 2 : 1)) != 0)
+                                && input.pressingBack == ((mask & (invertForward ? 1 : 2)) != 0)
+                                && input.pressingLeft == ((mask & (invertSideways ? 8 : 4)) != 0)
+                                && input.pressingRight == ((mask & (invertSideways ? 4 : 8)) != 0), "Boat direction flags");
                         check(input.jumping == ((mask & 16) != 0) && input.sneaking == ((mask & 32) != 0)
                                 && keys[6].isPressed() == ((mask & 64) != 0), "Jump, sneak, sprint binding unchanged");
                         check(input.movementForward * input.movementForward + input.movementSideways * input.movementSideways
@@ -139,6 +145,33 @@ public final class InvertedKeyboardProbe implements PreLaunchEntrypoint {
                 sync("no_sprint"); tick(input, false, .3f); check(input.movementForward == 1, "Stop preserves user binding");
                 ClientDataHolder.reset(); check(keys[0].matchesKey(code, 0), "Reset preserves current binding");
             }
+            // Keep a rebound left key held across each activation/end and reset, without a release tick.
+            for (int code : new int[]{263, 262}) {
+                keys[2].setBoundKey(InputUtil.Type.KEYSYM.createFromCode(code)); KeyBinding.updateKeysByCode();
+                KeyBinding.unpressAll(); KeyBinding.setKeyPressed(InputUtil.Type.KEYSYM.createFromCode(code), true);
+                for (var currentMode : GameMode.values()) {
+                    mode = currentMode; sync(UPSIDE_DOWN, UPSIDE_DOWN); tick(input, true, .3f);
+                    boolean active = mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE;
+                    check(input.movementSideways == (active ? -.3f : .3f)
+                            && input.pressingRight == active && input.pressingLeft != active, "Upside down mode gate");
+                }
+                mode = GameMode.SURVIVAL;
+                alive = false; tick(input, false, .3f);
+                check(input.movementSideways == 1, "Dead player has vanilla sideways input"); alive = true;
+                for (int cycle = 0; cycle < 32; cycle++) {
+                    sync(UPSIDE_DOWN); tick(input, false, .3f);
+                    check(input.movementSideways == -1 && input.pressingRight, "Rebound left moves right");
+                    sync("no_sprint"); tick(input, false, .3f);
+                    check(input.movementSideways == 1 && input.pressingLeft, "End immediately restores held left key");
+                    sync(UPSIDE_DOWN); ClientDataHolder.reset(); tick(input, false, .3f);
+                    check(input.movementSideways == 1 && input.pressingLeft, "Reset restores held left key");
+                    check(keys[2].matchesKey(code, 0), "Binding survives activation/end/reset");
+                }
+            }
+            ClientDataHolder.updateState(1, 20, List.of(UPSIDE_DOWN, "blocked_direction"), "", List.of(), "right");
+            press(4); tick(input, false, .3f);
+            check(input.movementSideways == 0 && !input.pressingRight, "Direction block sees swapped sideways input");
+            sync("no_sprint");
             // Actual production order must constrain the result of inversion, then preserve the companion after end.
             ClientDataHolder.updateState(1, 20, List.of(ID, "blocked_direction"), "", List.of(), "forward");
             press(2); tick(input, false, .3f); check(input.movementForward == 0 && !input.pressingForward, "Block applies after inversion");
