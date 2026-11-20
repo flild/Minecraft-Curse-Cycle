@@ -9,7 +9,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.TypeFilter;
 import net.minecraft.util.math.*;
@@ -43,6 +42,7 @@ public final class MeteorShowerChallenge extends Challenge {
         final ServerPlayerEntity player;
         final ServerWorld world;
         long next;
+        int remaining;
         Session(ServerPlayerEntity player, long now) {
             this.player = player;
             world = player.getServerWorld();
@@ -113,13 +113,18 @@ public final class MeteorShowerChallenge extends Challenge {
     }
     /** Local floor in the player's reachable cavity: never substitute the roof of their cave. */
     private static Vec3d floor(Session s, double x, double z) {
-        var from = s.player.getPos().add(0, .75, 0);
-        var at = new Vec3d(x, from.y, z);
-        if (trace(s.world, from, at).getType() != HitResult.Type.MISS) return null;
-        var hit = trace(s.world, at, at.add(0, -12, 0));
+        // Allow a one-block step. Tracing horizontally at the old foot height rejects every
+        // raised floor as a wall, even when the player can simply jump onto it.
+        var from = new Vec3d(x, s.player.getY() + 1.25, z);
+        var hit = trace(s.world, from, new Vec3d(x, s.player.getY() - 12, z));
         if (hit.getType() != HitResult.Type.BLOCK || hit.getSide() != net.minecraft.util.math.Direction.UP) return null;
-        return hit.getPos();
+        var target = hit.getPos();
+        double pathY = Math.max(s.player.getY(), target.y) + .75;
+        if (trace(s.world, new Vec3d(s.player.getX(), pathY, s.player.getZ()),
+                new Vec3d(x, pathY, z)).getType() != HitResult.Type.MISS) return null;
+        return target;
     }
+
     /** Space above the marked floor, clipped to a solid ceiling; fluids do not form a ceiling. */
     private static double ceiling(ServerWorld world, Vec3d target) {
         var from = target.add(0, .05, 0);
@@ -128,15 +133,23 @@ public final class MeteorShowerChallenge extends Challenge {
         return Math.max(0, hit.getPos().y - from.y);
     }
     private static void issue(Storm storm, Session s, long now) {
-        // Reserve a whole wave. Crowded servers never turn a 5–10 wave into single stray strikes.
+        // Keep one bounded wave per owner; cramped spaces deliver it in separately warned portions.
         if (MAX_METEORS - storm.meteors.size() < MAX_SHOWER) { s.next = now + 20; return; }
-        int wanted = MIN_SHOWER + s.player.getRandom().nextInt(MAX_SHOWER - MIN_SHOWER + 1);
+        if (s.remaining == 0) s.remaining = MIN_SHOWER + s.player.getRandom().nextInt(MAX_SHOWER - MIN_SHOWER + 1);
+        int wanted = s.remaining;
         var selected = new ArrayList<Meteor>(wanted);
         for (int attempt = 0; attempt < SEARCH_ATTEMPTS && selected.size() < wanted; attempt++) {
-            double angle = s.player.getRandom().nextDouble() * Math.PI * 2;
-            double radius = attempt == 0 ? .25 : 3 + s.player.getRandom().nextDouble() * (MAX_RADIUS - 3);
-            double x = s.player.getX() + Math.cos(angle) * radius;
-            double z = s.player.getZ() + Math.sin(angle) * radius;
+            double x = s.player.getX(), z = s.player.getZ();
+            if (attempt >= 32 && attempt < 44) {
+                // A random annulus almost always misses a one-block-wide mine corridor.
+                int axis = (attempt - 32) % 4, distance = 4 * (1 + (attempt - 32) / 4);
+                x += axis == 0 ? distance : axis == 1 ? -distance : 0;
+                z += axis == 2 ? distance : axis == 3 ? -distance : 0;
+            } else if (attempt != 0) {
+                double angle = s.player.getRandom().nextDouble() * Math.PI * 2;
+                double radius = 3 + s.player.getRandom().nextDouble() * (MAX_RADIUS - 3);
+                x += Math.cos(angle) * radius; z += Math.sin(angle) * radius;
+            }
             if (!available(s.world, x, z)) continue;
             var target = floor(s, x, z);
             if (target == null || ceiling(s.world, target) < 1.5) continue;
@@ -148,11 +161,15 @@ public final class MeteorShowerChallenge extends Challenge {
             if (m.geyser) { m.height = Math.min(COLUMN_HEIGHT, m.height); m.position = m.target; }
             m.id = ++storm.nextId; selected.add(m);
         }
-        if (selected.size() < MIN_SHOWER) { s.next = now + 40; return; }
+        if (selected.isEmpty()) { s.next = now + 40; return; }
         storm.meteors.addAll(selected);
-        s.next = now + interval(s.player);
+        s.remaining -= selected.size();
+        // Reuse a tiny room's floor only after the entire preceding portion has retired.
+        // Later portions choose the player's current local floor and get a fresh full warning.
+        long retireAt = selected.stream().mapToLong(m -> m.issued + WARNING
+                + (m.geyser ? ERUPTION_TICKS : (int) Math.ceil(HEIGHT / SPEED) + 20)).max().orElseThrow();
+        s.next = s.remaining > 0 ? retireAt + 1 : now + interval(s.player);
         selected.forEach(MeteorShowerChallenge::mark);
-        s.player.sendMessage(Text.translatable("text.cursecycle.meteor_shower.warning"), false);
         s.world.playSound(null, s.player.getBlockPos(), SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE,
                 SoundCategory.HOSTILE, .8F, .55F);
     }

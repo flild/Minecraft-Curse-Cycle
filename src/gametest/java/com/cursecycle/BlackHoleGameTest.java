@@ -122,9 +122,9 @@ public class BlackHoleGameTest implements FabricGameTest {
             double distance = at.subtract(p.getPos()).horizontalLength();
             c.assertTrue(distance >= 28 && distance <= 32, "Spawn 28–32 blocks away");
             for (var player : List.of(p, q))
-                c.assertTrue(packets(a.s, player).stream().anyMatch(v -> v instanceof GameMessageS2CPacket m
+                c.assertTrue(packets(a.s, player).stream().noneMatch(v -> v instanceof GameMessageS2CPacket m
                         && m.content().getContent() instanceof net.minecraft.text.TranslatableTextContent t
-                        && t.getKey().equals("text.cursecycle.black_hole.warning")), "Owner and observer warned");
+                        && t.getKey().equals("text.cursecycle.black_hole.warning")), "No warning chat spam for owner or observer");
             var pig = a.pig(at); var item = a.item(at.add(4, 0, 0));
             for (long t = 0; t < 60; t++) affect(a.server, t);
             c.assertTrue(pig.getHealth() == 10 && pig.getVelocity().equals(Vec3d.ZERO), "Entire warning harmless");

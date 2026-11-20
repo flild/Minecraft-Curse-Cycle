@@ -14,7 +14,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
 import net.minecraft.util.TypeFilter;
 import net.minecraft.util.math.*;
 
@@ -89,8 +88,6 @@ public final class BlackHoleChallenge extends Challenge {
         return true;
     }
     private static void announce(Hole h) {
-        for (var p : h.world.getPlayers()) if (p.squaredDistanceTo(h.center) <= 96 * 96)
-            p.sendMessage(Text.translatable("text.cursecycle.black_hole.warning"), false);
         h.world.playSound(null, BlockPos.ofFloored(h.center), SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE,
                 SoundCategory.HOSTILE, 2F, .5F);
     }

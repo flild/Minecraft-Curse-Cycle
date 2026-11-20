@@ -15,6 +15,6 @@ public final class TinyFovChallenge extends Challenge {
         super(ID, "Тесновато",
                 "Fov снижен.",
                 "Обзор сузился до крошечного окошка. По сторонам почти ничего не видно.",
-                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 }

@@ -11,6 +11,8 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.Identifier;
 
 import java.util.HashMap;
@@ -31,8 +33,9 @@ public final class HeartbeatChallenge extends Challenge {
     // засчитываются.
     public HeartbeatChallenge() {
         super(ID, "На ручном приводе",
-                "Сердце перестало быть автоматическим.",
-                "Нажимай в ритм сердцебиения. Каждый пропущенный удар отнимает здоровье.",
+                "Нажимай в ритм, чтобы не терять здоровье.",
+                "Нажимай назначенную клавишу, когда метка проходит через выделенную область полосы. "
+                        + "Попал в ритм — услышишь удар сердца. Пропуск отнимает одно сердце.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -108,7 +111,10 @@ public final class HeartbeatChallenge extends Challenge {
         var sessions = SESSIONS.get(player.getServer());
         var s = sessions == null ? null : sessions.get(player.getUuid());
         if (s == null || !s.matches(player) || s.activation != payload.activation() || s.token != payload.session()) return;
-        if (s.rhythm.press(s.age())) send(s);
+        if (s.rhythm.press(s.age())) {
+            send(s);
+            player.playSoundToPlayer(SoundEvents.ENTITY_WARDEN_HEARTBEAT, SoundCategory.PLAYERS, 0.65F, 1.0F);
+        }
     }
     /** Always registered, so disabled/removed IDs also release sessions and client feedback. */
     public static void tick(MinecraftServer server) {

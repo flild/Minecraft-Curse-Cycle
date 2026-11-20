@@ -3,6 +3,7 @@ package validation;
 import com.cursecycle.CurseCycleMod;
 import com.cursecycle.client.ClientDataHolder;
 import com.cursecycle.client.HeartbeatInput;
+import com.cursecycle.client.gui.CurseStyle;
 import com.cursecycle.network.HeartbeatPressPayload;
 import com.cursecycle.network.HeartbeatStatePayload;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
@@ -69,18 +70,24 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
     }
     public static class PlainScreen extends Screen { public PlainScreen() { super(Text.empty()); } }
     public static class Context extends DrawContext {
-        int draws, labels; boolean green, fail; Text label;
+        int draws, labels; boolean acceptedFeedback, fail; Text label;
+        final List<int[]> fills = new ArrayList<>();
         final int width, height;
         Context(int width, int height) { super(client, null); this.width = width; this.height = height; }
         @Override public int getScaledWindowWidth() { return width; }
         @Override public int getScaledWindowHeight() { return height; }
         @Override public void fill(int x1, int y1, int x2, int y2, int color) {
             if (fail) throw new IllegalStateException("draw failure fixture");
-            check(x1 >= 0 && x2 <= Math.max(22, width), "Phase bar fits viewport");
-            draws++; green |= color == 0xFF55FF55;
+            check(x1 >= 0 && x1 <= x2 && x2 <= width && y1 >= 0 && y1 <= y2 && y2 <= height,
+                    "Rhythm panel fits viewport");
+            check(color == CurseStyle.PANEL || color == CurseStyle.EDGE || color == CurseStyle.BRONZE
+                    || color == CurseStyle.PURPLE || color == CurseStyle.TEXT || color == 0x45000000,
+                    "Rhythm uses the shared mod palette");
+            draws++;
+            fills.add(new int[]{x1, y1, x2, y2, color});
         }
         @Override public void drawCenteredTextWithShadow(TextRenderer font, Text text, int x, int y, int color) {
-            labels++; label = text;
+            labels++; label = text; acceptedFeedback = color == CurseStyle.BRONZE;
         }
     }
     private static void check(boolean value, String why) { checks++; if (!value) throw new AssertionError(why); }
@@ -99,8 +106,8 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
             var context = new Context(size[0], size[1]);
             var before = new Matrix4f(context.getMatrices().peek().getPositionMatrix());
             render.invoke(renderer, RenderTickCounter.ZERO, true, new CallbackInfo("probe", false), context);
-            check(context.draws == (visible ? 4 : 0) && context.labels == (visible ? 1 : 0), "Required feedback visibility");
-            check(context.green == (visible && accepted), "Accepted beat feedback is authoritative");
+            check((context.draws > 0) == visible && context.labels == (visible ? 1 : 0), "Required feedback visibility");
+            check(context.acceptedFeedback == (visible && accepted), "Accepted beat feedback is authoritative");
             check(before.equals(context.getMatrices().peek().getPositionMatrix()), "Render matrix restored");
         }
     }
@@ -108,6 +115,23 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
         var screen = (GenericContainerScreen) unsafe.allocateInstance(GenericContainerScreen.class);
         set(screen, Screen.class, "children", new ArrayList<>());
         return screen;
+    }
+    private static void phaseFeedback() throws Exception {
+        sync();
+        for (int age : new int[]{0, 99, 100, 110, 114, 115, 120, 125}) {
+            HeartbeatInput.receive(client, new HeartbeatStatePayload(7, 11, age, 120, false));
+            var context = new Context(640, 360);
+            render.invoke(renderer, RenderTickCounter.ZERO, true, new CallbackInfo("probe", false), context);
+            var cursor = context.fills.stream().filter(f -> f[4] == CurseStyle.TEXT).findFirst();
+            var window = context.fills.stream().filter(f -> f[4] == CurseStyle.PURPLE).findFirst();
+            check(cursor.isPresent() == (age >= 100) && window.isPresent() == (age >= 100),
+                    "Preparation shows progress instead of an active rhythm window");
+            if (cursor.isPresent()) {
+                boolean inside = cursor.get()[0] >= window.orElseThrow()[0]
+                        && cursor.get()[2] <= window.orElseThrow()[2];
+                check(inside == (age >= 115 && age <= 125), "First highlighted window matches server acceptance at " + age);
+            }
+        }
     }
     private static void input() throws Exception {
         sync(); sent.clear();
@@ -253,7 +277,7 @@ public final class HeartbeatProbe implements PreLaunchEntrypoint {
             renderer = (GameRenderer) unsafe.allocateInstance(GameRenderer.class);
             render = java.util.Arrays.stream(GameRenderer.class.getDeclaredMethods()).filter(m -> m.getName().contains("cursecycle$heartbeat")).findFirst().orElseThrow();
             render.setAccessible(true);
-            input(); lifecycleAndRendering(); focusTransportAndInactiveControl(); audit();
+            input(); lifecycleAndRendering(); phaseFeedback(); focusTransportAndInactiveControl(); audit();
             System.out.println("HEARTBEAT_CLIENT_PROBE_PASSED checks=" + checks); System.exit(0);
         } catch (Throwable failure) { failure.printStackTrace(); System.exit(1); }
     }

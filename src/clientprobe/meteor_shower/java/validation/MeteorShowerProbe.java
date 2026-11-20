@@ -29,7 +29,8 @@ import java.util.*;
 /** Isolated real integrated server, real networking and OpenGL captures. Excluded from production. */
 public final class MeteorShowerProbe implements ClientModInitializer {
     private int stage, ticks, checks, totalTicks;
-    private boolean meteorSeen, eruptionSeen;
+    private boolean meteorSeen, eruptionSeen, compactEruptionSeen;
+    private final Set<Integer> compactIds = new HashSet<>();
     private volatile boolean prepared;
     private static Object get(Object object, String name) throws Exception {
         var field = object.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(object);
@@ -68,7 +69,22 @@ public final class MeteorShowerProbe implements ClientModInitializer {
         method.setAccessible(true); method.invoke(null, storm, session, Integer.toUnsignedLong(server.getTicks() - (Integer) get(storm, "start")));
         if (((List<?>) get(storm, "meteors")).size() < 5) throw new AssertionError("No complete real wave");
         set(session, "next", Long.MAX_VALUE);
+        set(session, "remaining", 0);
         player.teleport(world, center, cave ? -58.5 : -52, cave ? 13 : 24, 180, cave ? 2 : 12);
+    }
+    private static void compact(MinecraftClient client, boolean cell) throws Exception {
+        var server = client.getServer(); var world = server.getOverworld(); int center = cell ? 144 : 96;
+        for (int cx = (center - 32) >> 4; cx <= (center + 32) >> 4; cx++) for (int cz = -2; cz <= 2; cz++) world.getChunk(cx, cz);
+        for (int x = -13; x <= 13; x++) for (int z = -2; z <= 2; z++) for (int y = -61; y <= -58; y++) {
+            boolean air = (cell ? Math.abs(x) <= 1 && Math.abs(z) <= 1 : z == 0) && (y == -60 || y == -59);
+            world.setBlockState(new BlockPos(center + x, y, z), (air ? Blocks.AIR : Blocks.OBSIDIAN).getDefaultState());
+        }
+        var player = server.getPlayerManager().getPlayer(client.player.getUuid());
+        player.teleport(world, center + .5, -60, .5, cell ? 180 : 90, cell ? 65 : 18);
+        player.setVelocity(Vec3d.ZERO);
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.NIGHT_VISION, 1200, 0, false, false));
+        CycleManager.activateChallenge(server, CurseCycleState.getServerState(server), MeteorShowerChallenge.ID);
+        // Let the registered tick schedule every warning and continuation normally.
     }
     @Override public void onInitializeClient() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -117,6 +133,9 @@ public final class MeteorShowerProbe implements ClientModInitializer {
                 ticks++;
                 meteorSeen |= MeteorShowerVisuals.STRIKES.values().stream().anyMatch(s -> !s.sample.geyser() && s.age(0) >= 60 && s.impactAge(0) < 0);
                 eruptionSeen |= MeteorShowerVisuals.STRIKES.values().stream().anyMatch(s -> s.sample.geyser() && s.impactAge(0) >= 0);
+                if (ticks > 600) for (var s : MeteorShowerVisuals.STRIKES.values()) {
+                    compactIds.add(s.sample.id()); compactEruptionSeen |= s.impactAge(0) >= 0;
+                }
                 switch (ticks) {
                     case 25 -> { check(MeteorShowerVisuals.STRIKES.size() >= 5, "Real full-wave S2C"); capture(client, "surface-warning"); }
                     case 70 -> capture(client, "surface-eruption");
@@ -131,10 +150,23 @@ public final class MeteorShowerProbe implements ClientModInitializer {
                     case 310 -> client.getServer().execute(() -> CycleManager.activateChallenge(client.getServer(), CurseCycleState.getServerState(client.getServer()), "no_sprint"));
                     case 330 -> {
                         check(MeteorShowerVisuals.STRIKES.isEmpty(), "Stop clears actual client"); capture(client, "stopped");
-                        System.out.println("METEOR_SHOWER_VISUAL_PROBE_PASSED checks=" + checks); client.scheduleStop();
+                    }
+                    case 340 -> client.getServer().execute(() -> { try { compact(client, false); } catch (Exception e) { throw new RuntimeException(e); } });
+                    case 450 -> { check(MeteorShowerVisuals.STRIKES.size() >= 5, "Real 1x2 tunnel wave"); capture(client, "tunnel-warning"); }
+                    case 485 -> { check(MeteorShowerVisuals.STRIKES.values().stream().anyMatch(s -> s.sample.geyser() && s.impactAge(0) >= 0 && s.sample.height() < 2), "Real low ceiling eruption"); capture(client, "tunnel-eruption"); }
+                    case 530 -> { compactIds.clear(); client.getServer().execute(() -> { try { compact(client, true); } catch (Exception e) { throw new RuntimeException(e); } }); }
+                    case 635 -> { check(MeteorShowerVisuals.STRIKES.size() == 1, "Cramped cell first portion"); capture(client, "small-room-warning"); }
+                    case 685 -> capture(client, "small-room-eruption");
+                    case 730 -> { check(compactEruptionSeen && compactIds.size() == 2 && MeteorShowerVisuals.STRIKES.size() == 1
+                            && MeteorShowerVisuals.STRIKES.values().stream().allMatch(s -> s.sample.geyser() && s.age(0) < 60 && s.sample.height() < 2),
+                            "Real clock and networking deliver a second cramped portion with a fresh warning"); capture(client, "small-room-next-warning"); }
+                    case 750 -> client.getServer().execute(() -> CycleManager.activateChallenge(client.getServer(), CurseCycleState.getServerState(client.getServer()), "no_sprint"));
+                    case 770 -> {
+                        check(MeteorShowerVisuals.STRIKES.isEmpty(), "Stop clears cramped portion and pending remainder");
+                        System.out.println("METEOR_SHOWER_UNDERGROUND_PROBE_PASSED checks=" + checks); client.scheduleStop();
                     }
                 }
-                if (ticks > 400) throw new AssertionError("Probe timeout");
+                if (ticks > 850) throw new AssertionError("Probe timeout");
             } catch (Throwable failure) {
                 failure.printStackTrace(); System.out.println("METEOR_SHOWER_VISUAL_PROBE_FAILED");
                 client.scheduleStop(); throw new RuntimeException(failure);

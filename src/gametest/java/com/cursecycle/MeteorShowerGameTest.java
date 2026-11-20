@@ -155,9 +155,9 @@ public class MeteorShowerGameTest implements FabricGameTest {
                             && Math.abs(new Vec3d(v.getX(), target.y, v.getZ()).distanceTo(target) - 1.8) < .001).count();
                     c.assertEquals(12L, ring, "Particle packets fix the actual landing centre");
                 }
-                if (client == p) c.assertTrue(packets.stream().anyMatch(v -> v instanceof GameMessageS2CPacket message
+                c.assertTrue(packets.stream().noneMatch(v -> v instanceof GameMessageS2CPacket message
                         && !message.overlay() && message.content().getContent() instanceof net.minecraft.text.TranslatableTextContent text
-                        && text.getKey().equals("text.cursecycle.meteor_shower.warning")), "Real chat warning packet");
+                        && text.getKey().equals("text.cursecycle.meteor_shower.warning")), "No warning chat spam for owner or observer");
             }
             for (var m : meteors(phase)) {
                 var target = (Vec3d) get(m, "target");
@@ -389,7 +389,7 @@ public class MeteorShowerGameTest implements FabricGameTest {
         } c.complete();
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_wave_atomic")
-    public void wavesHaveFiveToTenAndNeverEmitAPartialWave(TestContext c) {
+    public void wavesHaveFiveToTenWithBoundedContinuationInSmallSpaces(TestContext c) {
         try (var a = new Arena(c)) {
             var p = a.player(); a.activate(ID); var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
             for (int wave = 0; wave < 12; wave++) {
@@ -403,10 +403,12 @@ public class MeteorShowerGameTest implements FabricGameTest {
             invoke("issue", phase, owner, 0L);
             c.assertEquals(32, meteors(phase).size(), "Capacity pressure defers whole wave");
             meteors(phase).clear();
-            // A narrow safe island cannot fit five spaced centres; no one-point wave is created.
+            // A small island still starts its wave, carrying the remainder to later warned portions.
             for (int x = -14; x <= 14; x++) for (int z = -14; z <= 14; z++) if (x != 0 || z != 0) a.block(a.base.add(x, 0, z), Blocks.AIR);
             invoke("issue", phase, owner, 0L);
-            c.assertTrue(meteors(phase).isEmpty(), "Insufficient accessible floors cause a bounded retry");
+            c.assertEquals(1, meteors(phase).size(), "One accessible floor starts the first portion");
+            int total = 1 + (Integer) get(owner, "remaining");
+            c.assertTrue(total >= 5 && total <= 10, "Remainder is part of the same bounded wave");
         } c.complete();
     }
 
@@ -434,6 +436,104 @@ public class MeteorShowerGameTest implements FabricGameTest {
             advance(m, 70);
             c.assertEquals(32L, pigs.stream().filter(pig -> pig.getHealth() < 10).count(), "Exactly 32 direct targets in a dense jet");
         } c.complete();
+    }
+
+    private static void tunnel(Arena a) {
+        for (int x = -13; x <= 13; x++) for (int z = -1; z <= 1; z++) for (int y = 0; y <= 3; y++)
+            a.block(a.base.add(x, y, z), z == 0 && (y == 1 || y == 2) ? Blocks.AIR : Blocks.OBSIDIAN);
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_narrow_tunnel")
+    public void oneBlockWideTwoBlockHighTunnelFindsMultipleLocalVentsWithoutRandomLuck(TestContext c) {
+        try (var a = new Arena(c)) {
+            tunnel(a); var p = a.player(); a.activate(ID);
+            var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
+            for (int seed = 0; seed < 16; seed++) {
+                p.getRandom().setSeed(seed); meteors(phase).clear(); set(owner, "remaining", 0); invoke("issue", phase, owner, 0L);
+                c.assertTrue(meteors(phase).size() >= 5, "Narrow tunnel must not depend on random angles, seed " + seed);
+                for (var m : meteors(phase)) {
+                    var target = (Vec3d) get(m, "target");
+                    c.assertTrue((Boolean) get(m, "geyser") && (Double) get(m, "height") < 2, "Low cave produces ceiling-limited jets");
+                    c.assertTrue(Math.abs(target.y - a.target.y) < .001 && MathHelper.floor(target.z) == a.base.getZ(), "Tunnel floor, not roof or other cavity");
+                }
+            }
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_small_cell")
+    public void singleFloorCellRunsWholeWaveInSeparatelyWarnedPortions(TestContext c) {
+        try (var a = new Arena(c)) {
+            for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 0; y <= 3; y++)
+                a.block(a.base.add(x, y, z), x == 0 && z == 0 && (y == 1 || y == 2) ? Blocks.AIR : Blocks.OBSIDIAN);
+            var p = a.player(); p.getAbilities().invulnerable = true; a.activate(ID);
+            var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
+            invoke("issue", phase, owner, 0L);
+            c.assertEquals(1, meteors(phase).size(), "A tiny room still warns and erupts instead of deferring forever");
+            int wanted = meteors(phase).size() + (Integer) get(owner, "remaining");
+            c.assertTrue(wanted >= 5 && wanted <= 10, "Wave total remains 5–10");
+            int emitted = 0; long now = 0;
+            while (true) {
+                emitted += meteors(phase).size();
+                for (var m : List.copyOf(meteors(phase))) {
+                    long issued = (Long) get(m, "issued");
+                    for (long t = issued; t < issued + 60; t++) {
+                        advance(m, t); c.assertTrue((Long) get(m, "impactedAt") == -1, "Fresh 60-tick warning for every portion");
+                    }
+                    advance(m, issued + 60);
+                    c.assertTrue((Long) get(m, "impactedAt") == issued + 60, "Each warned portion really erupts");
+                    c.assertTrue(advance(m, issued + 90), "Portion retires before reusing its floor");
+                }
+                meteors(phase).clear();
+                if ((Integer) get(owner, "remaining") == 0) break;
+                now = (Long) get(owner, "next"); invoke("issue", phase, owner, now);
+                c.assertEquals(1, meteors(phase).size(), "Continue at the available local floor");
+                c.assertTrue(emitted < 10, "No unbounded wave backlog");
+            }
+            c.assertEquals(wanted, emitted, "All five to ten strikes are delivered without tight-space immunity");
+            c.assertTrue((Long) get(owner, "next") - now >= 240, "Normal cooldown follows final portion");
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_step_floor")
+    public void oneBlockStepFindsRaisedLocalFloorAndStillRejectsSolidWall(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.player(); a.activate(ID); var owner = sessions(storm(a.server)).get(p.getUuid());
+            for (int x = 1; x <= 5; x++) for (int z = -1; z <= 1; z++) a.block(a.base.add(x, 1, z), Blocks.STONE);
+            var floor = (Vec3d) invoke("floor", owner, a.target.x + 4, a.target.z);
+            c.assertTrue(floor != null && Math.abs(floor.y - a.target.y - 1) < .001, "Raised floor is reachable by a one-block jump");
+            for (int y = 2; y <= 4; y++) a.block(a.base.add(2, y, 0), Blocks.OBSIDIAN);
+            c.assertTrue(invoke("floor", owner, a.target.x + 4, a.target.z) == null, "Full wall still prevents targets in a hidden room");
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "meteor_small_cell_clock", tickLimit = 1300)
+    public void actualServerClockDeliversAllCrampedRoomPortionsAndStopCancelsRemainder(TestContext c) {
+        var a = new Arena(c);
+        for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 0; y <= 3; y++)
+            a.block(a.base.add(x, y, z), x == 0 && z == 0 && (y == 1 || y == 2) ? Blocks.AIR : Blocks.OBSIDIAN);
+        var p = a.player(); p.getAbilities().invulnerable = true; a.activate(ID);
+        var phase = storm(a.server); var owner = sessions(phase).get(p.getUuid());
+        var issuedIds = new HashSet<Integer>(); var impactedIds = new HashSet<Integer>(); int[] wanted = {-1};
+        c.runAtEveryTick(() -> {
+            try {
+                for (var m : meteors(phase)) {
+                    int id = (Integer) get(m, "id");
+                    if (issuedIds.add(id)) {
+                        c.assertTrue(age(a.server) - (Long) get(m, "issued") < 60 && (Long) get(m, "impactedAt") == -1,
+                                "Registered clock gives each new portion a fresh warning");
+                        if (wanted[0] < 0) wanted[0] = 1 + (Integer) get(owner, "remaining");
+                    }
+                    if ((Long) get(m, "impactedAt") >= 0) impactedIds.add(id);
+                }
+                if (wanted[0] >= 5 && impactedIds.size() == wanted[0]) {
+                    c.assertEquals(wanted[0], issuedIds.size(), "Exactly the selected 5–10 strikes, no new wave debt");
+                    c.assertEquals(0, (Integer) get(owner, "remaining"), "All portions delivered on real clock");
+                    // Start a new cramped wave and stop while it still has outstanding portions.
+                    meteors(phase).clear(); invoke("issue", phase, owner, age(a.server));
+                    c.assertTrue((Integer) get(owner, "remaining") > 0, "Pending continuation exists");
+                    a.s.activate("test_easy");
+                    c.assertTrue(storm(a.server) == null, "Stop discards all pending portions");
+                    a.close(); c.complete();
+                }
+            } catch (Throwable failure) { a.close(); throw failure; }
+        });
     }
 
 }

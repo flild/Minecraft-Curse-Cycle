@@ -25,10 +25,10 @@ class TinyFovCameraTest {
         assertFalse(challenge.getName().isBlank());
         assertFalse(challenge.getShortDescription().isBlank());
         assertFalse(challenge.getDetailedRules().isBlank());
-        assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
+        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(c -> c.getId().equals(ID)).count());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(challenge));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
         assertEquals(List.of(ID, "no_sprint"), ChallengeUtils.resolveToActiveIds("double_challenge:tiny_fov,no_sprint"));
     }
 

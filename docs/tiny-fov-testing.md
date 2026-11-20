@@ -1,6 +1,6 @@
 # tiny_fov — «Тесновато»
 
-EASY/GLOBAL; итоговый вертикальный FOV сцены — 15 градусов.
+MEDIUM/GLOBAL; итоговый вертикальный FOV сцены — 15 градусов.
 TinyFovGameRendererMixin находится только в client-разделе и перехватывает
 getFov на RETURN. renderWorld передаёт true, renderHand — false; panorama
 сохраняет 90. Не меняются настройки, perspective, camera distance, aspect ratio,

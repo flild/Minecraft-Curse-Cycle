@@ -19,20 +19,38 @@ public final class HeartbeatOverlay {
         Text label = age < HeartbeatChallenge.GRACE
                 ? Text.translatable("text.cursecycle.heartbeat.grace", key, (HeartbeatChallenge.GRACE - age + 19) / 20)
                 : Text.translatable(state.accepted() ? "text.cursecycle.heartbeat.accepted" : "text.cursecycle.heartbeat.beat", key);
-        int width = Math.max(20, Math.min(120, context.getScaledWindowWidth() - 16));
+        int width = Math.min(180, context.getScaledWindowWidth() - 16);
+        if (width < 32 || context.getScaledWindowHeight() < 42) return;
         int x = (context.getScaledWindowWidth() - width) / 2;
-        int y = Math.max(15, context.getScaledWindowHeight() - 62);
-        int phase = (int) Math.floorMod(age - state.target() + 10, 20);
+        int y = Math.max(6, context.getScaledWindowHeight() - 108);
+        int barX = x + 7, barY = y + 20, barWidth = width - 14;
+        boolean preparing = age < HeartbeatChallenge.GRACE;
+        // Before the first approach, keep the marker at the left instead of showing a false beat at GRACE.
+        int phase = age < HeartbeatChallenge.GRACE + HeartbeatChallenge.INTERVAL / 2 ? 0
+                : (int) Math.floorMod(age - state.target() + HeartbeatChallenge.INTERVAL / 2,
+                        HeartbeatChallenge.INTERVAL);
         context.getMatrices().push();
         try {
             context.getMatrices().translate(0, 0, 400);
-            context.fill(x, y, x + width, y + 5, 0xCC101018);
-            context.fill(x + 5 * (width - 1) / 20, y, x + 15 * (width - 1) / 20 + 2, y + 5, 0xFF555577);
-            int target = x + 10 * (width - 1) / 20;
-            context.fill(target, y, target + 1, y + 5, 0xFFCCCCDD);
-            int cursor = x + phase * (width - 1) / 20;
-            context.fill(cursor, y - 1, cursor + 2, y + 6, state.accepted() ? 0xFF55FF55 : 0xFFFFFFFF);
-            context.drawCenteredTextWithShadow(client.textRenderer, label, x + width / 2, y - 12, 0xFFFFFF);
+            CurseStyle.panel(context, x, y, width, 30);
+            context.fill(barX, barY, barX + barWidth, barY + 4, CurseStyle.EDGE);
+            if (preparing) {
+                int progress = (int) (age * barWidth / HeartbeatChallenge.GRACE);
+                context.fill(barX, barY, barX + progress, barY + 4, CurseStyle.BRONZE);
+            } else {
+                int windowStart = (HeartbeatChallenge.INTERVAL / 2 - HeartbeatChallenge.WINDOW)
+                        * (barWidth - 2) / HeartbeatChallenge.INTERVAL;
+                int windowEnd = (HeartbeatChallenge.INTERVAL / 2 + HeartbeatChallenge.WINDOW)
+                        * (barWidth - 2) / HeartbeatChallenge.INTERVAL;
+                context.fill(barX + windowStart, barY, barX + windowEnd + 2, barY + 4, CurseStyle.PURPLE);
+                int target = barX + (barWidth - 2) / 2;
+                context.fill(target, barY - 2, target + 2, barY + 6, CurseStyle.BRONZE);
+                int cursor = barX + phase * (barWidth - 2) / HeartbeatChallenge.INTERVAL;
+                context.fill(cursor, barY - 1, cursor + 2, barY + 5,
+                        state.accepted() ? CurseStyle.BRONZE : CurseStyle.TEXT);
+            }
+            context.drawCenteredTextWithShadow(client.textRenderer, label, x + width / 2, y + 6,
+                    state.accepted() ? CurseStyle.BRONZE : CurseStyle.TEXT);
         } finally { context.getMatrices().pop(); }
     }
 }

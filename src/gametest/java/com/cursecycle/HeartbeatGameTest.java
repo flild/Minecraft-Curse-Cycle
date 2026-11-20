@@ -19,9 +19,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.util.Hand;
@@ -49,6 +52,22 @@ public class HeartbeatGameTest implements FabricGameTest {
     }
     private static HeartbeatStatePayload sample(ChallengeScenario s, ServerPlayerEntity p) {
         return sample(s, p, s.channel(p));
+    }
+    private static void sounds(ChallengeScenario s, ServerPlayerEntity p, int expected) {
+        var channel = s.channel(p);
+        channel.runPendingTasks(); channel.flush();
+        int count = 0;
+        Object packet;
+        while ((packet = channel.readOutbound()) != null) {
+            if (packet instanceof PlaySoundS2CPacket sound
+                    && sound.getSound().value().equals(SoundEvents.ENTITY_WARDEN_HEARTBEAT)) {
+                count++;
+                s.context.assertEquals(SoundCategory.PLAYERS, sound.getCategory(), "Heartbeat uses player volume");
+                s.context.assertEquals(0.65F, sound.getVolume(), "Heartbeat feedback volume");
+                s.context.assertEquals(1.0F, sound.getPitch(), "Heartbeat feedback pitch");
+            }
+        }
+        s.context.assertEquals(expected, count, "One private sound per accepted press");
     }
     private static HeartbeatStatePayload sample(ChallengeScenario s, ServerPlayerEntity p, EmbeddedChannel channel) {
         packets(channel); HeartbeatChallenge.sync(p);
@@ -119,20 +138,27 @@ public class HeartbeatGameTest implements FabricGameTest {
                 try {
                     c.assertEquals(t, server.getTicks() - start, "Actual server tick");
                     if (t == 10) { late[0] = ready(s); latePhase[0] = sample(s, late[0]); }
-                    if (t == 114) press(s, early, three);
-                    if (t == 115) { press(s, lower, one); press(s, lower, one); }
+                    if (t == 114) { press(s, early, three); sounds(s, early, 0); }
+                    if (t == 115) {
+                        press(s, lower, one); sounds(s, lower, 1);
+                        sounds(s, upper, 0);
+                        press(s, lower, one); sounds(s, lower, 0);
+                        HeartbeatChallenge.sync(lower); sounds(s, lower, 0);
+                    }
                     if (t == 125) {
                         press(s, upper, new HeartbeatStatePayload(two.activation() - 1, two.session(), 0, 120, false));
                         press(s, upper, one);
+                        sounds(s, upper, 0);
                         c.assertFalse(sample(s, upper).accepted(), "Old activation and another player's token rejected inside open window");
-                        press(s, upper, two); press(s, late[0], latePhase[0]);
+                        press(s, upper, two); sounds(s, upper, 1);
+                        press(s, late[0], latePhase[0]); sounds(s, late[0], 1);
                         cooldown.damage(cooldown.getDamageSources().generic(), 2);
                         for (var p : List.of(lower, upper, early, armor, resistance, absorption, cooldown, totem)) requests(c, p, 0);
                         c.assertTrue(sample(s, lower).accepted(), "target-5 accepted");
                         c.assertTrue(sample(s, upper).accepted(), "target+5 accepted");
                         c.assertFalse(sample(s, early).accepted(), "target-6 ignored");
                     }
-                    if (t == 126) press(s, early, three);
+                    if (t == 126) { press(s, early, three); sounds(s, early, 0); }
                     HeartbeatChallenge.tick(server); HeartbeatChallenge.tick(server);
                     if (t == 126) {
                         requests(c, lower, 0); requests(c, upper, 0); requests(c, early, 1);
@@ -151,7 +177,7 @@ public class HeartbeatGameTest implements FabricGameTest {
                         c.assertTrue(totem.getMainHandStack().isEmpty(), "Vanilla totem consumed");
                         for (var p : List.of(armor, resistance, absorption, cooldown, totem)) requests(c, p, 1);
                     }
-                    if (t == 135) press(s, early, three);
+                    if (t == 135) { press(s, early, three); sounds(s, early, 1); }
                     if (t == 136) { requests(c, late[0], 0); health(c, 20, late[0], "Late join has independent phase"); }
                     if (t == 146) {
                         requests(c, lower, 1); requests(c, upper, 1); requests(c, early, 1);
