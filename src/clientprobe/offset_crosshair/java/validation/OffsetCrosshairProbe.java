@@ -18,6 +18,7 @@ import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.util.Window;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.GameMode;
 import org.joml.Matrix4f;
@@ -235,6 +236,77 @@ public final class OffsetCrosshairProbe implements PreLaunchEntrypoint {
         }
         check(calls == 1, "Exactly one production render wrapper");
     }
+
+    private static void aimProjection(MinecraftClient client, GameRenderer renderer, Unsafe unsafe) throws Exception {
+        var handler = java.util.Arrays.stream(GameRenderer.class.getDeclaredMethods())
+                .filter(m -> m.getName().contains("cursecycle$offsetAimProjection")).findFirst().orElseThrow();
+        handler.setAccessible(true);
+        var roll = java.util.Arrays.stream(GameRenderer.class.getDeclaredMethods())
+                .filter(m -> m.getName().contains("cursecycle$rollProjection")).findFirst().orElseThrow();
+        roll.setAccessible(true);
+        var node = new ClassNode();
+        new ClassReader(Files.readAllBytes(Path.of(".mixin.out/class/net/minecraft/client/render/GameRenderer.class"))).accept(node, 0);
+        int total = 0;
+        for (var method : node.methods) {
+            int calls = 0, projections = 0;
+            for (var insn : method.instructions) if (insn instanceof MethodInsnNode call) {
+                if (call.name.equals(handler.getName())) calls++;
+                if (call.name.equals("getBasicProjectionMatrix")) projections++;
+            }
+            int expected = method.name.equals("renderWorld") ? 2 : method.name.equals("renderHand") ? 1 : 0;
+            check(calls == expected, "Aim projection only at world, culling and hand call sites: " + method.name);
+            if (expected > 0) check(projections == expected, "Every scene projection shifted exactly once");
+            total += calls;
+        }
+        check(total == 3, "Exactly three scene projection hooks; GUI and raycast untouched");
+
+        var window = (Window) unsafe.allocateInstance(Window.class);
+        set(client, MinecraftClient.class, "window", window);
+        set(renderer, GameRenderer.class, "zoom", 1f);
+        set(renderer, GameRenderer.class, "viewDistance", 2048f);
+        for (int[] screen : new int[][]{{640,360,400,220}, {321,181,240,130},
+                {160,100,152,90}, {17,16,9,8}, {15,9,7,4}}) {
+            int w = screen[0], h = screen[1];
+            set(window, Window.class, "scaledWidth", w);
+            set(window, Window.class, "scaledHeight", h);
+            set(window, Window.class, "framebufferWidth", w * 2);
+            set(window, Window.class, "framebufferHeight", h * 2);
+            for (double fov : new double[]{15, 70, 110}) for (boolean rolled : new boolean[]{false, true}) {
+                sync(ID, rolled ? "upside_down_camera" : "no_sprint");
+                var vanilla = renderer.getBasicProjectionMatrix(fov);
+                var projection = (Matrix4f) roll.invoke(renderer, new Matrix4f(vanilla));
+                check(handler.invoke(renderer, projection) == projection, "Projection identity retained");
+                for (float distance : new float[]{1, 4.5f, 32, 1000}) {
+                    var hit = projection.transformProject(new Vector3f(0, 0, -distance));
+                    check(Math.abs((hit.x + 1) * w / 2 - screen[2]) < 1e-4
+                                    && Math.abs((1 - hit.y) * h / 2 - screen[3]) < 1e-4,
+                            "Real action/arrow ray lands on off-centre HUD mark at every distance/FOV/roll");
+                }
+                check(vanilla.equals(renderer.getBasicProjectionMatrix(fov)), "No global projection override or accumulation");
+                sync("no_sprint");
+                check(vanilla.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(vanilla))), "End restores current projection");
+            }
+        }
+        var original = new Matrix4f().perspective(1, 1, .05f, 128);
+        for (var gameMode : GameMode.values()) {
+            mode = gameMode;
+            sync(ID);
+            boolean changed = !original.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(original)));
+            check(changed == (mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE), "Scene and HUD use same mode gate");
+        }
+        mode = GameMode.SURVIVAL;
+        alive = false;
+        check(original.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(original))), "Dead player scene stays vanilla");
+        alive = true;
+        set(renderer, GameRenderer.class, "renderingPanorama", true);
+        check(original.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(original))), "Panorama excluded");
+        set(renderer, GameRenderer.class, "renderingPanorama", false);
+        ClientDataHolder.reset();
+        check(original.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(original))), "Disconnect clears scene offset");
+        sync(ID);
+        set(window, Window.class, "scaledWidth", 0);
+        check(original.equals((Matrix4f) handler.invoke(renderer, new Matrix4f(original))), "Minimized window stays finite");
+    }
     @Override public void onPreLaunch() {
         try {
             net.minecraft.SharedConstants.createGameVersion();
@@ -289,6 +361,7 @@ public final class OffsetCrosshairProbe implements PreLaunchEntrypoint {
             visibilityAndReducedDebug(client);
             repeatedResizeAndReset(client);
             cameraPairs(client, renderer, camera);
+            aimProjection(client, renderer, unsafe);
             alive = false;
             compare(client, 640, 360, false);
             alive = true;

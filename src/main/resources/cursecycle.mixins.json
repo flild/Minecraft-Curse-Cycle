@@ -78,6 +78,7 @@
     "InvisibleMobsEntityRenderDispatcherMixin",
     "BlindHudInGameHudMixin",
     "OffsetCrosshairInGameHudMixin",
+    "OffsetCrosshairGameRendererMixin",
     "UpsideDownGameRendererMixin",
     "TinyFovGameRendererMixin",
     "InvertedMouseMixin",
