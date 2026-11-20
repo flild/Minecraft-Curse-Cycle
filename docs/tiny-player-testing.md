@@ -1,4 +1,4 @@
-# Мелкий, но проблемный (`tiny_player`)
+# Метр с кепкой (`tiny_player`)
 
 [Все испытания](challenges.md) · [Документация](README.md) · [Активация](commands.md)
 

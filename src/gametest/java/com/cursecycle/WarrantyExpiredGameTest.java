@@ -3,8 +3,10 @@ package com.cursecycle;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.impl.WarrantyExpiredChallenge;
 import com.cursecycle.state.CurseCycleState;
-import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.world.World;
+import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.block.Blocks;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.UnbreakableComponent;
@@ -17,7 +19,6 @@ import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.stat.Stats;
@@ -26,7 +27,6 @@ import net.minecraft.test.TestContext;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.GameMode;
-import net.minecraft.world.World;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -59,7 +59,7 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
                 world.setBlockState(pos, Blocks.STONE.getDefaultState());
                 var pick = hand(p, Items.DIAMOND_PICKAXE);
                 c.assertTrue(p.interactionManager.tryBreakBlock(pos), "Real server mining succeeds");
-                c.assertEquals(3, pick.getDamage(), "Mining wears three, not nine");
+                c.assertEquals(1, pick.getDamage(), "Mining uses ordinary durability");
                 var cow = EntityType.COW.create(world);
                 cow.setPosition(p.getX(), p.getY(), p.getZ() + 2); cow.setAiDisabled(true); world.spawnEntity(cow);
                 try {
@@ -67,13 +67,13 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
                     for (int i = 0; i < 25; i++) p.playerTick();
                     p.attack(cow);
                     c.assertTrue(cow.getHealth() < 10, "Actual successful melee");
-                    c.assertEquals(3, sword.getDamage(), "Sword action wears three");
+                    c.assertEquals(1, sword.getDamage(), "Sword action uses ordinary durability");
                 } finally { cow.discard(); }
                 var bow = hand(p, Items.BOW);
                 p.getInventory().setStack(9, new ItemStack(Items.ARROW, 2));
                 c.assertTrue(bow.use(world, p, Hand.MAIN_HAND).getResult().isAccepted(), "Bow draw starts");
                 bow.onStoppedUsing(world, p, bow.getMaxUseTime(p) - 20);
-                c.assertEquals(3, bow.getDamage(), "Actual full bow release wears three");
+                c.assertEquals(1, bow.getDamage(), "Actual bow release uses ordinary durability");
                 c.assertEquals(1, p.getInventory().getStack(9).getCount(), "One arrow consumed");
             } finally {
                 world.setBlockState(pos, original);
@@ -96,7 +96,7 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
             p.timeUntilRegen = 0;
             p.damage(p.getDamageSources().mobAttack(attacker), 4);
             c.assertEquals(20F, p.getHealth(), "Actual shield block prevents health loss");
-            c.assertEquals(15, shield.getDamage(), "Shield normal 1 + floor(4) becomes fifteen");
+            c.assertEquals(5, shield.getDamage(), "Shield block uses ordinary five durability");
             p.stopUsingItem(); p.setStackInHand(Hand.OFF_HAND, ItemStack.EMPTY);
             EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
             var items = new net.minecraft.item.Item[]{Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS};
@@ -105,14 +105,14 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
             c.assertTrue(p.getArmor() > 0, "Vanilla armor attributes applied");
             p.damage(p.getDamageSources().mobAttack(EntityType.ZOMBIE.create(c.getWorld())), 8);
             c.assertTrue(p.getHealth() < 20, "Actual incoming armor hit");
-            for (var slot : slots) c.assertEquals(6, p.getEquippedStack(slot).getDamage(), "Normal two becomes six: " + slot);
-            c.assertEquals(15, shield.getDamage(), "Unused shield is unaffected by armor hit");
+            for (var slot : slots) c.assertEquals(2, p.getEquippedStack(slot).getDamage(), "Armor hit uses ordinary two durability: " + slot);
+            c.assertEquals(5, shield.getDamage(), "Unused shield is unaffected by armor hit");
         }
         c.complete();
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE)
-    public void unbreakingRunsOnceOnMultipliedInput(TestContext c) {
+    public void unbreakingKeepsVanillaActionDamage(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
             var p = ready(s); s.activate(ID); var world = c.getWorld();
             for (var item : new net.minecraft.item.Item[]{Items.DIAMOND_PICKAXE, Items.DIAMOND_CHESTPLATE}) {
@@ -121,12 +121,12 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
                 int total = 0;
                 for (int seed = 0; seed < 32; seed++) {
                     stack.setDamage(0); world.random.setSeed(seed);
-                    int expected = EnchantmentHelper.getItemDamage(world, stack, 12);
+                    int expected = EnchantmentHelper.getItemDamage(world, stack, 4);
                     world.random.setSeed(seed); wear(p, stack, 4);
-                    c.assertEquals(expected, stack.getDamage(), "Exactly vanilla Unbreaking on twelve, seed=" + seed + " item=" + item);
+                    c.assertEquals(expected, stack.getDamage(), "Exactly vanilla Unbreaking on four, seed=" + seed + " item=" + item);
                     total += expected;
                 }
-                c.assertTrue(total > 0 && total < 32 * 12, "Real enchantment protects but does not make item invulnerable");
+                c.assertTrue(total > 0 && total < 32 * 4, "Real enchantment protects but does not make item invulnerable");
             }
         }
         c.complete();
@@ -145,7 +145,7 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
             stack.damage(-2, p.getServerWorld(), p, item -> { throw new AssertionError("Repair must not break"); });
             c.assertEquals(84, stack.getDamage(), "Negative damage remains unmultiplied");
             wear(p, stack, 0); c.assertEquals(84, stack.getDamage(), "Zero damage unchanged");
-            wear(p, stack, 2); c.assertEquals(90, stack.getDamage(), "Ordinary wear resumes after repair");
+            wear(p, stack, 2); c.assertEquals(86, stack.getDamage(), "Ordinary wear resumes after repair");
         }
         c.complete();
     }
@@ -159,110 +159,217 @@ public class WarrantyExpiredGameTest implements FabricGameTest {
             wear(p, unbreakable, 10); c.assertEquals(0, unbreakable.getDamage(), "Unbreakable remains intact");
             var stone = new ItemStack(Items.STONE, 12); wear(p, stone, 100);
             c.assertEquals(12, stone.getCount(), "Non-damageable cargo unaffected");
-            var breaking = new ItemStack(Items.DIAMOND_PICKAXE); breaking.setDamage(breaking.getMaxDamage() - 2);
+            var breaking = new ItemStack(Items.DIAMOND_PICKAXE); breaking.setDamage(breaking.getMaxDamage() - 1);
             var callbacks = new AtomicInteger();
             breaking.damage(1, p.getServerWorld(), p, item -> {
                 c.assertTrue(item == Items.DIAMOND_PICKAXE, "Original broken item supplied"); callbacks.incrementAndGet();
             });
-            c.assertTrue(breaking.isEmpty(), "Multiplied wear actually breaks item");
+            c.assertTrue(breaking.isEmpty(), "Ordinary wear actually breaks item");
             c.assertEquals(1, callbacks.get(), "Exactly one break callback");
-            var sword = hand(p, Items.DIAMOND_SWORD); sword.setDamage(sword.getMaxDamage() - 2);
+            var sword = hand(p, Items.DIAMOND_SWORD); sword.setDamage(sword.getMaxDamage() - 1);
             int before = p.getStatHandler().getStat(Stats.BROKEN.getOrCreateStat(Items.DIAMOND_SWORD));
             wear(p, sword, 1);
             c.assertTrue(p.getMainHandStack().isEmpty(), "Equipment overload removes broken stack");
             c.assertEquals(before + 1, p.getStatHandler().getStat(Stats.BROKEN.getOrCreateStat(Items.DIAMOND_SWORD)), "One vanilla break statistic");
-            var huge = hand(p, Items.DIAMOND_PICKAXE); huge.setDamage(100);
-            wear(p, huge, Integer.MAX_VALUE); c.assertTrue(huge.isEmpty(), "Large input cannot overflow to repair");
         }
         c.complete();
     }
 
-    @GameTest(templateName = EMPTY_STRUCTURE)
-    public void modesPersonalDoubleDisabledAndMobControl(TestContext c) {
-        try (var s = new ChallengeScenario(c)) {
-            var p = ready(s); var q = ready(s);
-            s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID);
-            var pick = hand(p, Items.DIAMOND_PICKAXE); var other = hand(q, Items.DIAMOND_PICKAXE);
-            wear(p, pick, 1); wear(q, other, 1);
-            c.assertEquals(3, pick.getDamage(), "Personal owner affected"); c.assertEquals(1, other.getDamage(), "Other player unaffected");
-            s.activate("double_challenge:warranty_expired,no_sprint");
-            wear(p, pick, 1); wear(q, other, 1);
-            c.assertEquals(6, pick.getDamage(), "Global plus personal and pair multiply once"); c.assertEquals(4, other.getDamage(), "Global second owner affected");
-            p.changeGameMode(GameMode.CREATIVE); wear(p, pick, 2); c.assertEquals(6, pick.getDamage(), "Creative vanilla immunity");
-            p.changeGameMode(GameMode.SPECTATOR); wear(p, pick, 2); c.assertEquals(8, pick.getDamage(), "Spectator direct call has only vanilla wear");
-            p.changeGameMode(GameMode.ADVENTURE); wear(p, pick, 2); c.assertEquals(14, pick.getDamage(), "Adventure affected");
-            var challenge = ChallengeRegistry.get(ID); challenge.setEnabled(false);
-            try { wear(p, pick, 1); c.assertEquals(15, pick.getDamage(), "Disabled ID takes effect immediately"); }
-            finally { challenge.setEnabled(true); }
-            var cow = EntityType.COW.create(c.getWorld()); var mobTool = new ItemStack(Items.DIAMOND_AXE);
-            mobTool.damage(2, cow, EquipmentSlot.MAINHAND); c.assertEquals(2, mobTool.getDamage(), "Mob gear unaffected");
-            var unattributed = new ItemStack(Items.DIAMOND_AXE);
-            unattributed.damage(2, c.getWorld(), null, item -> {}); c.assertEquals(2, unattributed.getDamage(), "No player attribution stays vanilla");
-        }
-        c.complete();
+    private static void sample(ServerPlayerEntity p) {
+        ChallengeRegistry.get(ID).onTick(p.getServer(), p);
+    }
+    private static void later(TestContext c, ChallengeScenario s, int tick, Runnable action) {
+        c.runAtTick(tick, () -> {
+            try { action.run(); }
+            catch (Throwable failure) { s.close(); throw failure; }
+        });
     }
 
-    @GameTest(templateName = EMPTY_STRUCTURE)
-    public void activationResetAndSavedStateAreImmediate(TestContext c) {
-        try (var s = new ChallengeScenario(c)) {
-            var p = ready(s); var tool = hand(p, Items.DIAMOND_PICKAXE); s.activate(ID); wear(p, tool, 1);
-            var saved = s.state.writeNbt(new NbtCompound(), c.getWorld().getRegistryManager());
-            var loaded = CurseCycleState.createFromNbt(saved, c.getWorld().getRegistryManager());
-            c.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY, loaded);
-            wear(p, tool, 1); c.assertEquals(6, tool.getDamage(), "Loaded activation immediately affects wear");
-            loaded.reset(); wear(p, tool, 1); c.assertEquals(7, tool.getDamage(), "Reset immediately restores vanilla without refund");
-            c.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY, s.state);
-            s.activate(ID); wear(p, tool, 1); c.assertEquals(10, tool.getDamage(), "New activation has no stale session");
-            s.activate("test_easy"); wear(p, tool, 1); c.assertEquals(11, tool.getDamage(), "Stop changes only future wear");
-            var data = tool.encode(c.getWorld().getRegistryManager());
-            var decoded = ItemStack.fromNbt(c.getWorld().getRegistryManager(), data).orElseThrow();
-            c.assertEquals(11, decoded.getDamage(), "Spent durability persists in item NBT");
-        }
-        c.complete();
-    }
-
-    @GameTest(templateName = EMPTY_STRUCTURE)
-    public void deathRespawnDisconnectAndDimensions(TestContext c) {
-        try (var s = new ChallengeScenario(c)) {
-            var p = ready(s); s.activate(ID);
-            var tool = hand(p, Items.DIAMOND_PICKAXE); wear(p, tool, 1);
-            p.kill(); wear(p, tool, 1); c.assertEquals(4, tool.getDamage(), "Dead owner gets only vanilla direct wear");
-            p = s.respawn(p, false); tool = hand(p, Items.DIAMOND_PICKAXE);
-            wear(p, tool, 1); c.assertEquals(3, tool.getDamage(), "Respawn immediately applies global rule");
-            var other = p.getServer().getWorld(World.NETHER);
-            var origin = p.getPos();
-            p.teleport(other, origin.x, Math.max(70, other.getBottomY() + 5), origin.z, 0, 0);
-            wear(p, tool, 1); c.assertEquals(6, tool.getDamage(), "Dimension change has no stale session");
-            p.teleport(c.getWorld(), origin.x, origin.y, origin.z, 0, 0);
-            var uuid = p.getUuid();
-            ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, p.getServer());
-            p.getServer().getPlayerManager().remove(p);
-            var rejoined = s.player(uuid); var rejoinedTool = hand(rejoined, Items.DIAMOND_PICKAXE);
-            wear(rejoined, rejoinedTool, 1); c.assertEquals(3, rejoinedTool.getDamage(), "Rejoin immediately applies current activation");
-            s.activate("test_easy"); wear(rejoined, rejoinedTool, 1); c.assertEquals(4, rejoinedTool.getDamage(), "Rejoined player stops normally");
-        }
-        c.complete();
-    }
-
-    @GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 130)
-    public void realTicksNeverPassivelyDamageInventoryOrGroundItems(TestContext c) {
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "warranty_passive", tickLimit = 130)
+    public void realTicksWearEquippedItemsButNotInventoryOrGround(TestContext c) {
         var s = new ChallengeScenario(c); var p = ready(s);
-        var tool = hand(p, Items.DIAMOND_PICKAXE); tool.setDamage(17);
-        var spare = new ItemStack(Items.DIAMOND_SWORD); spare.setDamage(23); p.getInventory().setStack(9, spare);
-        var armor = new ItemStack(Items.DIAMOND_CHESTPLATE); armor.setDamage(31); p.equipStack(EquipmentSlot.CHEST, armor);
+        var tool = hand(p, Items.DIAMOND_PICKAXE);
+        var shield = new ItemStack(Items.SHIELD); p.setStackInHand(Hand.OFF_HAND, shield);
+        var spare = new ItemStack(Items.DIAMOND_SWORD); p.getInventory().setStack(9, spare);
+        var armor = new ItemStack[]{new ItemStack(Items.DIAMOND_HELMET), new ItemStack(Items.DIAMOND_CHESTPLATE),
+                new ItemStack(Items.DIAMOND_LEGGINGS), new ItemStack(Items.DIAMOND_BOOTS)};
+        var slots = new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+        for (int i = 0; i < slots.length; i++) p.equipStack(slots[i], armor[i]);
         var ground = new ItemEntity(c.getWorld(), p.getX() + 3, p.getY(), p.getZ(), new ItemStack(Items.DIAMOND_AXE));
         ground.setNeverDespawn(); ground.setPickupDelayInfinite(); ground.setNoGravity(true); c.getWorld().spawnEntity(ground);
-        s.activate(ID);
-        c.waitAndRun(100, () -> {
+        s.activate(ID); sample(p);
+        later(c, s, 19, () -> {
+            for (var part : armor) c.assertEquals(0, part.getDamage(), "Full armor interval before wear");
+            c.assertEquals(0, tool.getDamage(), "Hands get grace");
+        });
+        later(c, s, 21, () -> {
+            for (var part : armor) c.assertEquals(1, part.getDamage(), "Idle worn armor loses one per second");
+            c.assertEquals(0, shield.getDamage(), "Offhand gets the same grace");
+        });
+        later(c, s, 39, () -> c.assertEquals(0, tool.getDamage(), "Two full seconds before first hand wear"));
+        later(c, s, 41, () -> {
+            c.assertEquals(1, tool.getDamage(), "Main hand wears at forty ticks");
+            c.assertEquals(1, shield.getDamage(), "Offhand wears independently");
+            for (var part : armor) c.assertEquals(2, part.getDamage(), "All four armor slots wear");
+        });
+        later(c, s, 45, () -> {
+            p.setStackInHand(Hand.MAIN_HAND, spare); p.getInventory().setStack(9, tool);
+            p.setStackInHand(Hand.OFF_HAND, ItemStack.EMPTY);
+            for (int i = 0; i < slots.length; i++) {
+                p.equipStack(slots[i], ItemStack.EMPTY); p.getInventory().setStack(10 + i, armor[i]);
+            }
+            sample(p);
+        });
+        later(c, s, 70, () -> {
+            c.assertEquals(0, spare.getDamage(), "New stack gets its own grace");
+            c.assertEquals(1, tool.getDamage(), "Stored tool stops wearing");
+            for (var part : armor) c.assertEquals(2, part.getDamage(), "Removed armor stops wearing");
+        });
+        later(c, s, 86, () -> {
+            c.assertEquals(1, spare.getDamage(), "Held weapon wears after grace");
+            c.assertEquals(0, ground.getStack().getDamage(), "Ground item unaffected");
+            ground.discard(); s.activate("test_easy");
+        });
+        later(c, s, 115, () -> {
             try {
-                c.assertEquals(17, tool.getDamage(), "Held idle tool preserved across real ticks");
-                c.assertEquals(23, spare.getDamage(), "Unused inventory sword preserved");
-                c.assertEquals(31, armor.getDamage(), "Worn but unhit armor preserved");
-                c.assertEquals(0, ground.getStack().getDamage(), "Dropped item preserved");
-                s.activate("test_easy");
-                c.assertEquals(17, tool.getDamage(), "Stop never refunds durability");
+                c.assertEquals(1, spare.getDamage(), "Stop freezes future wear without refund"); c.complete();
             } finally { ground.discard(); s.close(); }
-            c.complete();
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "warranty_grace", tickLimit = 130)
+    public void quickMiningAndReequippingResetOnlyHandGrace(TestContext c) {
+        var s = new ChallengeScenario(c); var p = ready(s); var pick = hand(p, Items.DIAMOND_PICKAXE);
+        s.activate(ID); sample(p);
+        later(c, s, 1, () -> {
+            var pos = c.getAbsolutePos(new BlockPos(2, 1, 2)); var old = c.getWorld().getBlockState(pos);
+            try {
+                c.getWorld().setBlockState(pos, Blocks.STONE.getDefaultState());
+                c.assertTrue(p.interactionManager.tryBreakBlock(pos), "Quick real mining succeeds");
+                c.assertEquals(1, pick.getDamage(), "Only block mining costs durability");
+            } finally {
+                c.getWorld().setBlockState(pos, old);
+                for (var e : c.getWorld().getEntitiesByClass(ItemEntity.class, p.getBoundingBox().expand(8), e -> true)) e.discard();
+            }
+            p.setStackInHand(Hand.MAIN_HAND, ItemStack.EMPTY); p.getInventory().setStack(9, pick); sample(p);
+        });
+        later(c, s, 45, () -> c.assertEquals(1, pick.getDamage(), "Putting away avoids the pending idle loss"));
+        later(c, s, 46, () -> {
+            p.getInventory().setStack(9, ItemStack.EMPTY); p.setStackInHand(Hand.MAIN_HAND, pick); sample(p);
+        });
+        later(c, s, 75, () -> {
+            c.assertEquals(1, pick.getDamage(), "Same item gets a new grace after being put away");
+            wear(p, pick, 1); c.assertEquals(2, pick.getDamage(), "Actions stay vanilla during grace");
+        });
+        later(c, s, 87, () -> {
+            c.assertEquals(3, pick.getDamage(), "Changing durability did not renew the grace");
+            sample(p); sample(p); c.assertEquals(3, pick.getDamage(), "Repeated calls in same tick never multiply wear");
+        });
+        later(c, s, 107, () -> {
+            try { c.assertEquals(4, pick.getDamage(), "Subsequent idle loss every twenty ticks"); c.complete(); }
+            finally { s.close(); }
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "warranty_modes", tickLimit = 180)
+    public void personalDoubleModesDisabledAndReset(TestContext c) {
+        var s = new ChallengeScenario(c); var p = ready(s); var q = ready(s);
+        var pick = hand(p, Items.DIAMOND_PICKAXE); var other = hand(q, Items.DIAMOND_PICKAXE);
+        s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID); sample(p);
+        later(c, s, 41, () -> {
+            c.assertEquals(1, pick.getDamage(), "Personal owner wears"); c.assertEquals(0, other.getDamage(), "Unassigned player unaffected");
+            s.activate("double_challenge:warranty_expired,no_sprint");
+            s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID); sample(p); sample(q);
+        });
+        later(c, s, 82, () -> {
+            c.assertEquals(2, pick.getDamage(), "Global plus personal wears once"); c.assertEquals(1, other.getDamage(), "Global affects other owner");
+            p.changeGameMode(GameMode.CREATIVE); q.changeGameMode(GameMode.SPECTATOR); sample(p); sample(q);
+        });
+        later(c, s, 110, () -> {
+            c.assertEquals(2, pick.getDamage(), "Creative unaffected"); c.assertEquals(1, other.getDamage(), "Spectator unaffected");
+            p.changeGameMode(GameMode.ADVENTURE); sample(p);
+        });
+        later(c, s, 140, () -> {
+            c.assertEquals(2, pick.getDamage(), "Adventure starts with new grace");
+            ChallengeRegistry.get(ID).setEnabled(false);
+        });
+        later(c, s, 160, () -> {
+            c.assertEquals(2, pick.getDamage(), "Disabled timer does not run");
+            ChallengeRegistry.get(ID).setEnabled(true); sample(p);
+            s.state.reset();
+        });
+        later(c, s, 175, () -> {
+            try {
+                c.assertEquals(2, pick.getDamage(), "Reset stops timer without refund");
+                var decoded = ItemStack.fromNbt(c.getWorld().getRegistryManager(), pick.encode(c.getWorld().getRegistryManager())).orElseThrow();
+                c.assertEquals(2, decoded.getDamage(), "Lost durability persists in item NBT"); c.complete();
+            } finally { ChallengeRegistry.get(ID).setEnabled(true); s.close(); }
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "warranty_enchant_break", tickLimit = 90)
+    public void passiveWearUsesUnbreakingAndVanillaBreaks(TestContext c) {
+        var s = new ChallengeScenario(c); var p = ready(s);
+        var pick = hand(p, Items.DIAMOND_PICKAXE);
+        pick.addEnchantment(c.getWorld().getRegistryManager().get(RegistryKeys.ENCHANTMENT).getEntry(Enchantments.UNBREAKING).orElseThrow(), 3);
+        var shield = new ItemStack(Items.SHIELD); shield.set(DataComponentTypes.UNBREAKABLE, new UnbreakableComponent(true));
+        p.setStackInHand(Hand.OFF_HAND, shield);
+        var armor = new ItemStack(Items.DIAMOND_CHESTPLATE); armor.setDamage(armor.getMaxDamage() - 1);
+        p.equipStack(EquipmentSlot.CHEST, armor);
+        int before = p.getStatHandler().getStat(Stats.BROKEN.getOrCreateStat(Items.DIAMOND_CHESTPLATE));
+        s.activate(ID); sample(p);
+        later(c, s, 21, () -> {
+            c.assertTrue(p.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Idle wear breaks and removes armor");
+            c.assertEquals(before + 1, p.getStatHandler().getStat(Stats.BROKEN.getOrCreateStat(Items.DIAMOND_CHESTPLATE)), "Single vanilla break statistic");
+        });
+        later(c, s, 81, () -> {
+            try {
+                c.assertTrue(pick.getDamage() >= 0 && pick.getDamage() <= 3, "Unbreaking passive wear remains bounded by three losses");
+                c.assertEquals(0, shield.getDamage(), "Unbreakable offhand never wears");
+                c.assertEquals(before + 1, p.getStatHandler().getStat(Stats.BROKEN.getOrCreateStat(Items.DIAMOND_CHESTPLATE)), "Empty slot does not repeat break");
+                c.complete();
+            } finally { s.close(); }
+        });
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "warranty_lifecycle", tickLimit = 160)
+    public void reloadDeathRespawnDimensionAndReconnectRestartGrace(TestContext c) {
+        var s = new ChallengeScenario(c); var first = ready(s);
+        var player = new ServerPlayerEntity[]{first};
+        var tool = new ItemStack[]{hand(first, Items.DIAMOND_PICKAXE)};
+        s.activate(ID); sample(first);
+        later(c, s, 41, () -> {
+            c.assertEquals(1, tool[0].getDamage(), "First session wears normally");
+            var saved = s.state.writeNbt(new NbtCompound(), c.getWorld().getRegistryManager());
+            c.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY,
+                    CurseCycleState.createFromNbt(saved, c.getWorld().getRegistryManager()));
+            sample(first);
+        });
+        later(c, s, 70, () -> c.assertEquals(1, tool[0].getDamage(), "Loaded state has fresh grace and keeps old damage"));
+        later(c, s, 82, () -> {
+            c.assertEquals(2, tool[0].getDamage(), "Reloaded timer runs after full grace");
+            first.kill(); sample(first);
+            player[0] = s.respawn(first, false); player[0].setNoGravity(true); player[0].setHealth(20);
+            tool[0] = hand(player[0], Items.DIAMOND_PICKAXE); sample(player[0]);
+        });
+        later(c, s, 100, () -> {
+            c.assertEquals(0, tool[0].getDamage(), "Respawn does not inherit the old due time");
+            var p = player[0]; var origin = p.getPos(); var nether = p.getServer().getWorld(World.NETHER);
+            p.teleport(nether, origin.x, 100, origin.z, 0, 0); sample(p);
+            p.teleport(c.getWorld(), origin.x, origin.y, origin.z, 0, 0); sample(p);
+        });
+        later(c, s, 110, () -> {
+            var p = player[0]; var uuid = p.getUuid();
+            ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, p.getServer());
+            p.getServer().getPlayerManager().remove(p);
+            player[0] = s.player(uuid); player[0].setNoGravity(true);
+            tool[0] = hand(player[0], Items.DIAMOND_PICKAXE); sample(player[0]);
+        });
+        later(c, s, 149, () -> c.assertEquals(0, tool[0].getDamage(), "Reconnect has its own full grace"));
+        later(c, s, 151, () -> {
+            try {
+                c.assertEquals(1, tool[0].getDamage(), "Reconnected timer becomes active normally"); c.complete();
+            } finally { s.close(); }
         });
     }
 }

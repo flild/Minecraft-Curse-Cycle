@@ -17,9 +17,9 @@ public final class TinyPlayerChallenge extends Challenge {
     public static final Identifier ENTITY_MODIFIER = Identifier.of("cursecycle", "tiny_player/entity_range");
 
     public TinyPlayerChallenge() {
-        super(ID, "Мелкий, но проблемный", "Рост один блок, ниже прыжки и меньше дальность взаимодействия.",
-                "Твой рост — один блок: можно пройти под низким потолком. Прыжок слабее, а до блоков и существ "
-                        + "нужно подойти ближе. После окончания в тесноте ты ползёшь до выхода на простор.",
+        super(ID, "Метр с кепкой",
+                "Теперь ты высотой в один блок.",
+                "Мир глазами челика 170см.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

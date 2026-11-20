@@ -27,14 +27,9 @@ public final class BlackHoleChallenge extends Challenge {
     private static final Map<MinecraftServer, Field> FIELDS = new HashMap<>();
 
     public BlackHoleChallenge() {
-        super(ID, "Пылесос реальности", "Временные чёрные дыры притягивают существ и предметы; ядро опасно.",
-                "Каждые 40–60 секунд в 6–10 блоках появляется отмеченный центр. Через три секунды он "
-                        + "на восемь секунд притягивает игроков, мобов и выпавшие предметы в радиусе восьми блоков. "
-                        + "Тяга ограничена; стены сохраняют обычную коллизию. В ядре радиусом один блок "
-                        + "живые существа получают 2 HP магического урона раз в секунду. Предметы не повреждаются, "
-                        + "блоки не разрушаются. Одновременно не более четырёх дыр, до 128 сущностей в каждой области; "
-                        + "пересечения не усиливают тягу. Creative/Spectator исключены. После окончания новые "
-                        + "воздействия прекращаются; уже полученная скорость и потерянное здоровье не возвращаются.",
+        super(ID, "Ну и дыра",
+                "Рядом иногда появляется чёрная дыра.",
+                "Рядом время от времени появляется чёрная дыра. На то, чтобы отойти, есть три секунды. Потом она восемь секунд тянет к себе всё вокруг, а в самом центре смерть.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -158,7 +153,7 @@ public final class BlackHoleChallenge extends Challenge {
             if (now % DAMAGE_PERIOD == 0
                     && e.getBoundingBox().getCenter().squaredDistanceTo(h.center) <= CORE_RADIUS * CORE_RADIUS
                     && e instanceof net.minecraft.entity.LivingEntity living)
-                living.damage(h.world.getDamageSources().magic(), 2F);
+                living.damage(h.world.getDamageSources().magic(), 4F);
         }
     }
 

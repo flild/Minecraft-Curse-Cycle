@@ -14,9 +14,9 @@ public final class BuddingChallenge extends Challenge {
     public static final String CHILD_NBT = "cursecycle:budding_child";
 
     public BuddingChallenge() {
-        super(ID, "Почкование", "После смерти враждебного моба появляются два зомби-ребёнка.",
-                "На месте смерти враждебного моба появляются два зомби-ребёнка, даже если моб погиб сам. "
-                        + "Созданные испытанием зомби повторно не почкуются. После окончания они остаются в мире.",
+        super(ID, "Акция 1+2",
+                "Убив одного, получаешь ещё двоих в подарок.",
+                "На месте погибшего враждебного моба появляются два маленьких зомби. Из них новые зомби уже не вылезут.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

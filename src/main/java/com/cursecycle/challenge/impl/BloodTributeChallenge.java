@@ -22,18 +22,26 @@ import java.util.UUID;
 /** Persistent active-time obligation, independent of daylight and without a catch-up damage queue. */
 public final class BloodTributeChallenge extends Challenge {
     public static final String ID = "blood_tribute";
-    public static final int INTERVAL = 3600, WARNING = 600, PENALTY_INTERVAL = 40;
+    // Баланс испытания: время в секундах, урон в HP (2 HP = одно сердце).
+    public static final int KILL_INTERVAL_SECONDS = 30;
+    public static final int WARNING_SECONDS = 5;
+    public static final int PENALTY_INTERVAL_SECONDS = 1;
+    public static final float PENALTY_DAMAGE_HP = 2F;
+
+    public static final int INTERVAL = KILL_INTERVAL_SECONDS * 20;
+    public static final int WARNING = WARNING_SECONDS * 20;
+    public static final int PENALTY_INTERVAL = PENALTY_INTERVAL_SECONDS * 20;
     public static final RegistryKey<DamageType> DAMAGE_TYPE = RegistryKey.of(RegistryKeys.DAMAGE_TYPE,
             Identifier.of("cursecycle", ID));
     private static final Map<MinecraftServer, Clock> CLOCKS = new IdentityHashMap<>();
     private record Clock(CurseCycleState state, long activation, int tick) {}
 
     public BloodTributeChallenge() {
-        super(ID, "Кровавая повинность", "Каждые три минуты нужно лично убить моба.",
-                "Убей любого моба своим ударом или снарядом за три минуты. За 30 секунд до срока появится предупреждение. "
-                        + "Просрочка отнимает полсердца каждые две секунды до следующего убийства; броня и щит не спасают. "
-                        + "Выход и смерть не сбрасывают срок. Питомцы и ловушки не считаются.",
-                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Резня",
+                "Чтобы жил ты, должен кто-то умереть.",
+                "Каждые " + KILL_INTERVAL_SECONDS + " секунд нужно убить моба "
+                        + "или убъют уже тебя.",
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
     private static boolean assigned(CurseCycleState state, UUID owner) {
@@ -69,7 +77,7 @@ public final class BloodTributeChallenge extends Challenge {
         var state = CurseCycleState.getServerState(player.getServer());
         records(state).put(player.getUuidAsString(), fresh());
         state.markDirty();
-        player.sendMessage(Text.translatable("text.cursecycle.blood_tribute.paid").formatted(Formatting.GREEN), false);
+        player.sendMessage(Text.translatable("text.cursecycle.blood_tribute.paid", KILL_INTERVAL_SECONDS).formatted(Formatting.GREEN), false);
     }
     /** Always registered, including while disabled. Once per actual server tick, not per onTick invocation. */
     public static void tick(MinecraftServer server) {
@@ -109,7 +117,7 @@ public final class BloodTributeChallenge extends Challenge {
                                 .formatted(Formatting.RED), false);
                     }
                     var source = new DamageSource(player.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
-                    player.damage(source, 1F);
+                    player.damage(source, PENALTY_DAMAGE_HP);
                 }
             } else state.markDirty();
         }

@@ -70,13 +70,13 @@
 
 - [Метеослужба предупреждала](meteor-shower-testing.md) — `meteor_shower`.
 
-- [За тобой выехали](skeleton-hunter-testing.md) — `skeleton_hunter`.
+- [HITMAN](skeleton-hunter-testing.md) — `skeleton_hunter`.
 
-- [Мелкий, но проблемный](tiny-player-testing.md) — `tiny_player`.
-- [Большой и неудобный](giant-player-testing.md) — `giant_player`.
+- [Метр с кепкой](tiny-player-testing.md) — `tiny_player`.
+- [В дверях застрял](giant-player-testing.md) — `giant_player`.
 - [Гарантия закончилась](warranty-expired-testing.md) — `warranty_expired`.
 - [После меня хоть пожар](fire-trail-testing.md) — `fire_trail`.
-- [Кровавая повинность](blood-tribute-testing.md) — `blood_tribute`.
+- [Резня](blood-tribute-testing.md) — `blood_tribute`.
 - [Пацифист](pacifist-testing.md) — `pacifist`.
 - [Да как ходить то!](inverted-keyboard-testing.md) — `inverted_keyboard`.
 - [Зато под водой дышать можно](gills-testing.md) — `gills`.

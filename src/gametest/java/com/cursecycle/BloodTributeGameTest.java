@@ -105,14 +105,14 @@ public class BloodTributeGameTest implements FabricGameTest {
             cow.timeUntilRegen = 0;
             a.kill(cow, p.getDamageSources().playerAttack(other));
             c.assertEquals(7, record(p).getInt("remaining"), "Earlier attacker does not get kill credit");
-            c.assertEquals(3600, record(other).getInt("remaining"), "Final blow belongs to other player");
+            c.assertEquals(300, record(other).getInt("remaining"), "Final blow belongs to other player");
             cow = a.mob(EntityType.COW); cow.setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
             cow.damage(p.getDamageSources().playerAttack(p), 100);
             c.assertTrue(cow.isAlive() && cow.getOffHandStack().isEmpty(), "Totem prevented real death");
             c.assertEquals(7, record(p).getInt("remaining"), "Totem never satisfies obligation");
             cow.timeUntilRegen = 0; cow.clearStatusEffects(); cow.setAbsorptionAmount(0); cow.setHealth(.01F); p.attack(cow);
             c.assertFalse(cow.isAlive(), "Real melee killed peaceful mob");
-            c.assertEquals(3600, record(p).getInt("remaining"), "Peaceful mob counts");
+            c.assertEquals(300, record(p).getInt("remaining"), "Peaceful mob counts");
         } c.complete();
     }
 
@@ -126,14 +126,14 @@ public class BloodTributeGameTest implements FabricGameTest {
             a.entities.add(arrow); arrow.setPosition(cow.getX(), cow.getY() + .5, cow.getZ() - 1);
             arrow.setVelocity(0, 0, 2); c.getWorld().spawnEntity(arrow); arrow.tick();
             c.assertFalse(cow.isAlive(), "Actual owned arrow impact killed mob");
-            c.assertEquals(3600, record(p).getInt("remaining"), "Arrow owner gets interval");
+            c.assertEquals(300, record(p).getInt("remaining"), "Arrow owner gets interval");
             c.assertEquals(4, record(other).getInt("remaining"), "Other player unchanged");
             debt(p, 2, 0); cow = a.mob(EntityType.COW);
             var trident = new TridentEntity(c.getWorld(), p, new ItemStack(Items.TRIDENT));
             a.entities.add(trident); trident.setPosition(cow.getX(), cow.getY() + .5, cow.getZ() - 1);
             trident.setVelocity(0, 0, 2); c.getWorld().spawnEntity(trident); trident.tick();
             c.assertFalse(cow.isAlive(), "Actual trident impact killed mob");
-            c.assertEquals(3600, record(p).getInt("remaining"), "Trident owner gets interval");
+            c.assertEquals(300, record(p).getInt("remaining"), "Trident owner gets interval");
         } c.complete();
     }
 
@@ -163,24 +163,26 @@ public class BloodTributeGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "tribute_boundaries")
     public void warningDeadlineCadenceDedupAndKillStopsPenalty(TestContext c) {
         try (var a = new Arena(c)) {
-            var p = a.p; messages(a.s, p); debt(p, 601, 0); step(p);
+            var p = a.p; messages(a.s, p); debt(p, 101, 0); step(p);
             var packets = messages(a.s, p);
             c.assertEquals(1L, count(packets, "warning"), "One pre-deadline warning");
-            c.assertTrue(packets.stream().anyMatch(t -> t.getKey().endsWith(".warning") && t.getArgs()[0].equals(30)), "Thirty seconds left");
+            c.assertTrue(packets.stream().anyMatch(t -> t.getKey().endsWith(".warning") && t.getArgs()[0].equals(5)), "Five seconds left");
             step(p); c.assertEquals(0L, count(messages(a.s, p), "warning"), "Warning not spammed");
             debt(p, 1, 0); step(p);
-            c.assertEquals(19F, p.getHealth(), "First half-heart at deadline");
-            c.assertEquals(40, record(p).getInt("penaltyRemaining"), "Next penalty in two seconds");
+            c.assertEquals(18F, p.getHealth(), "First full heart at deadline");
+            c.assertEquals(20, record(p).getInt("penaltyRemaining"), "Next penalty in one second");
             c.assertEquals(1L, count(messages(a.s, p), "overdue"), "Overdue feedback once");
             BloodTributeChallenge.tick(p.getServer());
-            c.assertEquals(40, record(p).getInt("penaltyRemaining"), "Repeated same-tick call does no work");
-            for (int i = 0; i < 39; i++) step(p);
-            c.assertEquals(19F, p.getHealth(), "No second penalty before forty ticks"); step(p);
-            c.assertEquals(18F, p.getHealth(), "Exactly one penalty at next boundary");
+            c.assertEquals(20, record(p).getInt("penaltyRemaining"), "Repeated same-tick call does no work");
+            for (int i = 0; i < 19; i++) step(p);
+            c.assertEquals(18F, p.getHealth(), "No second penalty before twenty ticks"); step(p);
+            c.assertEquals(16F, p.getHealth(), "Exactly one penalty at next boundary");
             a.kill(a.mob(EntityType.COW), p.getDamageSources().playerAttack(p));
-            c.assertEquals(3600, record(p).getInt("remaining"), "Kill clears debt immediately");
+            c.assertEquals(300, record(p).getInt("remaining"), "Kill clears debt immediately");
+            c.assertTrue(messages(a.s, p).stream().anyMatch(t -> t.getKey().endsWith(".paid")
+                    && t.getArgs()[0].equals(15)), "Payment message uses configured interval");
             for (int i = 0; i < 80; i++) step(p);
-            c.assertEquals(18F, p.getHealth(), "No further penalty or healing after payment");
+            c.assertEquals(16F, p.getHealth(), "No further penalty or healing after payment");
             c.assertFalse(record(p).getBoolean("warned"), "New interval can warn again");
         } c.complete();
     }
@@ -196,10 +198,10 @@ public class BloodTributeGameTest implements FabricGameTest {
             for (int i = 0; i < 6; i++) p.playerTick();
             c.assertTrue(p.isBlocking(), "Real blocking shield");
             p.timeUntilRegen = 20; debt(p, 0, 0); step(p);
-            c.assertEquals(19F, p.getHealth(), "Armor, resistance, shield and cooldown do not cancel penalty");
+            c.assertEquals(18F, p.getHealth(), "Armor, resistance, shield and cooldown do not cancel penalty");
             p.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 500, 0)); p.setAbsorptionAmount(2);
-            debt(p, 0, 0); step(p); c.assertEquals(1F, p.getAbsorptionAmount(), "Absorption pays first");
-            c.assertEquals(19F, p.getHealth(), "Absorbed penalty preserves HP");
+            debt(p, 0, 0); step(p); c.assertEquals(0F, p.getAbsorptionAmount(), "Absorption pays first");
+            c.assertEquals(18F, p.getHealth(), "Absorbed penalty preserves HP");
             p.stopUsingItem(); p.setAbsorptionAmount(0); p.setHealth(1);
             p.setStackInHand(Hand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING)); debt(p, 0, 0); step(p);
             c.assertTrue(p.isAlive() && p.getOffHandStack().isEmpty(), "Penalty can consume real totem");
@@ -224,7 +226,7 @@ public class BloodTributeGameTest implements FabricGameTest {
             c.assertEquals(0, record(again).getInt("remaining"), "Overdue survives reconnect");
             c.assertEquals(7, record(again).getInt("penaltyRemaining"), "Offline time creates no missed damage queue");
             for (int i = 0; i < 7; i++) step(again);
-            c.assertEquals(19F, again.getHealth(), "Exactly one penalty after saved seven active ticks");
+            c.assertEquals(18F, again.getHealth(), "Exactly one penalty after saved seven active ticks");
         } c.complete();
     }
 
@@ -237,11 +239,24 @@ public class BloodTributeGameTest implements FabricGameTest {
             debt(p, 0, 3); record(p).putBoolean("overdue", true); reload(c, p);
             for (int i = 0; i < 2; i++) step(p);
             c.assertEquals(20F, p.getHealth(), "Reload does not accelerate penalty"); step(p);
-            c.assertEquals(19F, p.getHealth(), "Reload gives no fresh grace");
-            c.assertEquals(40, record(p).getInt("penaltyRemaining"), "Phase persisted and advanced");
+            c.assertEquals(18F, p.getHealth(), "Reload gives no fresh grace");
+            c.assertEquals(20, record(p).getInt("penaltyRemaining"), "Phase persisted and advanced");
             c.assertTrue(CurseCycleState.getServerState(p.getServer()).isDirty(), "Updates mark persistent state dirty");
         } c.complete();
     }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "tribute_old_balance")
+    public void oldSavedTimersUseNewCaps(TestContext c) {
+        try (var a = new Arena(c)) {
+            var p = a.p; debt(p, 3600, 40); reload(c, p); step(p);
+            c.assertEquals(299, record(p).getInt("remaining"), "Old three-minute remainder is capped at fifteen seconds");
+            debt(p, 0, 40); reload(c, p); step(p);
+            c.assertEquals(19, record(p).getInt("penaltyRemaining"), "Old two-second penalty phase is capped at one second");
+            c.assertEquals(20F, p.getHealth(), "Capping saved phase does not hit early");
+            for (int i = 0; i < 19; i++) step(p);
+            c.assertEquals(18F, p.getHealth(), "Resumed saved debt deals one heart at the new boundary");
+        } c.complete();
+    }
+
     private static void reload(TestContext c, ServerPlayerEntity p) {
         var state = CurseCycleState.getServerState(p.getServer());
         var saved = state.writeNbt(new NbtCompound(), c.getWorld().getRegistryManager());
@@ -256,19 +271,19 @@ public class BloodTributeGameTest implements FabricGameTest {
             var p = a.p; debt(p, 0, 0); p.setHealth(1); step(p);
             c.assertFalse(p.isAlive(), "Penalty caused real player death");
             for (int i = 0; i < 10; i++) step(p);
-            c.assertEquals(40, record(p).getInt("penaltyRemaining"), "Dead time paused");
+            c.assertEquals(20, record(p).getInt("penaltyRemaining"), "Dead time paused");
             var next = a.s.respawn(p, false); ready(next, c); step(next);
             c.assertEquals(0, record(next).getInt("remaining"), "Respawn does not forgive debt");
-            c.assertEquals(39, record(next).getInt("penaltyRemaining"), "Respawn resumes saved phase");
+            c.assertEquals(19, record(next).getInt("penaltyRemaining"), "Respawn resumes saved phase");
             for (var mode : List.of(GameMode.CREATIVE, GameMode.SPECTATOR)) {
                 next.changeGameMode(mode); step(next);
-                c.assertEquals(39, record(next).getInt("penaltyRemaining"), "Excluded mode pauses debt");
+                c.assertEquals(19, record(next).getInt("penaltyRemaining"), "Excluded mode pauses debt");
             }
             next.changeGameMode(GameMode.ADVENTURE); step(next);
-            c.assertEquals(38, record(next).getInt("penaltyRemaining"), "Adventure participates");
+            c.assertEquals(18, record(next).getInt("penaltyRemaining"), "Adventure participates");
             var world = next.getServer().getWorld(World.NETHER);
             next.teleport(world, 0, 100, 0, 0, 0); step(next);
-            c.assertEquals(37, record(next).getInt("penaltyRemaining"), "Dimension change keeps saved phase");
+            c.assertEquals(17, record(next).getInt("penaltyRemaining"), "Dimension change keeps saved phase");
         } c.complete();
     }
 
@@ -279,14 +294,14 @@ public class BloodTributeGameTest implements FabricGameTest {
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
             c.assertFalse(a.s.state.getChallengeData().getCompound(ID).contains(p.getUuidAsString()), "Stop removes own player record");
             c.assertEquals(42, a.s.state.getChallengeData().getInt("fixture"), "Other data retained");
-            a.s.activate("test_easy"); step(p); c.assertEquals(19F, p.getHealth(), "End never heals old damage");
+            a.s.activate("test_easy"); step(p); c.assertEquals(18F, p.getHealth(), "End never heals old damage");
             a.s.activate(ID); debt(p, 0, 0); step(p);
             var challenge = ChallengeRegistry.get(ID); challenge.setEnabled(false);
             try { step(p); c.assertFalse(a.s.state.getChallengeData().contains(ID), "Disabled even without onStop clears debt"); }
             finally { challenge.setEnabled(true); }
-            a.s.activate(ID); c.assertEquals(3600, record(p).getInt("remaining"), "Repeated ID has fresh activation");
+            a.s.activate(ID); c.assertEquals(300, record(p).getInt("remaining"), "Repeated ID has fresh activation");
             a.s.state.reset(); step(p); c.assertFalse(a.s.state.getChallengeData().contains(ID), "Reset ends obligation");
-            c.assertEquals(18F, p.getHealth(), "Reset never restores spent HP");
+            c.assertEquals(16F, p.getHealth(), "Reset never restores spent HP");
         } c.complete();
     }
 
@@ -302,7 +317,7 @@ public class BloodTributeGameTest implements FabricGameTest {
             a.s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID); debt(p, 2, 0); step(p);
             c.assertEquals(1, record(p).getInt("remaining"), "GLOBAL plus PERSONAL processed once");
             var cow = a.mob(EntityType.COW); a.kill(cow, p.getDamageSources().playerAttack(p));
-            c.assertEquals(3600, record(p).getInt("remaining"), "Pacifist pair still pays tribute");
+            c.assertEquals(300, record(p).getInt("remaining"), "Pacifist pair still pays tribute");
             c.assertEquals(19.75F, p.getHealth(), "Pacifist actual return still applies");
             a.s.state.getPersonalActiveChallengeIds(p.getUuid()).clear();
             a.s.activate("double_challenge:blood_tribute,damage_slot_drop");
@@ -314,24 +329,24 @@ public class BloodTributeGameTest implements FabricGameTest {
         } c.complete();
     }
 
-    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "tribute_real_clock", tickLimit = 3680)
-    public void realThreeMinuteClockWarningAndTwoSecondPenalty(TestContext c) {
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "tribute_real_clock", tickLimit = 360)
+    public void realFifteenSecondClockWarningAndOneSecondPenalty(TestContext c) {
         var a = new Arena(c); var p = a.p; int began = p.getServer().getTicks();
         messages(a.s, p); long daylight = c.getWorld().getTimeOfDay();
-        c.runAtTick(2900, () -> {
+        c.runAtTick(190, () -> {
             c.getWorld().setTimeOfDay(c.getWorld().getTimeOfDay() + 600);
-            c.assertEquals(3600 - (p.getServer().getTicks() - began), record(p).getInt("remaining"), "Exact active server ticks despite daylight jump");
-            c.assertFalse(record(p).getBoolean("warned"), "No warning before last thirty seconds");
+            c.assertEquals(300 - (p.getServer().getTicks() - began), record(p).getInt("remaining"), "Exact active server ticks despite daylight jump");
+            c.assertFalse(record(p).getBoolean("warned"), "No warning before last five seconds");
         });
-        c.runAtTick(3010, () -> {
+        c.runAtTick(260, () -> {
             c.assertEquals(1L, count(messages(a.s, p), "warning"), "Actual tick event sends warning");
             c.assertEquals(20F, p.getHealth(), "Warning does no damage");
         });
-        c.runAtTick(3590, () -> c.assertEquals(20F, p.getHealth(), "No damage before three minutes"));
-        c.runAtTick(3605, () -> c.assertEquals(19F, p.getHealth(), "First penalty after full real interval"));
-        c.runAtTick(3645, () -> {
+        c.runAtTick(290, () -> c.assertEquals(20F, p.getHealth(), "No damage before fifteen seconds"));
+        c.runAtTick(305, () -> c.assertEquals(18F, p.getHealth(), "First penalty after full real interval"));
+        c.runAtTick(325, () -> {
             try {
-                c.assertEquals(18F, p.getHealth(), "Second penalty exactly two seconds later");
+                c.assertEquals(16F, p.getHealth(), "Second penalty exactly one second later");
                 c.assertEquals(1L, count(messages(a.s, p), "overdue"), "One overdue message");
                 c.complete();
             } finally { a.close(); c.getWorld().setTimeOfDay(daylight); }

@@ -16,11 +16,10 @@ public final class GiantPlayerChallenge extends Challenge {
     public static final Identifier STEP_MODIFIER = Identifier.of("cursecycle", "giant_player/step");
 
     public GiantPlayerChallenge() {
-        super(ID, "Большой и неудобный", "Размер вдвое больше, дальше взаимодействие и выше шаг.",
-                "Ты вдвое больше: обычные двери и проходы шириной в блок слишком тесны. Дальность "
-                        + "взаимодействия ×1,5, высота шага ×2. В тесноте рост ждёт свободного места. "
-                        + "Если действует «Мелкий, но проблемный», его размер и ограничения имеют приоритет.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+        super(ID, "Big boy",
+                "Размер игрока увеличен вдвое.",
+                "Моделька игрока стала больше.",
+                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
     public static void reconcile(PlayerEntity player) { PlayerSizeAttributes.reconcile(player); }

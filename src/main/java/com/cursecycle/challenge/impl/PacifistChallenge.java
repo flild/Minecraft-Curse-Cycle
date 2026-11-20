@@ -21,10 +21,10 @@ public final class PacifistChallenge extends Challenge {
             Identifier.of("cursecycle", ID));
 
     public PacifistChallenge() {
-        super(ID, "Пацифист", "Прямой урон существам возвращается тебе.",
-                "Урон от ударов и твоих снарядов получает и цель, и ты. Ловушки и огонь не отражаются. "
-                        + "Возвращается потерянное целью здоровье и поглощение; броня и щит от возврата не спасают.",
-                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Пацифист",
+                "Урон существам возвращается тебе.",
+                "Урон от твоих ударов и снарядов получают и цель, и ты. Броня от этого не спасает.",
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
     /** Attribution alone is insufficient: old fire/kill credit, pets, Thorns and explosions are indirect. */

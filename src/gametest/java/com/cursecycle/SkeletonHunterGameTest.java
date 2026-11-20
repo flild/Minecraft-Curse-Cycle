@@ -9,6 +9,8 @@ import com.cursecycle.state.CurseCycleState;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
@@ -16,6 +18,9 @@ import net.minecraft.entity.mob.SkeletonEntity;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.test.GameTest;
@@ -28,7 +33,7 @@ import net.minecraft.world.World;
 
 import java.util.*;
 
-/** Synchronous boundary tests shift only private deadlines, not the shared server clock. */
+/** Real gameplay hooks, equipment, safe relocation and persistence without changing the shared clock. */
 public class SkeletonHunterGameTest implements FabricGameTest {
     private static final String ID = SkeletonHunterChallenge.ID;
     private static final int FLAGS = Block.FORCE_STATE | Block.NOTIFY_LISTENERS;
@@ -77,10 +82,37 @@ public class SkeletonHunterGameTest implements FabricGameTest {
         s.activate(ID);
         return player;
     }
-    private static void finishWarning(ServerPlayerEntity player) {
-        SkeletonHunterChallenge.check(player);
-        set(pursuit(player), "warned", now(player) - SkeletonHunterChallenge.WARNING_TICKS);
-        SkeletonHunterChallenge.check(player);
+    private static void check(ServerPlayerEntity player) { SkeletonHunterChallenge.check(player); }
+    private static List<Object> packets(ChallengeScenario s, ServerPlayerEntity p) {
+        s.channel(p).runPendingTasks(); s.channel(p).flush();
+        var result = new ArrayList<Object>(); Object packet;
+        while ((packet = s.channel(p).readOutbound()) != null) result.add(packet);
+        return result;
+    }
+    private static boolean warning(Object packet) {
+        return packet instanceof GameMessageS2CPacket message
+                && message.content().getContent() instanceof net.minecraft.text.TranslatableTextContent text
+                && text.getKey().equals("text.cursecycle.skeleton_hunter.warning");
+    }
+    private static long teleportSounds(List<Object> packets) {
+        return packets.stream().filter(packet -> packet instanceof PlaySoundS2CPacket sound
+                && sound.getSound().value().getId().equals(SoundEvents.ENTITY_ENDERMAN_TELEPORT.getId())).count();
+    }
+    private static void assertKit(TestContext c, SkeletonEntity mob) {
+        c.assertTrue(mob.getMainHandStack().isOf(Items.BOW), "Bow equipped");
+        var registry = c.getWorld().getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        c.assertEquals(SkeletonHunterChallenge.BOW_POWER, EnchantmentHelper.getLevel(
+                registry.getEntry(Enchantments.POWER).orElseThrow(), mob.getMainHandStack()), "Power level");
+        c.assertEquals(SkeletonHunterChallenge.BOW_PUNCH, EnchantmentHelper.getLevel(
+                registry.getEntry(Enchantments.PUNCH).orElseThrow(), mob.getMainHandStack()), "Punch level");
+        c.assertEquals(SkeletonHunterChallenge.BOW_FLAME, EnchantmentHelper.getLevel(
+                registry.getEntry(Enchantments.FLAME).orElseThrow(), mob.getMainHandStack()), "Flame level");
+        c.assertEquals(SkeletonHunterChallenge.BOW_UNBREAKING, EnchantmentHelper.getLevel(
+                registry.getEntry(Enchantments.UNBREAKING).orElseThrow(), mob.getMainHandStack()), "Unbreaking level");
+        c.assertTrue(mob.getEquippedStack(EquipmentSlot.HEAD).isOf(Items.DIAMOND_HELMET), "Diamond helmet");
+        c.assertTrue(mob.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.DIAMOND_CHESTPLATE), "Diamond chestplate");
+        c.assertTrue(mob.getEquippedStack(EquipmentSlot.LEGS).isOf(Items.DIAMOND_LEGGINGS), "Diamond leggings");
+        c.assertTrue(mob.getEquippedStack(EquipmentSlot.FEET).isOf(Items.DIAMOND_BOOTS), "Diamond boots");
     }
     private static void cleanup(ChallengeScenario s) {
         s.activate("test_easy");
@@ -92,18 +124,13 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     public void onePerEligibleOwnerAndPersonalAssignments(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
             var p = ready(c, s); var q = s.player(); q.setPosition(p.getPos());
-            s.channel(p).runPendingTasks(); s.channel(p).flush();
-            boolean warningPacket = false; Object packet;
-            while ((packet = s.channel(p).readOutbound()) != null) {
-                if (packet instanceof GameMessageS2CPacket message && !message.overlay()
-                        && message.content().getContent() instanceof net.minecraft.text.TranslatableTextContent text
-                        && text.getKey().equals("text.cursecycle.skeleton_hunter.warning")) warningPacket = true;
-            }
-            c.assertTrue(warningPacket, "Actual vanilla chat packet delivers warning");
-            finishWarning(p); finishWarning(q);
+            c.assertTrue(hunter(p) != null, "Initial appearance is immediate");
+            c.assertTrue(packets(s, p).stream().noneMatch(SkeletonHunterGameTest::warning), "No initial warning packet");
+            check(p); check(q);
             var a = hunter(p); var b = hunter(q);
             c.assertTrue(a != null && b != null && a != b, "Distinct hunter per GLOBAL player");
-            c.assertEquals(30F, a.getHealth(), "Special health");
+            c.assertEquals(SkeletonHunterChallenge.MAX_HEALTH, a.getHealth(), "Configured health");
+            assertKit(c, a);
             c.assertTrue(a.getMainHandStack().isOf(Items.BOW), "Vanilla bow");
             c.assertTrue(a.isPersistent() && !a.canPickUpLoot(), "Persistent; no equipment pickup");
             for (int i = 0; i < 20; i++) { SkeletonHunterChallenge.check(p); SkeletonHunterChallenge.check(q); }
@@ -111,7 +138,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
             s.activate("test_easy");
             c.assertTrue(a.isRemoved() && b.isRemoved(), "Stop removes both loaded hunters");
             s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID);
-            finishWarning(p); SkeletonHunterChallenge.check(q);
+            check(p); SkeletonHunterChallenge.check(q);
             c.assertTrue(hunter(p) != null && hunter(q) == null, "PERSONAL only affects assigned owner");
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
             s.state.getPersonalActiveChallengeIds(p.getUuid()).clear();
@@ -126,7 +153,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_ai")
     public void actualNavigationBowTargetRestrictionAndDaylight(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var mob = hunter(p);
+            var p = ready(c, s); check(p); var mob = hunter(p);
             var q = s.player(); q.setPosition(p.getPos().add(4, 0, 0));
             mob.setPosition(p.getPos().add(22, 0, 0));
             mob.setTarget(p); mob.setTarget(q); mob.setTarget(null);
@@ -154,55 +181,66 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_death")
-    public void confirmedDeathSchedulesExactlyOneThreeMinuteReplacement(TestContext c) {
+    public void playerKillImmediatelyReplacesOnceWithNoEquipmentDrops(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var mob = hunter(p); var id = mob.getUuid();
+            var p = ready(c, s); var mob = hunter(p); var id = mob.getUuid();
             var existingDrops = new HashSet<>(c.getWorld().getEntitiesByType(EntityType.ITEM, e -> true));
-            mob.setEquipmentDropChance(EquipmentSlot.MAINHAND, 2); // Guaranteed vanilla equipment drop if not suppressed.
-            mob.damage(c.getWorld().getDamageSources().genericKill(), Float.MAX_VALUE);
-            c.assertFalse(mob.isAlive(), "Real death");
+            for (var slot : EquipmentSlot.values()) mob.setEquipmentDropChance(slot, 2);
+            packets(s, p);
+            mob.damage(c.getWorld().getDamageSources().playerAttack(p), Float.MAX_VALUE);
+            c.assertFalse(mob.isAlive(), "Real player kill");
             c.assertTrue(c.getWorld().getEntitiesByType(EntityType.ITEM,
-                    e -> !existingDrops.contains(e) && e.getStack().isOf(Items.BOW)).isEmpty(), "Owned bow never drops even with guaranteed base chance");
-            c.assertEquals(now(p) + 3600, record(p).getLong("respawnAt"), "Three-minute persistent deadline");
-            c.assertFalse(record(p).containsUuid("hunter"), "Only death clears assigned entity UUID");
-            SkeletonHunterChallenge.check(p); c.assertTrue(hunter(p) == null, "No immediate replacement");
-            record(p).putLong("respawnAt", now(p) + 1); SkeletonHunterChallenge.check(p);
-            c.assertTrue(hunter(p) == null, "Not one tick before deadline");
-            record(p).putLong("respawnAt", now(p)); SkeletonHunterChallenge.check(p);
-            c.assertTrue(hunter(p) == null && pursuit(p) != null, "At deadline warn before fresh spawn");
-            finishWarning(p);
-            c.assertTrue(hunter(p) != null && !hunter(p).getUuid().equals(id), "Death produces a new hunter");
-            var replacement = hunter(p); SkeletonHunterChallenge.check(p);
-            c.assertTrue(replacement == hunter(p), "No catch-up duplicate");
+                    e -> !existingDrops.contains(e) && (e.getStack().isOf(Items.BOW)
+                            || e.getStack().isOf(Items.DIAMOND_HELMET) || e.getStack().isOf(Items.DIAMOND_CHESTPLATE)
+                            || e.getStack().isOf(Items.DIAMOND_LEGGINGS) || e.getStack().isOf(Items.DIAMOND_BOOTS)))
+                    .isEmpty(), "Bow and every armor piece never drop even with guaranteed drop chance");
+            var replacement = hunter(p);
+            c.assertTrue(replacement != null && !replacement.getUuid().equals(id), "Replacement exists before damage callback returns");
+            assertKit(c, replacement);
+            c.assertFalse(record(p).contains("respawnAt"), "No saved death delay");
+            SkeletonHunterChallenge.died(mob); check(p); check(p);
+            c.assertTrue(replacement == hunter(p), "Repeated death/check callbacks do not duplicate");
+            var received = packets(s, p);
+            c.assertTrue(received.stream().noneMatch(SkeletonHunterGameTest::warning), "No replacement warning");
+            c.assertEquals(1L, teleportSounds(received), "One actual arrival sound packet");
             cleanup(s);
         } c.complete();
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_relocation")
-    public void warningPrecedesFarAndStuckRelocationAndSafePointRequired(TestContext c) {
+    public void instantSoundedRelocationHasStrictRadiusAndRequiresSafePoint(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var mob = hunter(p); var id = mob.getUuid();
+            var p = ready(c, s); var mob = hunter(p); var id = mob.getUuid();
             mob.setHealth(11); mob.getMainHandStack().setDamage(7);
-            mob.setPosition(p.getPos().add(0, 60, 0)); SkeletonHunterChallenge.check(p);
-            set(pursuit(p), "warned", now(p) - 99); SkeletonHunterChallenge.check(p);
-            c.assertTrue(mob == hunter(p), "No transfer at 99 ticks");
-            finishWarning(p); var moved = hunter(p);
-            c.assertTrue(moved != mob && mob.isRemoved(), "Transfer at warning deadline");
+            mob.getEquippedStack(EquipmentSlot.CHEST).setDamage(17);
+            mob.setPosition(p.getPos().add(SkeletonHunterChallenge.TELEPORT_DISTANCE, 0, 0)); check(p);
+            c.assertTrue(mob == hunter(p), "No teleport at exact distance threshold");
+            packets(s, p);
+            mob.setPosition(p.getPos().add(SkeletonHunterChallenge.TELEPORT_DISTANCE + .01, 0, 0)); check(p);
+            var moved = hunter(p);
+            c.assertTrue(moved != mob && mob.isRemoved(), "Teleports on first check beyond threshold");
             c.assertEquals(id, moved.getUuid(), "Same logical entity UUID");
             c.assertEquals(11F, moved.getHealth(), "Relocation preserves health");
-            c.assertEquals(7, moved.getMainHandStack().getDamage(), "Relocation preserves equipment wear");
-            c.assertTrue(moved.distanceTo(p) >= 11 && moved.distanceTo(p) <= 21, "Destination in announced ring");
-            moved.setPosition(p.getPos().add(20, 0, 0)); SkeletonHunterChallenge.check(p);
-            set(pursuit(p), "anchor", moved.getPos()); set(pursuit(p), "progress", now(p) - 1200);
-            SkeletonHunterChallenge.check(p); c.assertTrue((long) field(pursuit(p), "warned") >= 0, "Stuck hunter also warns");
-            finishWarning(p); c.assertTrue(hunter(p) != moved, "Stuck transfer uses same warning path");
+            c.assertEquals(7, moved.getMainHandStack().getDamage(), "Relocation preserves bow wear");
+            c.assertEquals(17, moved.getEquippedStack(EquipmentSlot.CHEST).getDamage(), "Relocation preserves armor wear");
+            c.assertTrue(moved.distanceTo(p) >= SkeletonHunterChallenge.TELEPORT_MIN_RADIUS
+                    && moved.distanceTo(p) <= 16, "Whole 3D destination is within sixteen blocks");
+            assertKit(c, moved);
+            var received = packets(s, p);
+            c.assertEquals(1L, teleportSounds(received), "Actual teleport sound sent to nearby owner");
+            c.assertTrue(received.stream().noneMatch(SkeletonHunterGameTest::warning), "No teleport warning packet");
+            moved.setPosition(p.getPos().add(20, 0, 0)); check(p);
+            set(pursuit(p), "anchor", moved.getPos());
+            set(pursuit(p), "progress", now(p) - SkeletonHunterChallenge.STUCK_TICKS);
+            check(p); c.assertTrue(hunter(p) != moved, "Stuck transfer also has no warning delay");
             var latest = hunter(p); latest.setPosition(p.getPos().add(0, 60, 0));
-            // Deny every destination using actual fluid/collision checks, then restore a viable arena.
             var center = BlockPos.ofFloored(p.getPos());
             for (var pos : BlockPos.iterate(center.add(-24, -5, -24), center.add(24, 6, 24)))
                 c.getWorld().setBlockState(pos, Blocks.STONE.getDefaultState(), FLAGS);
-            finishWarning(p); c.assertTrue(hunter(p) == latest && !latest.isRemoved(), "No unsafe fallback through walls");
-            arena(c, c.getWorld()); finishWarning(p);
+            packets(s, p); check(p);
+            c.assertTrue(hunter(p) == latest && !latest.isRemoved(), "No unsafe fallback through walls");
+            c.assertEquals(0L, teleportSounds(packets(s, p)), "No sound for failed teleport");
+            arena(c, c.getWorld()); check(p);
             c.assertTrue(hunter(p) != latest, "Retry succeeds once a safe point exists");
             cleanup(s);
         } c.complete();
@@ -211,15 +249,15 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_unloaded")
     public void unloadedSnapshotTransfersSameHunterAndRejectsLateDiskCopy(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var old = hunter(p); old.setHealth(9);
+            var p = ready(c, s); check(p); var old = hunter(p); old.setHealth(9);
             // Real entity-manager UNLOAD callback captures NBT, not a call to the death handler.
             var disk = old.writeNbt(new NbtCompound()); disk.putString("id", "minecraft:skeleton");
             var uuid = old.getUuid();
             old.remove(Entity.RemovalReason.UNLOADED_TO_CHUNK);
             c.assertTrue(hunter(p) == null && record(p).containsUuid("hunter"), "Missing loaded UUID remains assigned");
             c.assertFalse(record(p).contains("respawnAt"), "Unload does not start death delay");
-            SkeletonHunterChallenge.check(p); c.assertTrue(hunter(p) == null, "Missing entity requires warning");
-            finishWarning(p); var restored = hunter(p);
+            check(p); var restored = hunter(p);
+            c.assertTrue(restored != null, "Unloaded hunter returns on first check");
             c.assertEquals(uuid, restored.getUuid(), "Restored entity keeps UUID");
             c.assertEquals(9F, restored.getHealth(), "Unload callback captured latest health");
             var other = p.getServer().getWorld(World.NETHER); arena(c, other);
@@ -232,9 +270,9 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_persistence")
-    public void worldStateAndEntityNbtReloadWithoutDuplicationOrOldWarning(TestContext c) {
+    public void worldStateAndEntityNbtReloadWithoutDuplicationOrDelays(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var old = hunter(p); old.setHealth(13);
+            var p = ready(c, s); check(p); var old = hunter(p); old.setHealth(13);
             var uuid = old.getUuid();
             var disk = old.writeNbt(new NbtCompound()); disk.putString("id", "minecraft:skeleton");
             old.remove(Entity.RemovalReason.UNLOADED_TO_CHUNK);
@@ -246,12 +284,13 @@ public class SkeletonHunterGameTest implements FabricGameTest {
             c.assertFalse(entity.isRemoved(), "Matching marker accepted after state read");
             SkeletonHunterChallenge.check(p); c.assertTrue(hunter(p) == entity, "No duplicate after reload");
             c.assertEquals(uuid, hunter(p).getUuid(), "Persistent entity UUID");
-            entity.setPosition(p.getPos().add(0, 60, 0)); SkeletonHunterChallenge.check(p);
-            set(pursuit(p), "warned", now(p) - 100);
+            entity.setPosition(p.getPos().add(0, 60, 0));
             var again = CurseCycleState.createFromNbt(loaded.writeNbt(new NbtCompound(), c.getWorld().getRegistryManager()), c.getWorld().getRegistryManager());
             c.getWorld().getPersistentStateManager().set(CurseCycleState.STATE_KEY, again);
             SkeletonHunterChallenge.check(p);
-            c.assertTrue(hunter(p) == entity && (long) field(pursuit(p), "warned") == now(p), "State identity change requires fresh warning");
+            c.assertTrue(hunter(p) != entity && entity.isRemoved(), "State reload still permits immediate relocation");
+            c.assertEquals(uuid, hunter(p).getUuid(), "Reload keeps hunter identity");
+            c.assertEquals(13F, hunter(p).getHealth(), "Reload keeps hunter health");
             cleanup(s);
         } c.complete();
     }
@@ -259,16 +298,16 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_lifecycle")
     public void dimensionsRespawnDisconnectDisableResetAndLateLoadCleanup(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var original = hunter(p); var id = original.getUuid();
+            var p = ready(c, s); check(p); var original = hunter(p); var id = original.getUuid();
             var other = p.getServer().getWorld(World.END); var pos = arena(c, other);
             p.teleport(other, pos.x, pos.y, pos.z, 0, 0); SkeletonHunterChallenge.check(p);
-            c.assertTrue(hunter(p) == original, "Dimension change first warns"); finishWarning(p);
+            c.assertTrue(original.isRemoved(), "Dimension change follows on first check");
             c.assertTrue(hunter(p).getWorld() == other && hunter(p).getUuid().equals(id), "Same hunter follows dimensions");
             var transferred = hunter(p);
             var next = s.respawn(p, false); next.setPosition(pos); next.setNoGravity(true);
             SkeletonHunterChallenge.check(next);
-            c.assertTrue((long) field(pursuit(next), "warned") == now(next), "New player object never inherits warning deadline");
-            c.assertTrue(hunter(next) == transferred, "Respawn does not duplicate hunter");
+            c.assertTrue(hunter(next) != null && hunter(next).getUuid().equals(id), "Respawn keeps same hunter UUID");
+            transferred = hunter(next);
             SkeletonHunterChallenge.forget(next);
             var manager = next.getServer().getPlayerManager(); manager.remove(next);
             c.assertTrue(SkeletonHunterChallenge.target(transferred) == null, "Offline owner suspends pursuit");
@@ -278,7 +317,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
             ChallengeRegistry.get(ID).setEnabled(false);
             ChallengeRegistry.get(ID).onStop(joined.getServer(), joined);
             c.assertTrue(transferred.isRemoved(), "Explicit stop also removes a disabled challenge's mob");
-            ChallengeRegistry.get(ID).setEnabled(true); s.activate(ID); finishWarning(joined);
+            ChallengeRegistry.get(ID).setEnabled(true); s.activate(ID); check(joined);
             var beforeReset = hunter(joined); var disk = beforeReset.writeNbt(new NbtCompound());
             disk.putString("id", "minecraft:skeleton"); beforeReset.remove(Entity.RemovalReason.UNLOADED_TO_CHUNK);
             CurseCycleState.getServerState(joined.getServer()).reset();
@@ -294,11 +333,11 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     public void netheritePairKeepsIndependentMarkersAndWornArmorOnTransfer(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
             var p = ready(c, s); s.activate("double_challenge:skeleton_hunter,netherite_mobs");
-            finishWarning(p); var mob = hunter(p);
+            check(p); var mob = hunter(p);
             ((NetheriteMobSpawn) mob).cursecycle$finishBirth();
             var chest = mob.getEquippedStack(EquipmentSlot.CHEST);
             c.assertTrue(NetheriteMobsChallenge.isIssued(chest), "Shared birth pipeline equips the new hunter");
-            chest.setDamage(17); mob.setHealth(12); mob.setPosition(p.getPos().add(0, 60, 0)); finishWarning(p);
+            chest.setDamage(17); mob.setHealth(12); mob.setPosition(p.getPos().add(0, 60, 0)); check(p);
             var moved = hunter(p);
             c.assertTrue(NetheriteMobsChallenge.isIssued(moved.getEquippedStack(EquipmentSlot.CHEST)), "Armor origin marker survives transfer");
             ((NetheriteMobSpawn) moved).cursecycle$finishBirth();
@@ -310,7 +349,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_cleanup", tickLimit = 70)
     public void automaticDisableAndResetCleanupWithoutLifecycleDispatch(TestContext c) {
-        var s = new ChallengeScenario(c); var p = ready(c, s); finishWarning(p); var disabled = hunter(p);
+        var s = new ChallengeScenario(c); var p = ready(c, s); check(p); var disabled = hunter(p);
         var ordinary = EntityType.SKELETON.create(c.getWorld()); ordinary.setPosition(p.getPos());
         ordinary.setAiDisabled(true); ordinary.setPersistent(); c.getWorld().spawnEntity(ordinary);
         ChallengeRegistry.get(ID).setEnabled(false);
@@ -318,7 +357,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
         c.runAtTick(25, () -> {
             try {
                 c.assertTrue(disabled.isRemoved() && !ordinary.isRemoved(), "Periodic disabled cleanup affects owned mob only");
-                ChallengeRegistry.get(ID).setEnabled(true); s.activate(ID); finishWarning(p);
+                ChallengeRegistry.get(ID).setEnabled(true); s.activate(ID); check(p);
                 resetHunter[0] = hunter(p); s.state.reset();
             } catch (RuntimeException e) {
                 ChallengeRegistry.get(ID).setEnabled(true); ordinary.discard(); cleanup(s); s.close(); throw e;
@@ -335,7 +374,7 @@ public class SkeletonHunterGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_peaceful")
     public void peacefulPausesOwnedSkeletonWithoutLosingItsAssignment(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(c, s); finishWarning(p); var mob = hunter(p); var difficulty = c.getWorld().getDifficulty();
+            var p = ready(c, s); check(p); var mob = hunter(p); var difficulty = c.getWorld().getDifficulty();
             try {
                 p.getServer().setDifficulty(Difficulty.PEACEFUL, true);
                 mob.checkDespawn(); c.getWorld().tickEntity(mob); SkeletonHunterChallenge.check(p);
@@ -349,26 +388,47 @@ public class SkeletonHunterGameTest implements FabricGameTest {
         } c.complete();
     }
 
-    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_real_clock", tickLimit = 3900)
-    public void realServerWarningAndDeathDelay(TestContext c) {
-        var s = new ChallengeScenario(c); var p = ready(c, s); long began = now(p);
-        c.runAtTick(90, () -> c.assertTrue(hunter(p) == null, "No appearance before five seconds"));
-        c.runAtTick(125, () -> {
-            var mob = hunter(p); c.assertTrue(mob != null, "Actual server tick spawns after warning");
-            c.assertTrue(now(p) - began >= 100, "Real warning clock elapsed");
-            mob.damage(c.getWorld().getDamageSources().genericKill(), Float.MAX_VALUE);
-            c.assertEquals(now(p) + 3600, record(p).getLong("respawnAt"), "Real death timer starts now");
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_legacy")
+    public void oldDeathDeadlineAndOldEquipmentUpgradeWithoutHealing(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(c, s); var mob = hunter(p);
+            mob.setHealth(9); mob.equipStack(EquipmentSlot.MAINHAND, new net.minecraft.item.ItemStack(Items.BOW));
+            for (var slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET})
+                mob.equipStack(slot, net.minecraft.item.ItemStack.EMPTY);
+            record(p).remove("armed"); check(p);
+            c.assertEquals(9F, mob.getHealth(), "Old hunter upgrade does not heal"); assertKit(c, mob);
+            mob.getEquippedStack(EquipmentSlot.CHEST).setDamage(23); check(p);
+            c.assertEquals(23, mob.getEquippedStack(EquipmentSlot.CHEST).getDamage(), "Upgrade happens once, no free repairs");
+            mob.discard(); record(p).remove("hunter"); record(p).remove("token");
+            record(p).remove("snapshot"); record(p).remove("armed");
+            record(p).putLong("respawnAt", now(p) + 3600);
+            check(p);
+            c.assertTrue(hunter(p) != null, "Former three-minute deadline is ignored");
+            c.assertFalse(record(p).contains("respawnAt"), "Legacy deadline removed from saved state");
+            cleanup(s);
+        } c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "hunter_real_clock", tickLimit = 80)
+    public void realServerTickRelocatesWithoutWarningDelay(TestContext c) {
+        var s = new ChallengeScenario(c); var p = ready(c, s); var first = hunter(p);
+        c.assertTrue(first != null, "Activation spawns immediately");
+        first.setAiDisabled(true);
+        var replacement = new SkeletonEntity[1];
+        c.runAtTick(1, () -> {
+            first.damage(c.getWorld().getDamageSources().genericKill(), Float.MAX_VALUE);
+            replacement[0] = hunter(p);
+            c.assertTrue(replacement[0] != null && replacement[0] != first, "Death replaced in same real server tick");
+            replacement[0].setAiDisabled(true);
+            replacement[0].setPosition(p.getPos().add(0, 60, 0));
         });
-        c.runAtTick(3710, () -> c.assertTrue(hunter(p) == null, "Still no replacement before three minutes"));
-        c.runAtTick(3775, () -> {
+        c.runAtTick(25, () -> {
             try {
-                c.assertTrue(hunter(p) == null, "Replacement also receives full fresh five-second warning");
-                c.assertTrue(pursuit(p) != null && (long) field(pursuit(p), "warned") >= began + 3725, "Warning follows actual respawn deadline");
-            } catch (RuntimeException e) { cleanup(s); s.close(); throw e; }
-        });
-        c.runAtTick(3865, () -> {
-            try {
-                c.assertTrue(hunter(p) != null, "Exactly one replacement arrives after death delay plus warning");
+                var moved = hunter(p);
+                c.assertTrue(moved != null && moved != replacement[0], "Periodic server check relocates within twenty ticks");
+                c.assertEquals(replacement[0].getUuid(), moved.getUuid(), "Periodic relocation preserves UUID");
+                c.assertTrue(moved.distanceTo(p) <= 16, "Actual tick relocation is within sixteen blocks");
+                c.assertTrue(packets(s, p).stream().noneMatch(SkeletonHunterGameTest::warning), "No delayed warning on real clock");
                 c.complete();
             } finally { cleanup(s); s.close(); }
         });

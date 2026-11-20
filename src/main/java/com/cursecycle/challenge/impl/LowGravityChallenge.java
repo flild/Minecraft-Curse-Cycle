@@ -22,10 +22,10 @@ public final class LowGravityChallenge extends Challenge {
     public static final Identifier JUMP_MODIFIER = Identifier.of("cursecycle", "low_gravity/jump");
 
     public LowGravityChallenge() {
-        super(ID, "Добро пожаловать на Луну", "Игроки и мобы прыгают выше, падают медленнее и сильнее отлетают.",
-                "Гравитация ослабла: игроки и мобы прыгают выше, медленнее падают и сильнее отлетают от ударов. "
-                        + "Осторожнее с высотой: урон от падения сохраняется.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+        super(ID, "Был на луне?",
+                "Гравитация ослабла.",
+                "Гравитация ослабла и для тебя, и для мобов. Прыжки выше, падения медленнее, от ударов сильнее отбрасывает. Разбиться всё ещё можно.",
+                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
     public static boolean active(LivingEntity entity) {

@@ -17,13 +17,10 @@ public final class FireTrailChallenge extends Challenge {
     public static final int LIFETIME = 100, INTERVAL = 4, MAX_FIRES = 256, PLACEMENT_BUDGET = 16, LOADED_MARGIN = 24;
     private static final Map<MinecraftServer, Trail> TRAILS = new HashMap<>();
     public FireTrailChallenge() {
-        super(ID, "После меня хоть пожар", "Движение оставляет временный огненный след.",
-                "При движении по твёрдой опоре под ногами появляется обычный огонь. "
-                        + "Он поджигает существ и горючие блоки. Исходный след исчезает через пять секунд "
-                        + "или при выходе, смерти, смене измерения и окончании испытания. "
-                        + "Распространившийся пожар остаётся и подчиняется обычным правилам мира. "
-                        + "Стояние, полёт, плавание и транспорт нового следа не оставляют.",
-                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Призрачный гонщик",
+                "Огненая поступь за тобой.",
+                "За тобой остаётся огненный след на 5 секунд.",
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     private static final class Session {
         final ServerPlayerEntity player;

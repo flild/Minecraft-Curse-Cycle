@@ -2,6 +2,7 @@ package com.cursecycle.challenge.impl;
 
 import com.cursecycle.challenge.*;
 import com.cursecycle.state.CurseCycleState;
+import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
@@ -10,23 +11,48 @@ import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.SkeletonEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Difficulty;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 /** A persistent logical hunter; a generation token fences off stale, unloaded entity copies. */
 public final class SkeletonHunterChallenge extends Challenge {
     public static final String ID = "skeleton_hunter";
-    public static final int RESPAWN_TICKS = 3600;
-    public static final int WARNING_TICKS = 100;
+    // Баланс охотника: расстояния в блоках, время в серверных тиках, здоровье в HP.
+    public static final float MAX_HEALTH = 30F;
+    public static final double MOVEMENT_SPEED = .30;
+    public static final double FOLLOW_RANGE = 96;
+    public static final int CHECK_INTERVAL_TICKS = 20;
+    public static final int TELEPORT_DISTANCE = 32;
+    public static final int TELEPORT_MIN_RADIUS = 8;
+    public static final int TELEPORT_MAX_RADIUS = 16;
+    public static final int TELEPORT_HEIGHT = 4;
+    public static final int STUCK_TICKS = 1200;
+    public static final int STUCK_DISTANCE = 12;
+    public static final int BOW_POWER = 5;
+    public static final int BOW_PUNCH = 2;
+    public static final int BOW_FLAME = 1;
+    public static final int BOW_UNBREAKING = 3;
+    // Отложенный доступ к Items: регистрация испытаний не должна запускать bootstrap Minecraft.
+    public static final Supplier<Item> HELMET = () -> Items.DIAMOND_HELMET;
+    public static final Supplier<Item> CHESTPLATE = () -> Items.DIAMOND_CHESTPLATE;
+    public static final Supplier<Item> LEGGINGS = () -> Items.DIAMOND_LEGGINGS;
+    public static final Supplier<Item> BOOTS = () -> Items.DIAMOND_BOOTS;
+    public static final float TELEPORT_SOUND_VOLUME = 1F;
+    public static final float TELEPORT_SOUND_PITCH = 1F;
     private static final Map<MinecraftServer, Runtime> RUNTIMES = new IdentityHashMap<>();
 
     private static final class Runtime {
@@ -40,16 +66,16 @@ public final class SkeletonHunterChallenge extends Challenge {
         final ServerWorld world;
         Vec3d anchor;
         long progress;
-        long warned = Long.MIN_VALUE;
         Pursuit(ServerPlayerEntity p, long now) {
             player = p; world = p.getServerWorld(); progress = now;
         }
     }
 
     public SkeletonHunterChallenge() {
-        super(ID, "За тобой выехали", "Особый скелет с луком постоянно преследует тебя.",
-                "У каждого игрока свой охотник. После его смерти новый появится через три минуты. "
-                        + "Перед появлением или переносом отставшего охотника есть предупреждение за пять секунд.",
+        super(ID, "HITMAN",
+                "За тобой охотятся.",
+                "Скелет в алмазной броне и с зачарованным луком идёт по твою душу. "
+                        + "Убьёшь — сразу придёт новый. Убежишь — телепортируется следом.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -132,19 +158,22 @@ public final class SkeletonHunterChallenge extends Challenge {
         var owner = ((HunterMark) mob).cursecycle$hunterOwner();
         var rec = record(server, owner);
         rec.remove("hunter"); rec.remove("token"); rec.remove("snapshot");
-        rec.putLong("respawnAt", now(server) + RESPAWN_TICKS);
+        rec.remove("armed"); rec.remove("respawnAt");
         runtime(server).pursuits.remove(owner);
         CurseCycleState.getServerState(server).markDirty();
+        // AFTER_DEATH runs on the server thread: a safe replacement can appear in this very callback.
+        var player = server.getPlayerManager().getPlayer(owner);
+        if (player != null) check(player);
     }
     public static void forget(ServerPlayerEntity player) {
         var rt = RUNTIMES.get(player.getServer());
         if (rt != null) rt.pursuits.remove(player.getUuid());
-        // Ownership and the death timer survive disconnect/death. The mob cannot target others.
+        // Ownership survives disconnect/death. The mob cannot target others.
     }
     public static void clear(MinecraftServer server) { RUNTIMES.remove(server); }
 
     public static void tick(MinecraftServer server) {
-        if (server.getTicks() % 20 != 0) return;
+        if (server.getTicks() % CHECK_INTERVAL_TICKS != 0) return;
         var state = CurseCycleState.getServerState(server);
         var rt = runtime(server);
         var all = records(state);
@@ -172,25 +201,25 @@ public final class SkeletonHunterChallenge extends Challenge {
         if (!all.contains(key)) { all.put(key, new NbtCompound()); state.markDirty(); }
         var rec = all.getCompound(key);
         long time = now(server);
-        if (time < rec.getLong("respawnAt")) return;
+        // Old saves may still contain the former three-minute death delay.
+        if (rec.contains("respawnAt")) { rec.remove("respawnAt"); state.markDirty(); }
         var pursuit = rt.pursuits.get(player.getUuid());
         if (pursuit == null || pursuit.player != player || pursuit.world != player.getServerWorld()) {
             pursuit = new Pursuit(player, time); rt.pursuits.put(player.getUuid(), pursuit);
         }
         var mob = find(server, rec);
         if (mob != null && !mob.isAlive()) return; // Only AFTER_DEATH schedules a replacement.
-        boolean far = mob == null || mob.getWorld() != player.getWorld() || mob.squaredDistanceTo(player) > 48 * 48;
+        if (mob != null && !rec.getBoolean("armed")) {
+            equip(mob, player.getServerWorld()); rec.putBoolean("armed", true); snapshot(mob);
+        }
+        boolean far = mob == null || mob.getWorld() != player.getWorld()
+                || mob.squaredDistanceTo(player) > (double) TELEPORT_DISTANCE * TELEPORT_DISTANCE;
         if (mob != null && (pursuit.anchor == null || pursuit.anchor.squaredDistanceTo(mob.getPos()) > 4)) {
             pursuit.anchor = mob.getPos(); pursuit.progress = time;
         }
-        boolean stuck = mob != null && mob.squaredDistanceTo(player) > 16 * 16 && time - pursuit.progress >= 1200;
-        if (!far && !stuck) { pursuit.warned = Long.MIN_VALUE; return; }
-        if (pursuit.warned == Long.MIN_VALUE) {
-            player.sendMessage(Text.translatable("text.cursecycle.skeleton_hunter.warning"), false);
-            pursuit.warned = time;
-            return;
-        }
-        if (time - pursuit.warned < WARNING_TICKS) return;
+        boolean stuck = mob != null && mob.squaredDistanceTo(player) > (double) STUCK_DISTANCE * STUCK_DISTANCE
+                && time - pursuit.progress >= STUCK_TICKS;
+        if (!far && !stuck) return;
         relocate(player, rec, mob, pursuit, time);
     }
 
@@ -206,13 +235,13 @@ public final class SkeletonHunterChallenge extends Challenge {
         if (mob == null) return;
         if (!rec.containsUuid("hunter")) {
             mob.initialize(world, world.getLocalDifficulty(player.getBlockPos()), SpawnReason.EVENT, null);
-            mob.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH).setBaseValue(30);
-            mob.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED).setBaseValue(.30);
-            mob.getAttributeInstance(EntityAttributes.GENERIC_FOLLOW_RANGE).setBaseValue(96);
-            mob.setHealth(30);
-            mob.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+            mob.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH).setBaseValue(MAX_HEALTH);
+            mob.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED).setBaseValue(MOVEMENT_SPEED);
+            mob.getAttributeInstance(EntityAttributes.GENERIC_FOLLOW_RANGE).setBaseValue(FOLLOW_RANGE);
+            mob.setHealth(MAX_HEALTH);
             mob.setCustomName(Text.translatable("entity.cursecycle.skeleton_hunter"));
         }
+        if (!rec.getBoolean("armed")) equip(mob, world);
         Vec3d destination = destination(player, mob);
         if (destination == null) return; // Wait; never substitute an unsafe or unloaded location.
         mob.setPersistent(); mob.setCanPickUpLoot(false);
@@ -230,19 +259,43 @@ public final class SkeletonHunterChallenge extends Challenge {
             var saved = mob.writeNbt(new NbtCompound()); saved.putString("id", "minecraft:skeleton");
             rec.put("snapshot", saved); return;
         }
+        rec.putBoolean("armed", true);
         snapshot(mob);
-        pursuit.anchor = mob.getPos(); pursuit.progress = time; pursuit.warned = Long.MIN_VALUE;
+        world.playSound(null, destination.x, destination.y, destination.z,
+                SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.HOSTILE,
+                TELEPORT_SOUND_VOLUME, TELEPORT_SOUND_PITCH);
+        pursuit.anchor = mob.getPos(); pursuit.progress = time;
+    }
+
+    private static void equip(MobEntity mob, ServerWorld world) {
+        var bow = new ItemStack(Items.BOW);
+        var enchantments = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        if (BOW_POWER > 0) bow.addEnchantment(enchantments.getEntry(Enchantments.POWER).orElseThrow(), BOW_POWER);
+        if (BOW_PUNCH > 0) bow.addEnchantment(enchantments.getEntry(Enchantments.PUNCH).orElseThrow(), BOW_PUNCH);
+        if (BOW_FLAME > 0) bow.addEnchantment(enchantments.getEntry(Enchantments.FLAME).orElseThrow(), BOW_FLAME);
+        if (BOW_UNBREAKING > 0) bow.addEnchantment(enchantments.getEntry(Enchantments.UNBREAKING).orElseThrow(), BOW_UNBREAKING);
+        mob.equipStack(EquipmentSlot.MAINHAND, bow);
+        mob.equipStack(EquipmentSlot.HEAD, new ItemStack(HELMET.get()));
+        mob.equipStack(EquipmentSlot.CHEST, new ItemStack(CHESTPLATE.get()));
+        mob.equipStack(EquipmentSlot.LEGS, new ItemStack(LEGGINGS.get()));
+        mob.equipStack(EquipmentSlot.FEET, new ItemStack(BOOTS.get()));
+        for (var slot : EquipmentSlot.values()) mob.setEquipmentDropChance(slot, 0);
     }
 
     private static Vec3d destination(ServerPlayerEntity player, MobEntity mob) {
         int start = player.getRandom().nextInt(8);
-        for (int radius : new int[]{12, 16, 20}) {
+        // Bounded search; rounding and vertical offsets must also stay inside the configured radius.
+        for (int radius = TELEPORT_MIN_RADIUS; radius <= TELEPORT_MAX_RADIUS; radius += 4) {
             for (int i = 0; i < 8; i++) {
                 double angle = (start + i) * Math.PI / 4;
-                for (int dy : new int[]{0, 1, -1, 2, -2, 3, -3, 4, -4}) {
+                for (int height = 0; height <= TELEPORT_HEIGHT * 2; height++) {
+                    int dy = (height + 1) / 2 * (height % 2 == 0 ? -1 : 1);
                     var pos = new Vec3d(Math.floor(player.getX() + radius * Math.cos(angle)) + .5,
                             Math.floor(player.getY()) + dy, Math.floor(player.getZ() + radius * Math.sin(angle)) + .5);
-                    if (DamageTeleportChallenge.isSafe(mob, player.getServerWorld(), pos)) return pos;
+                    double distance = pos.squaredDistanceTo(player.getPos());
+                    if (distance >= (double) TELEPORT_MIN_RADIUS * TELEPORT_MIN_RADIUS
+                            && distance <= (double) TELEPORT_MAX_RADIUS * TELEPORT_MAX_RADIUS
+                            && DamageTeleportChallenge.isSafe(mob, player.getServerWorld(), pos)) return pos;
                 }
             }
         }

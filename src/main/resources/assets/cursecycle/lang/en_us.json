@@ -2,7 +2,7 @@
   "text.cursecycle.black_hole.warning": "Black hole: leave the marked centre! Attraction starts in 3 seconds.",
   "text.cursecycle.blood_tribute.warning": "Blood tribute: kill a mob within %s s",
   "text.cursecycle.blood_tribute.overdue": "Blood tribute: overdue. Kill a mob to stop losing health",
-  "text.cursecycle.blood_tribute.paid": "Blood tribute: kill counted. Three minutes remaining",
+  "text.cursecycle.blood_tribute.paid": "Blood tribute: kill counted. %s seconds remaining",
   "death.attack.cursecycle.blood_tribute": "%1$s failed to pay the blood tribute",
   "death.attack.cursecycle.blood_tribute.player": "%1$s failed to pay the blood tribute while fighting %2$s",
 

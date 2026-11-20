@@ -20,11 +20,10 @@ public final class DroughtChallenge extends Challenge {
     private static final Map<MinecraftServer, Sweep> SWEEPS = new HashMap<>();
 
     public DroughtChallenge() {
-        super(ID, "Засуха", "Ближние источники воды постепенно испаряются.",
-                "В радиусе шести блоков и на три блока выше и ниже тебя постепенно исчезают источники воды. "
-                        + "Вода из ведра тоже испаряется, а затопленные блоки теряют воду. "
-                        + "Водоёмы, полив и водные конструкции могут высохнуть. После испытания вода не возвращается.",
-                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
+        super(ID, "Сушняк",
+                "Вода рядом с тобой испаряется.",
+                "Любой источник воды рядом с тобой испаряется.",
+                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
     private record Area(ServerWorld world, BlockPos center) {}
     private record Site(ServerWorld world, BlockPos pos) {}
