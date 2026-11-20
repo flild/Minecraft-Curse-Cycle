@@ -1,4 +1,5 @@
 {
+  "text.cursecycle.black_hole.warning": "Чёрная дыра: отойди от отмеченного центра! Притяжение начнётся через 3 секунды.",
   "text.cursecycle.blood_tribute.warning": "Кровавая повинность: убей моба за %s с",
   "text.cursecycle.blood_tribute.overdue": "Кровавая повинность: срок истёк. Убей моба, чтобы остановить потерю здоровья",
   "text.cursecycle.blood_tribute.paid": "Кровавая повинность: убийство засчитано. Новый срок — три минуты",

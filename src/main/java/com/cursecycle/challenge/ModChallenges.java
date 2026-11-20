@@ -35,6 +35,7 @@ import com.cursecycle.challenge.test.*;
 
 public class ModChallenges {
     public static void registerAll() {
+        ChallengeRegistry.register(new com.cursecycle.challenge.impl.BlackHoleChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.DroughtChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.TinyPlayerChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.GiantPlayerChallenge());

@@ -65,6 +65,7 @@
 
 ### Сложные
 
+- [Пылесос реальности](black-hole-testing.md) — `black_hole`.
 - [Засуха](drought-testing.md) — `drought`.
 
 - [Метеослужба предупреждала](meteor-shower-testing.md) — `meteor_shower`.
