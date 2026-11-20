@@ -8,6 +8,7 @@
     "fabric-gametest": [
       "com.cursecycle.TinyPlayerGameTest",
       "com.cursecycle.GiantPlayerGameTest",
+      "com.cursecycle.DroughtGameTest",
       "com.cursecycle.WarrantyExpiredGameTest",
       "com.cursecycle.FireTrailGameTest",
       "com.cursecycle.BloodTributeGameTest",

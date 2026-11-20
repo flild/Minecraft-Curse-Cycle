@@ -139,6 +139,9 @@ public class CurseCycleMod implements ModInitializer {
                 (player, origin, destination) -> com.cursecycle.challenge.impl.FireTrailChallenge.forget(player));
 
         // Player Join Event -> sync state & re-apply active challenges
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(
+                com.cursecycle.challenge.impl.DroughtChallenge::clear);
+
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
             com.cursecycle.challenge.effect.EffectLedger.of(player).reconcile();
@@ -186,6 +189,7 @@ public class CurseCycleMod implements ModInitializer {
 
         // Server Tick Event -> delegating to CycleManager
         ServerTickEvents.END_SERVER_TICK.register(server -> CycleManager.onServerTick(server, config));
+        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.DroughtChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.FireTrailChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.BloodTributeChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.MeteorShowerChallenge::tick);

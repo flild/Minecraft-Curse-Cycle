@@ -223,6 +223,12 @@ public class FireTrailGameTest implements FabricGameTest {
         try (var a = new Arena(c)) {
             var all = new ArrayList<ServerPlayerEntity>();
             try {
+                // This fixture extends beyond the empty template. Prepare the production
+                // portal-search margin for every owner; random test origins may cross a chunk edge.
+                int margin = FireTrailChallenge.LOADED_MARGIN;
+                for (int x = (a.base.getX() - margin) >> 4; x <= (a.base.getX() + 22 + margin) >> 4; x++)
+                    for (int z = (a.base.getZ() - margin) >> 4; z <= (a.base.getZ() + 22 + margin) >> 4; z++)
+                        c.getWorld().getChunk(x, z);
                 for (var pos : BlockPos.iterate(a.base.add(0, -1, 0), a.base.add(22, 0, 22)))
                     c.getWorld().setBlockState(pos, pos.getY() < a.base.getY() ? Blocks.NETHERRACK.getDefaultState() : Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
                 FireTrailChallenge.clear(a.p.getServer());
