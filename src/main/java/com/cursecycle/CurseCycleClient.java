@@ -67,6 +67,8 @@ public class CurseCycleClient implements ClientModInitializer {
 
         diagnostics.stage("registering client ticks");
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            com.cursecycle.client.BloodTributeVisuals.tick(client);
+            com.cursecycle.client.SimonSaysVisuals.tick(client);
             com.cursecycle.client.BlackHoleVisuals.tick(client);
             com.cursecycle.client.MeteorShowerVisuals.tick(client);
             com.cursecycle.client.HeartbeatInput.tick(client);
@@ -95,6 +97,10 @@ public class CurseCycleClient implements ClientModInitializer {
                 context.client().execute(() -> ClientDataHolder.updateFoodHistory(payload.ids())));
 
         // Register S2C Packet Listeners
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.BloodTributeStatePayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.BloodTributeVisuals.receive(context.client(), payload)));
+        ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.SimonSaysStatePayload.ID, (payload, context) ->
+                context.client().execute(() -> com.cursecycle.client.SimonSaysVisuals.receive(context.client(), payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.HeavyBodyStatePayload.ID, (payload, context) ->
                 context.client().execute(() -> com.cursecycle.client.HeavyBodyInput.receive(context.client(), payload)));
         ClientPlayNetworking.registerGlobalReceiver(com.cursecycle.network.HeartbeatStatePayload.ID, (payload, context) ->
@@ -133,6 +139,8 @@ public class CurseCycleClient implements ClientModInitializer {
         // HUD Render Callback
         diagnostics.stage("registering HUD renderer");
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
+            com.cursecycle.client.gui.BloodTributeOverlay.render(drawContext);
+            com.cursecycle.client.gui.SimonSaysOverlay.render(drawContext);
             if (!ClientDataHolder.isSynced()) return;
             CurseCycleHudOverlay.render(
                 drawContext,

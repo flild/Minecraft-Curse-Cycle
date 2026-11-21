@@ -8,7 +8,12 @@ import net.minecraft.block.*;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.item.*;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.state.property.Properties;
 import net.minecraft.test.*;
 import net.minecraft.util.Hand;
@@ -33,12 +38,29 @@ public class DroughtGameTest implements FabricGameTest {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
     private static void step(ServerPlayerEntity p) {
-        if (sweep(p) == null) DroughtChallenge.tick(p.getServer());
-        set(sweep(p), "lastTick", p.getServer().getTicks() - DroughtChallenge.INTERVAL);
+        if (sweep(p) != null) set(sweep(p), "lastTick", p.getServer().getTicks() - 1);
         DroughtChallenge.tick(p.getServer());
     }
-    private static void scan(ServerPlayerEntity p) { for (int i = 0; i < 16; i++) step(p); }
-    private static Map<?, ?> cursors(ServerPlayerEntity p) { return (Map<?, ?>) get(sweep(p), "cursors"); }
+    private static void scan(ServerPlayerEntity p) { step(p); }
+    private record Effects(int sounds, int clouds) {}
+    private static Effects effects(Arena a, ServerPlayerEntity p) {
+        var channel = a.s.channel(p);
+        channel.runPendingTasks(); channel.flush();
+        int sounds = 0, clouds = 0;
+        Object packet;
+        while ((packet = channel.readOutbound()) != null) {
+            if (packet instanceof PlaySoundS2CPacket sound
+                    && sound.getSound().value().equals(SoundEvents.BLOCK_FIRE_EXTINGUISH)) {
+                sounds++;
+                a.c.assertEquals(SoundCategory.BLOCKS, sound.getCategory(), "Block sound category");
+            }
+            if (packet instanceof ParticleS2CPacket particle && particle.getParameters() == ParticleTypes.CLOUD) {
+                clouds++;
+                a.c.assertEquals(2, particle.getCount(), "Two steam particles per site");
+            }
+        }
+        return new Effects(sounds, clouds);
+    }
     private static final class Arena implements AutoCloseable {
         final TestContext c;
         final ChallengeScenario s;
@@ -69,7 +91,7 @@ public class DroughtGameTest implements FabricGameTest {
         }
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought")
-    public void sourcesOnlyAndExactCylinderBoundary(TestContext c) {
+    public void sourcesFlowAndExactCylinderBoundaryInOneTick(TestContext c) {
         try (var a = new Arena(c)) {
             var inside = List.of(a.base, a.base.east(6), a.base.up(3), a.base.down(3), a.base.add(4, 0, 4));
             var outside = List.of(a.base.east(7), a.base.up(4), a.base.down(4), a.base.add(5, 0, 5));
@@ -78,7 +100,7 @@ public class DroughtGameTest implements FabricGameTest {
             a.put(flow, Blocks.WATER.getDefaultState().with(FluidBlock.LEVEL, 3));
             a.put(lava, Blocks.LAVA.getDefaultState()); a.put(ice, Blocks.ICE.getDefaultState());
             scan(a.p); inside.forEach(a::dry); outside.forEach(a::source);
-            c.assertEquals(3, c.getWorld().getBlockState(flow).get(FluidBlock.LEVEL), "Flow not evaporated directly");
+            a.dry(flow);
             c.assertTrue(c.getWorld().getBlockState(lava).isOf(Blocks.LAVA), "Lava retained");
             c.assertTrue(c.getWorld().getBlockState(ice).isOf(Blocks.ICE), "Ice retained");
         } c.complete();
@@ -139,29 +161,43 @@ public class DroughtGameTest implements FabricGameTest {
         } c.complete();
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought")
-    public void movementOverlapSharedBudgetsAndDuplicateCallbacks(TestContext c) {
+    public void fullCylinderMovementOverlapAndDuplicateCallbacks(TestContext c) {
         try (var a = new Arena(c)) {
             var players = new ArrayList<ServerPlayerEntity>(); players.add(a.p);
             for (int i = 0; i < 19; i++) { var p = a.s.player(); a.ready(p); players.add(p); }
-            step(a.p);
-            for (var cursor : cursors(a.p).values()) c.assertEquals(256, get(cursor, "offset"), "Coincident areas share one scan");
+            for (var pos : BlockPos.iterate(a.base.add(-6, -3, -6), a.base.add(6, 3, 6)))
+                if (pos.getSquaredDistance(a.base.withY(pos.getY())) <= 36) a.water(pos);
+            effects(a, a.p);
+            DroughtChallenge.tick(a.p.getServer()); // Initial activation must run immediately.
+            for (var pos : BlockPos.iterate(a.base.add(-6, -3, -6), a.base.add(6, 3, 6)))
+                if (pos.getSquaredDistance(a.base.withY(pos.getY())) <= 36) a.dry(pos);
+            c.assertEquals(new Effects(1, 12), effects(a, a.p), "One hiss and bounded steam for twenty coincident owners");
+            a.water(a.base);
             for (int i = 0; i < 20; i++) DroughtChallenge.tick(a.p.getServer());
-            for (var cursor : cursors(a.p).values()) c.assertEquals(256, get(cursor, "offset"), "Repeated tick does not multiply budget");
+            a.source(a.base);
+            c.assertEquals(new Effects(0, 0), effects(a, a.p), "Duplicate callbacks do not repeat effects");
             for (var p : players) p.setPosition(p.getPos().add(1, 0, 0));
+            a.water(a.base.east(7)); a.water(a.base.west(6));
             step(a.p);
-            for (var cursor : cursors(a.p).values()) c.assertEquals(512, get(cursor, "offset"), "Movement preserves sweep progress");
+            a.dry(a.base); a.dry(a.base.east(7)); a.source(a.base.west(6));
             for (int i = 0; i < players.size(); i++) players.get(i).setPosition(Vec3d.ofBottomCenter(a.base.add(i % 4, 0, i / 4)));
-            int before = cursors(a.p).values().stream().mapToInt(cursor -> (Integer) get(cursor, "offset")).sum();
+            a.water(a.base.add(4, 0, 4)); a.water(a.base.east(7));
             step(a.p);
-            int after = cursors(a.p).values().stream().mapToInt(cursor -> (Integer) get(cursor, "offset")).sum();
-            c.assertEquals(256, after - before, "Overlapping regions share attempt budget");
-            // Dense actual sources: count world changes, rather than just testing a counter.
-            for (var p : players) a.ready(p);
-            for (var pos : BlockPos.iterate(a.base.add(-3, -3, -3), a.base.add(3, -3, 3))) a.water(pos);
-            DroughtChallenge.clear(a.p.getServer()); step(a.p);
-            long remaining = BlockPos.stream(a.base.add(-3, -3, -3), a.base.add(3, -3, 3))
-                    .filter(pos -> !c.getWorld().getFluidState(pos).isEmpty()).count();
-            c.assertEquals(41L, remaining, "At most eight actual removals for twenty owners");
+            a.dry(a.base.add(4, 0, 4)); a.dry(a.base.east(7));
+        } c.complete();
+    }
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought")
+    public void steamAndHissOnlyForRemovedWaterAndVisibleToObservers(TestContext c) {
+        try (var a = new Arena(c)) {
+            var observer = a.s.player(); a.ready(observer); observer.changeGameMode(GameMode.CREATIVE);
+            effects(a, a.p); effects(a, observer);
+            a.water(a.base); step(a.p); a.dry(a.base);
+            c.assertEquals(new Effects(1, 1), effects(a, a.p), "Actual steam and hiss S2C packets");
+            c.assertEquals(new Effects(1, 1), effects(a, observer), "Nearby observer receives effects");
+            step(a.p);
+            c.assertEquals(new Effects(0, 0), effects(a, a.p), "Dry area stays silent");
+            a.s.activate("no_sprint"); a.water(a.base); step(a.p); a.source(a.base);
+            c.assertEquals(new Effects(0, 0), effects(a, observer), "Inactive challenge has no feedback");
         } c.complete();
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought")
@@ -200,18 +236,26 @@ public class DroughtGameTest implements FabricGameTest {
             c.assertEquals(count, manager.getLoadedChunkCount(), "No chunk loading");
         } c.complete();
     }
-    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought_lake", tickLimit = 260)
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought_lake", tickLimit = 80)
     public void realClockDriesRegeneratingLakeAndStops(TestContext c) {
         var a = new Arena(c);
         for (var pos : BlockPos.iterate(a.base.add(-3, -1, -3), a.base.add(3, -1, 3))) {
             a.put(pos.down(), Blocks.STONE.getDefaultState()); a.water(pos);
         }
-        c.runAtTick(1, () -> { try { a.source(a.base.down()); } catch (Throwable e) { a.close(); throw e; } });
-        c.runAtTick(180, () -> { try {
+        c.runAtTick(1, () -> { try {
             for (var pos : BlockPos.iterate(a.base.add(-3, -1, -3), a.base.add(3, -1, 3))) a.dry(pos);
+            a.water(a.base.east(6));
+            a.put(a.base.west(6), Blocks.WATER.getDefaultState().with(FluidBlock.LEVEL, 3));
+        } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(2, () -> { try {
+            a.dry(a.base.east(6)); a.dry(a.base.west(6));
+            a.p.setPosition(a.p.getPos().add(1, 0, 0)); a.water(a.base.east(7));
+        } catch (Throwable e) { a.close(); throw e; } });
+        c.runAtTick(3, () -> { try {
+            a.dry(a.base.east(7));
             a.s.activate("no_sprint"); a.water(a.base.down());
         } catch (Throwable e) { a.close(); throw e; } });
-        c.runAtTick(230, () -> { try { a.source(a.base.down()); c.complete(); } finally { a.close(); } });
+        c.runAtTick(53, () -> { try { a.source(a.base.down()); c.complete(); } finally { a.close(); } });
     }
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "drought_farm", tickLimit = 200)
     public void realInfiniteSourceFarmAndBubbleConstruction(TestContext c) {

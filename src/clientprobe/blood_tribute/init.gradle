@@ -1,0 +1,41 @@
+// Real OpenGL fixture screenshots; these classes are never added to the production source set.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/blood_tribute')
+        def probeOutput = project.file('build/blood-tribute-client-probe')
+        tasks.register('compileBloodTributeProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('bloodTributeProbeJar', Jar) {
+            dependsOn tasks.named('compileBloodTributeProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/blood-tribute-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+            programArg '--width'
+            programArg '1280'
+            programArg '--height'
+            programArg '800'
+        }
+        tasks.register('prepareBloodTributeProbeOptions') {
+            doLast {
+                def options = new File(probeOutput, 'run/options.txt')
+                options.parentFile.mkdirs()
+                options.setText('lang:ru_ru\nguiScale:2\npauseOnLostFocus:false\nmaxFps:60\nonboardAccessibility:false\nfullscreen:false\n', 'UTF-8')
+            }
+        }
+        tasks.named('runClient') {
+            dependsOn tasks.named('bloodTributeProbeJar'), tasks.named('prepareBloodTributeProbeOptions')
+        }
+    }
+}

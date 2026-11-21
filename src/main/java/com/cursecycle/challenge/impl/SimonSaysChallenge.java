@@ -2,6 +2,8 @@ package com.cursecycle.challenge.impl;
 
 import com.cursecycle.challenge.*;
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.network.SimonSaysStatePayload;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageType;
 import net.minecraft.item.ItemStack;
@@ -9,7 +11,6 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -25,12 +26,13 @@ public final class SimonSaysChallenge extends Challenge {
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
 
     public enum Action { JUMP, CROUCH, STOP, SWAP, TURN, LOOK_UP, LOOK_DOWN, SWING,
-        DOUBLE_JUMP, DOUBLE_CROUCH, WALK, SPRINT }
+        DOUBLE_JUMP, DOUBLE_CROUCH, WALK, SPRINT, CHAT }
 
     public SimonSaysChallenge() {
         super(ID, "Саймон говорит",
-                "Выполняй, что говорят.",
-                "Каждую минуту-полторы появляется команда. Выполни её за пять секунд, иначе получишь урон.",
+                "Выполни команду за 5 секунд.",
+                "Каждую минуту-полторы появляется команда: движение, взгляд, взмах руки или сообщение в чат. "
+                        + "Выполни её за пять секунд, иначе получишь урон. Задание и таймер видны на экране.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
@@ -42,6 +44,8 @@ public final class SimonSaysChallenge extends Challenge {
         final int start;
         int lastTick, stillTicks, slot;
         long next, issued;
+        int result;
+        long resultUntil;
         Action action;
         Vec3d position;
         ItemStack held = ItemStack.EMPTY;
@@ -89,7 +93,7 @@ public final class SimonSaysChallenge extends Challenge {
     /** Only commands possible with the player's current companions and inventory. */
     public static List<Action> availableActions(ServerPlayerEntity p) {
         var actions = new ArrayList<>(List.of(Action.CROUCH, Action.DOUBLE_CROUCH, Action.TURN,
-                Action.LOOK_UP, Action.LOOK_DOWN, Action.SWING));
+                Action.LOOK_UP, Action.LOOK_DOWN, Action.SWING, Action.CHAT));
         if (!ChallengeActivity.active(p, NoJumpingChallenge.ID) && HeavyBodyChallenge.onFoot(p)) {
             actions.add(Action.JUMP);
             actions.add(Action.DOUBLE_JUMP);
@@ -114,6 +118,7 @@ public final class SimonSaysChallenge extends Challenge {
     private static void issue(Session s) {
         var actions = availableActions(s.player);
         s.action = actions.get(s.player.getRandom().nextInt(actions.size()));
+        s.result = 0;
         s.issued = s.age();
         // Interval is between command starts, not between a completion and the next command.
         s.next = s.issued + interval(s.player);
@@ -132,16 +137,28 @@ public final class SimonSaysChallenge extends Challenge {
         send(s);
     }
     private static void send(Session s) {
-        if (s.action != null) s.player.sendMessage(Text.translatable("text.cursecycle.simon_says.command",
-                Text.translatable("text.cursecycle.simon_says." + s.action.name().toLowerCase(Locale.ROOT)),
-                Math.max(0, (WINDOW - (s.age() - s.issued) + 19) / 20)), true);
+        long age = s.age();
+        int phase = s.action != null ? SimonSaysStatePayload.COMMAND
+                : age < s.resultUntil ? s.result : SimonSaysStatePayload.WAITING;
+        long remaining = s.action != null ? s.issued + WINDOW - age
+                : phase == SimonSaysStatePayload.WAITING ? s.next - age : s.resultUntil - age;
+        int duration = s.action != null ? WINDOW
+                : phase == SimonSaysStatePayload.WAITING ? (int) (s.next - s.issued) : 40;
+        ServerPlayNetworking.send(s.player, new SimonSaysStatePayload(phase,
+                s.action == null ? "" : s.action.name().toLowerCase(Locale.ROOT),
+                (int) Math.max(0, remaining), duration));
     }
     private static void clearHud(Session s) {
-        if (s.action != null) s.player.sendMessage(Text.empty(), true);
+        ServerPlayNetworking.send(s.player, new SimonSaysStatePayload(SimonSaysStatePayload.HIDDEN, "", 0, 0));
+    }
+    private static void result(Session s, int phase) {
+        s.action = null;
+        s.result = phase;
+        s.resultUntil = s.age() + 40;
+        send(s);
     }
     private static void complete(Session s) {
-        s.action = null;
-        s.player.sendMessage(Text.translatable("text.cursecycle.simon_says.success"), true);
+        result(s, SimonSaysStatePayload.SUCCESS);
     }
     /** Reuse the existing hook after LivingEntity.jump installs a real impulse. */
     public static void jumped(ServerPlayerEntity p) {
@@ -150,6 +167,10 @@ public final class SimonSaysChallenge extends Challenge {
     /** Called by the vanilla hand-swing receiver after its main-thread check. */
     public static void swung(ServerPlayerEntity p) {
         observed(p, Action.SWING);
+    }
+    /** Called only for an accepted public chat message, never for a slash command. */
+    public static void chatted(ServerPlayerEntity p, String message) {
+        if (!message.isBlank()) observed(p, Action.CHAT);
     }
     private static void observed(ServerPlayerEntity p, Action action) {
         var sessions = SESSIONS.get(p.getServer());
@@ -183,20 +204,21 @@ public final class SimonSaysChallenge extends Challenge {
             long age = s.age();
             if (s.action == null) {
                 if (age >= s.next) issue(s);
+                else if (age % 5 == 0) send(s);
                 continue;
             }
             // If the available set changes mid-window, cancel rather than impose an impossible penalty.
             if (!availableActions(p).contains(s.action) && s.action != Action.SWAP) {
-                clearHud(s); s.action = null; continue;
+                s.action = null; s.resultUntil = 0; send(s); continue;
             }
             if (age > s.issued + WINDOW) {
-                s.action = null; // Before damage: callbacks may kill, teleport or stop this challenge.
-                p.sendMessage(Text.translatable("text.cursecycle.simon_says.failure"), true);
+                // Before damage: callbacks may kill, teleport or stop this challenge.
+                result(s, SimonSaysStatePayload.FAILURE);
                 p.damage(new DamageSource(p.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE)), 4F);
                 continue;
             }
             boolean success = switch (s.action) {
-                case JUMP, DOUBLE_JUMP, SWING -> false;
+                case JUMP, DOUBLE_JUMP, SWING, CHAT -> false;
                 case CROUCH -> p.isSneaking() && !s.sneaking;
                 case DOUBLE_CROUCH -> p.isSneaking() && !s.sneaking && ++s.crouches >= 2;
                 case STOP -> {
@@ -224,7 +246,7 @@ public final class SimonSaysChallenge extends Challenge {
             s.sneaking = p.isSneaking();
             s.position = p.getPos();
             if (success) complete(s);
-            else if ((age - s.issued) % 20 == 0) send(s);
+            else if ((age - s.issued) % 5 == 0) send(s);
         }
     }
     public static void forget(ServerPlayerEntity p) {

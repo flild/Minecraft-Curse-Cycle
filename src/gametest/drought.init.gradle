@@ -1,4 +1,4 @@
-// Bounded water removal plus neighbouring world/placement regressions in an isolated world.
+// Per-tick sponge area plus neighbouring world/placement regressions in an isolated world.
 allprojects {
     afterEvaluate {
         def isolated = project.file('build/drought-gametest')

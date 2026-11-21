@@ -6,6 +6,7 @@ import com.cursecycle.challenge.impl.HeartbeatChallenge.Rhythm;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.cursecycle.challenge.impl.HeartbeatChallenge.Rhythm.PressResult.*;
 
 class HeartbeatTest {
     @Test void registrationMatchesSpecification() {
@@ -23,8 +24,9 @@ class HeartbeatTest {
     @Test void inclusiveEdgesAndOnePressPerWindow() {
         for (int tick = 0; tick <= 126; tick++) {
             var r = new Rhythm();
-            assertEquals(tick >= 115 && tick <= 125, r.press(tick), "tick " + tick);
-            if (r.accepted()) assertFalse(r.press(tick));
+            var expected = tick < 100 ? IGNORED : tick >= 115 && tick <= 125 ? ACCEPTED : PENALIZED;
+            assertEquals(expected, r.press(tick), "tick " + tick);
+            if (r.accepted()) assertEquals(PENALIZED, r.press(tick));
         }
     }
     @Test void preparationAndSinglePenaltyAt126Then146() {
@@ -37,11 +39,11 @@ class HeartbeatTest {
     }
     @Test void acceptedBeatCannotCoverNextAndWrongPressDoesNotReserveIt() {
         var r = new Rhythm();
-        assertFalse(r.press(114)); assertTrue(r.press(115));
+        assertEquals(PENALIZED, r.press(114)); assertEquals(ACCEPTED, r.press(115));
         assertFalse(r.advance(126)); assertFalse(r.accepted());
-        assertFalse(r.press(126)); assertFalse(r.press(134));
+        assertEquals(PENALIZED, r.press(126)); assertEquals(PENALIZED, r.press(134));
         assertTrue(r.advance(146));
-        assertFalse(r.press(146)); assertTrue(r.press(155));
+        assertEquals(PENALIZED, r.press(146)); assertEquals(ACCEPTED, r.press(155));
         assertFalse(r.advance(166));
     }
     @Test void skippedTicksNeverQueuePenaltiesOrDuplicateRequests() {
@@ -55,10 +57,23 @@ class HeartbeatTest {
     }
     @Test void independentPhasesAndServerTimeOnly() {
         var first = new Rhythm(); var late = new Rhythm();
-        assertTrue(first.press(125)); assertFalse(late.press(105));
+        assertEquals(ACCEPTED, first.press(125)); assertEquals(PENALIZED, late.press(105));
         assertFalse(first.advance(126)); assertFalse(late.advance(106));
-        assertTrue(late.press(115)); assertFalse(late.advance(126));
+        assertEquals(ACCEPTED, late.press(115)); assertFalse(late.advance(126));
         for (int i = 0; i < 1000; i++) assertFalse(first.advance(126));
         assertEquals(140, first.target());
+    }
+    @Test void spamIsPenalizedAcrossConsecutiveWindows() {
+        var r = new Rhythm();
+        int accepted = 0, penalties = 0;
+        for (int tick = 0; tick <= 165; tick++) {
+            r.advance(tick);
+            var result = r.press(tick);
+            if (tick < HeartbeatChallenge.GRACE) assertEquals(IGNORED, result);
+            if (result == ACCEPTED) accepted++;
+            if (result == PENALIZED) penalties++;
+        }
+        assertEquals(3, accepted);
+        assertEquals(63, penalties);
     }
 }

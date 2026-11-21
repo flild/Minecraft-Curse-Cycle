@@ -1,0 +1,41 @@
+// Real OpenGL fixture screenshots; these classes are never added to the production source set.
+allprojects {
+    afterEvaluate {
+        def probeSource = project.file('src/clientprobe/simon_says')
+        def probeOutput = project.file('build/simon-says-client-probe')
+        tasks.register('compileSimonSaysProbe', JavaCompile) {
+            dependsOn tasks.named('classes')
+            source fileTree(new File(probeSource, 'java')) { include '**/*.java' }
+            classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+            destinationDirectory = new File(probeOutput, 'classes')
+            options.encoding = 'UTF-8'
+            options.release = 21
+            options.compilerArgs += ['-proc:none']
+        }
+        tasks.register('simonSaysProbeJar', Jar) {
+            dependsOn tasks.named('compileSimonSaysProbe')
+            from new File(probeOutput, 'classes')
+            from new File(probeSource, 'resources')
+            archiveFileName = 'probe.jar'
+            destinationDirectory = probeOutput
+        }
+        loom.runs.client {
+            runDir 'build/simon-says-client-probe/run'
+            vmArg "-Dfabric.addMods=${new File(probeOutput, 'probe.jar').absolutePath}"
+            programArg '--width'
+            programArg '1280'
+            programArg '--height'
+            programArg '800'
+        }
+        tasks.register('prepareSimonSaysProbeOptions') {
+            doLast {
+                def options = new File(probeOutput, 'run/options.txt')
+                options.parentFile.mkdirs()
+                options.setText('lang:ru_ru\nguiScale:2\npauseOnLostFocus:false\nmaxFps:60\nonboardAccessibility:false\nfullscreen:false\n', 'UTF-8')
+            }
+        }
+        tasks.named('runClient') {
+            dependsOn tasks.named('simonSaysProbeJar'), tasks.named('prepareSimonSaysProbeOptions')
+        }
+    }
+}

@@ -45,6 +45,10 @@ public class CurseCycleMod implements ModInitializer {
         config.applyChallengeToggles();
         diagnostics.stage("registering gameplay events");
         ChallengeEventManager.registerEvents();
+        net.fabricmc.fabric.api.message.v1.ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
+            if (params.type().matchesKey(net.minecraft.network.message.MessageType.CHAT))
+                com.cursecycle.challenge.impl.SimonSaysChallenge.chatted(sender, message.getSignedContent());
+        });
         net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
             com.cursecycle.challenge.impl.BuddingChallenge.died(entity);
             com.cursecycle.challenge.impl.BloodTributeChallenge.died(entity, source);

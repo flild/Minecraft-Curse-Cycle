@@ -14,6 +14,8 @@ import java.util.List;
 public class NetworkHandler {
 
     public static void registerPayloads() {
+        PayloadTypeRegistry.playS2C().register(BloodTributeStatePayload.ID, BloodTributeStatePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SimonSaysStatePayload.ID, SimonSaysStatePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(MeteorShowerStatePayload.ID, MeteorShowerStatePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(BlackHoleStatePayload.ID, BlackHoleStatePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(TimingSettingsRequestPayload.ID, TimingSettingsRequestPayload.CODEC);
@@ -60,6 +62,7 @@ public class NetworkHandler {
         String choice = direction != null && effectiveIds.contains(BlockedDirectionChallenge.ID) ? direction.id() : "";
         CurseCycleSyncPayload payload = new CurseCycleSyncPayload(currentDay, ticksUntilNext, effectiveIds, nextChallengeId, historyIds, choice);
         ServerPlayNetworking.send(player, payload);
+        com.cursecycle.challenge.impl.BloodTributeChallenge.sync(player);
         com.cursecycle.challenge.impl.HeartbeatChallenge.sync(player);
         com.cursecycle.challenge.impl.SimonSaysChallenge.sync(player);
         if (effectiveIds.contains(com.cursecycle.challenge.impl.HeavyBodyChallenge.ID)) {

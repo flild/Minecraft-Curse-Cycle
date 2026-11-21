@@ -4,6 +4,8 @@ import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.impl.SimonSaysChallenge;
 import com.cursecycle.challenge.impl.SimonSaysChallenge.Action;
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.network.SimonSaysStatePayload;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.entity.EquipmentSlot;
@@ -16,11 +18,13 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.message.MessageType;
+import net.minecraft.network.message.SignedMessage;
+import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
-import net.minecraft.text.TranslatableTextContent;
 import net.minecraft.util.Hand;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.World;
@@ -65,6 +69,7 @@ public class SimonSaysGameTest implements FabricGameTest {
         SimonSaysChallenge.tick(p.getServer()); // Real selection, snapshot, scheduling and HUD delivery.
         if (get(s, "action") == null) throw new AssertionError("Command not issued");
         set(s, "action", action); // Deterministic coverage of each possible randomly chosen action.
+        SimonSaysChallenge.sync(p);
         return s;
     }
     private static void step(ServerPlayerEntity p) {
@@ -80,11 +85,12 @@ public class SimonSaysGameTest implements FabricGameTest {
     private static void pending(TestContext c, Object s, boolean expected) {
         c.assertEquals(expected, get(s, "action") != null, "Pending command");
     }
-    private static List<GameMessageS2CPacket> packets(EmbeddedChannel channel) {
+    private static List<SimonSaysStatePayload> packets(EmbeddedChannel channel) {
         channel.runPendingTasks(); channel.flush();
-        var result = new ArrayList<GameMessageS2CPacket>(); Object packet;
+        var result = new ArrayList<SimonSaysStatePayload>(); Object packet;
         while ((packet = channel.readOutbound()) != null)
-            if (packet instanceof GameMessageS2CPacket overlay && overlay.overlay()) result.add(overlay);
+            if (packet instanceof CustomPayloadS2CPacket custom && custom.payload() instanceof SimonSaysStatePayload state)
+                result.add(state);
         return result;
     }
 
@@ -248,24 +254,36 @@ public class SimonSaysGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_hud", tickLimit = 40)
-    public void vanillaHudContainsCommandCountdownSuccessFailureAndClear(TestContext c) {
+    public void dedicatedHudContainsWaitingCommandCountdownResultsAndClear(TestContext c) {
         try (var s = new ChallengeScenario(c)) {
-            var p = ready(s); packets(s.channel(p)); command(p, Action.CROUCH);
+            var p = ready(s);
+            var waiting = packets(s.channel(p)).getLast();
+            c.assertEquals(SimonSaysStatePayload.WAITING, waiting.phase(), "Timer before first command");
+            c.assertTrue(waiting.remaining() >= 1200 && waiting.remaining() <= 1800, "Full initial interval");
+            command(p, Action.CROUCH);
             var messages = packets(s.channel(p));
-            c.assertTrue(messages.stream().anyMatch(packet -> packet.content().getContent() instanceof TranslatableTextContent t
-                    && t.getKey().equals("text.cursecycle.simon_says.command") && t.getArgs()[1].equals(5L)), "Initial command with five seconds: " + messages);
-            deadline(p, 20); messages = packets(s.channel(p));
-            c.assertTrue(messages.stream().anyMatch(packet -> packet.content().getContent() instanceof TranslatableTextContent t
-                    && t.getKey().equals("text.cursecycle.simon_says.command") && t.getArgs()[1].equals(4L)), "Countdown is server-controlled");
+            var initial = messages.getLast();
+            c.assertEquals(new SimonSaysStatePayload(SimonSaysStatePayload.COMMAND, "crouch", 100, 100), initial,
+                    "Command and full five-second bar");
+            var buf = new RegistryByteBuf(Unpooled.buffer(), p.getRegistryManager());
+            try {
+                SimonSaysStatePayload.CODEC.encode(buf, initial);
+                c.assertEquals(initial, SimonSaysStatePayload.CODEC.decode(buf), "HUD codec roundtrip");
+                c.assertEquals(0, buf.readableBytes(), "HUD codec fully consumed");
+            } finally { buf.release(); }
+            deadline(p, 5); messages = packets(s.channel(p));
+            c.assertEquals(95, messages.getLast().remaining(), "Quarter-second server clock samples");
+            SimonSaysChallenge.sync(p);
+            c.assertEquals(95, packets(s.channel(p)).getLast().remaining(), "Sync cannot extend deadline");
             p.setSneaking(true); step(p);
-            c.assertTrue(packets(s.channel(p)).stream().anyMatch(packet -> packet.content().getContent() instanceof TranslatableTextContent t
-                    && t.getKey().equals("text.cursecycle.simon_says.success")), "Success feedback");
+            c.assertEquals(SimonSaysStatePayload.SUCCESS, packets(s.channel(p)).getLast().phase(), "Success feedback");
+            set(session(p), "resultUntil", age(p)); SimonSaysChallenge.sync(p);
+            c.assertEquals(SimonSaysStatePayload.WAITING, packets(s.channel(p)).getLast().phase(), "Result returns to next timer");
             command(p, Action.CROUCH); deadline(p, 101);
-            c.assertTrue(packets(s.channel(p)).stream().anyMatch(packet -> packet.content().getContent() instanceof TranslatableTextContent t
-                    && t.getKey().equals("text.cursecycle.simon_says.failure")), "Failure feedback");
+            c.assertEquals(SimonSaysStatePayload.FAILURE, packets(s.channel(p)).getLast().phase(), "Failure feedback");
             command(p, Action.CROUCH); packets(s.channel(p));
             s.activate("no_sprint");
-            c.assertTrue(packets(s.channel(p)).stream().anyMatch(packet -> packet.content().getString().isEmpty()), "End clears pending HUD");
+            c.assertEquals(SimonSaysStatePayload.HIDDEN, packets(s.channel(p)).getLast().phase(), "End clears pending HUD");
         } c.complete();
     }
 
@@ -358,7 +376,32 @@ public class SimonSaysGameTest implements FabricGameTest {
             c.assertFalse(SimonSaysChallenge.availableActions(p).contains(Action.DOUBLE_JUMP), "Both jump tasks are excluded");
             s.activate(ID); p.getHungerManager().setFoodLevel(6);
             c.assertFalse(SimonSaysChallenge.availableActions(p).contains(Action.SPRINT), "Too hungry to sprint");
-            c.assertEquals(12, Action.values().length, "Twelve commands total");
+            c.assertEquals(13, Action.values().length, "Thirteen commands total");
+        } c.complete();
+    }
+
+    private static void chat(ServerPlayerEntity p, String message) {
+        p.getServer().getPlayerManager().broadcast(SignedMessage.ofUnsigned(p.getUuid(), message), p,
+                MessageType.params(MessageType.CHAT, p));
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "simon_chat", tickLimit = 40)
+    public void acceptedChatCompletesOnlySendersCurrentTaskWithinDeadline(TestContext c) {
+        try (var s = new ChallengeScenario(c)) {
+            var p = ready(s); var other = s.player();
+            chat(p, "before task");
+            var phase = command(p, Action.CHAT); step(p); pending(c, phase, true);
+            SimonSaysChallenge.chatted(p, "  \t"); pending(c, phase, true);
+            chat(other, "someone else"); pending(c, phase, true);
+            p.getServer().getCommandManager().executeWithPrefix(p.getCommandSource(), "me command");
+            pending(c, phase, true);
+            deadline(p, 100); chat(p, "Привет!"); pending(c, phase, false);
+            c.assertEquals(20F, p.getHealth(), "Accepted chat succeeds on last tick");
+            phase = command(p, Action.CROUCH); step(p); chat(p, "wrong task"); pending(c, phase, true);
+            phase = command(p, Action.CHAT); deadline(p, 101); chat(p, "too late");
+            pending(c, phase, false); c.assertEquals(16F, p.getHealth(), "Late chat cannot undo penalty");
+            phase = command(p, Action.CHAT); step(p); s.state.beginActivation();
+            chat(p, "old activation"); pending(c, phase, true);
         } c.complete();
     }
 

@@ -2,6 +2,8 @@ package com.cursecycle.challenge.impl;
 
 import com.cursecycle.challenge.*;
 import com.cursecycle.state.CurseCycleState;
+import com.cursecycle.network.BloodTributeStatePayload;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageType;
@@ -40,8 +42,8 @@ public final class BloodTributeChallenge extends Challenge {
         super(ID, "Резня",
                 "Чтобы жил ты, должен кто-то умереть.",
                 "Каждые " + KILL_INTERVAL_SECONDS + " секунд нужно убить моба "
-                        + "или убъют уже тебя.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                        + "или терять одно сердце в секунду. Шкала показывает оставшееся время.",
+                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
     private static boolean assigned(CurseCycleState state, UUID owner) {
@@ -77,6 +79,7 @@ public final class BloodTributeChallenge extends Challenge {
         var state = CurseCycleState.getServerState(player.getServer());
         records(state).put(player.getUuidAsString(), fresh());
         state.markDirty();
+        sync(player);
         player.sendMessage(Text.translatable("text.cursecycle.blood_tribute.paid", KILL_INTERVAL_SECONDS).formatted(Formatting.GREEN), false);
     }
     /** Always registered, including while disabled. Once per actual server tick, not per onTick invocation. */
@@ -88,15 +91,22 @@ public final class BloodTributeChallenge extends Challenge {
         if (challenge == null || !challenge.isEnabled()
                 || !state.getActiveChallengeIds().contains(ID)
                 && state.getPersonalActiveChallenges().values().stream().noneMatch(ids -> ids.contains(ID))) {
-            if (state.getChallengeData().contains(ID)) { state.getChallengeData().remove(ID); state.markDirty(); }
+            if (state.getChallengeData().contains(ID)) {
+                state.getChallengeData().remove(ID); state.markDirty();
+                for (var player : server.getPlayerManager().getPlayerList()) hide(player);
+            }
             return;
         }
         for (var player : java.util.List.copyOf(server.getPlayerManager().getPlayerList())) {
             if (!assigned(state, player.getUuid())) { remove(state, player); continue; }
             // Death, excluded modes and disconnect pause the saved phase; world/player replacement never clears it.
-            if (!active(player)) continue;
+            if (!active(player)) {
+                if (server.getTicks() % 5 == 0) hide(player);
+                continue;
+            }
             var rec = record(state, player);
             int remaining = Math.max(0, Math.min(INTERVAL, rec.getInt("remaining")));
+            boolean expired = remaining == 1;
             if (remaining > 0) rec.putInt("remaining", --remaining);
             if (remaining > 0 && remaining <= WARNING && !rec.getBoolean("warned")) {
                 rec.putBoolean("warned", true);
@@ -120,17 +130,29 @@ public final class BloodTributeChallenge extends Challenge {
                     player.damage(source, PENALTY_DAMAGE_HP);
                 }
             } else state.markDirty();
+            if (expired || server.getTicks() % 5 == 0) sync(player);
         }
     }
     private static void remove(CurseCycleState state, ServerPlayerEntity player) {
         var root = state.getChallengeData();
         if (root.contains(ID) && root.getCompound(ID).contains(player.getUuidAsString())) {
             root.getCompound(ID).remove(player.getUuidAsString()); state.markDirty();
+            hide(player);
         }
+    }
+    /** Read the saved phase without granting a new interval on reconnect or general HUD sync. */
+    public static void sync(ServerPlayerEntity player) {
+        if (!active(player)) { hide(player); return; }
+        int remaining = Math.clamp(record(CurseCycleState.getServerState(player.getServer()), player)
+                .getInt("remaining"), 0, INTERVAL);
+        ServerPlayNetworking.send(player, new BloodTributeStatePayload(true, remaining, INTERVAL));
+    }
+    private static void hide(ServerPlayerEntity player) {
+        ServerPlayNetworking.send(player, new BloodTributeStatePayload(false, 0, INTERVAL));
     }
     public static void clear(MinecraftServer server) { CLOCKS.remove(server); }
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) {
-        if (active(player)) record(CurseCycleState.getServerState(server), player);
+        sync(player);
     }
     @Override public void onStop(MinecraftServer server, ServerPlayerEntity player) {
         remove(CurseCycleState.getServerState(server), player);

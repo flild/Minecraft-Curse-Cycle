@@ -103,7 +103,7 @@ public class HeartbeatGameTest implements FabricGameTest {
     }
     private static void requests(TestContext c, ServerPlayerEntity p, int count) {
         var requests = REQUESTS.get(p.getUuid());
-        c.assertEquals(count, requests.size(), "One request per missed window: " + p.getName().getString());
+        c.assertEquals(count, requests.size(), "Penalty requests: " + p.getName().getString());
         c.assertTrue(requests.stream().allMatch(v -> v == 2F), "Every request is exactly two health units");
     }
 
@@ -138,11 +138,9 @@ public class HeartbeatGameTest implements FabricGameTest {
                 try {
                     c.assertEquals(t, server.getTicks() - start, "Actual server tick");
                     if (t == 10) { late[0] = ready(s); latePhase[0] = sample(s, late[0]); }
-                    if (t == 114) { press(s, early, three); sounds(s, early, 0); }
                     if (t == 115) {
                         press(s, lower, one); sounds(s, lower, 1);
                         sounds(s, upper, 0);
-                        press(s, lower, one); sounds(s, lower, 0);
                         HeartbeatChallenge.sync(lower); sounds(s, lower, 0);
                     }
                     if (t == 125) {
@@ -156,9 +154,8 @@ public class HeartbeatGameTest implements FabricGameTest {
                         for (var p : List.of(lower, upper, early, armor, resistance, absorption, cooldown, totem)) requests(c, p, 0);
                         c.assertTrue(sample(s, lower).accepted(), "target-5 accepted");
                         c.assertTrue(sample(s, upper).accepted(), "target+5 accepted");
-                        c.assertFalse(sample(s, early).accepted(), "target-6 ignored");
+                        c.assertFalse(sample(s, early).accepted(), "No input leaves beat unaccepted");
                     }
-                    if (t == 126) { press(s, early, three); sounds(s, early, 0); }
                     HeartbeatChallenge.tick(server); HeartbeatChallenge.tick(server);
                     if (t == 126) {
                         requests(c, lower, 0); requests(c, upper, 0); requests(c, early, 1);
@@ -182,8 +179,8 @@ public class HeartbeatGameTest implements FabricGameTest {
                     if (t == 146) {
                         requests(c, lower, 1); requests(c, upper, 1); requests(c, early, 1);
                         health(c, 18, lower, "One accepted beat does not cover next");
-                        health(c, 18, upper, "Extra press cannot reserve next beat");
-                        health(c, 18, early, "Next window accepted after early/late rejection");
+                        health(c, 18, upper, "One accepted beat does not cover next");
+                        health(c, 18, early, "Next window accepted after miss");
                     }
                     if (t == 147) {
                         s.activate("no_sprint"); lower.setSprinting(true);
@@ -193,6 +190,63 @@ public class HeartbeatGameTest implements FabricGameTest {
                         dropped.forEach(ItemEntity::discard); cleanup(s); c.complete();
                     }
                 } catch (Throwable error) { dropped.forEach(ItemEntity::discard); cleanup(s); throw error; }
+            });
+        }
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "heartbeat_wrong_presses", tickLimit = 160)
+    public void wrongPressesAndSpamCostHealthAfterPreparation(TestContext c) {
+        var s = new ChallengeScenario(c); var server = c.getWorld().getServer();
+        var early = ready(s); var duplicate = ready(s); var late = ready(s);
+        var correct = ready(s); var spam = ready(s);
+        early.equipStack(EquipmentSlot.CHEST, new ItemStack(Items.NETHERITE_CHESTPLATE)); early.playerTick();
+        s.activate(ID);
+        var phases = new HashMap<ServerPlayerEntity, HeartbeatStatePayload>();
+        for (var p : List.of(early, duplicate, late, correct, spam)) phases.put(p, sample(s, p));
+        for (int tick = 1; tick <= 127; tick++) {
+            final int t = tick;
+            c.waitAndRun(t, () -> {
+                try {
+                    HeartbeatChallenge.tick(server);
+                    if (t < 100) {
+                        press(s, spam, phases.get(spam)); requests(c, spam, 0);
+                        health(c, 20, spam, "Preparation presses are free");
+                    }
+                    if (t == 100 || t == 114) {
+                        press(s, early, phases.get(early)); sounds(s, early, 0);
+                        requests(c, early, t == 100 ? 1 : 2);
+                        health(c, t == 100 ? 18 : 16, early, "Wrong timing costs one heart through armor");
+                    }
+                    if (t >= 100 && t <= 125) press(s, spam, phases.get(spam));
+                    if (t == 115) {
+                        press(s, early, phases.get(early)); sounds(s, early, 1);
+                        press(s, duplicate, phases.get(duplicate)); sounds(s, duplicate, 1);
+                        requests(c, early, 2); requests(c, duplicate, 0);
+                    }
+                    if (t == 116) {
+                        press(s, duplicate, phases.get(duplicate)); sounds(s, duplicate, 0);
+                        requests(c, duplicate, 1); health(c, 18, duplicate, "Extra press after success costs one heart");
+                    }
+                    if (t == 125) {
+                        var phase = phases.get(correct);
+                        press(s, correct, new HeartbeatStatePayload(phase.activation() - 1, phase.session(), 0, 120, false));
+                        press(s, correct, phases.get(early));
+                        requests(c, correct, 0); sounds(s, correct, 0);
+                        press(s, correct, phase); sounds(s, correct, 1);
+                        requests(c, correct, 0); health(c, 20, correct, "Correct input and stale tokens never penalize");
+                    }
+                    if (t == 127) {
+                        requests(c, late, 1);
+                        late.timeUntilRegen = 0;
+                        press(s, late, phases.get(late)); sounds(s, late, 0);
+                        requests(c, late, 2); health(c, 16, late, "Late press costs a heart in addition to the missed beat");
+                        requests(c, early, 2); requests(c, duplicate, 1); requests(c, correct, 0);
+                        requests(c, spam, 25);
+                        c.assertTrue(spam.getHealth() < 20, "Repeated tapping cannot bypass health loss");
+                        c.assertTrue(sample(s, spam).target() == 140, "Spam never shifts the rhythm");
+                        cleanup(s); c.complete();
+                    }
+                } catch (Throwable error) { cleanup(s); throw error; }
             });
         }
     }

@@ -29,26 +29,29 @@ public final class HeartbeatChallenge extends Challenge {
 
     // Технические нюансы; не включать в описание для игрока.
     // Используется назначенная клавиша удара, по умолчанию B. Интервал — 20 серверных тиков, подготовка — 100
-    // тиков, допуск — 5 тиков в каждую сторону. Пропуск наносит 2 единицы урона. Ранние и лишние нажатия не
-    // засчитываются.
+    // тиков, допуск — 5 тиков в каждую сторону. Пропуск, нажатие вне окна и повтор после попадания
+    // наносят 2 единицы урона. Во время подготовки нажатия игнорируются.
     public HeartbeatChallenge() {
         super(ID, "На ручном приводе",
                 "Нажимай в ритм, чтобы не терять здоровье.",
                 "Нажимай назначенную клавишу, когда метка проходит через выделенную область полосы. "
-                        + "Попал в ритм — услышишь удар сердца. Пропуск отнимает одно сердце.",
+                        + "Попал в ритм — услышишь удар сердца. Пропуск, нажатие вне ритма или повтор "
+                        + "после попадания отнимает одно сердце. Во время подготовки штрафа нет.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
     /** Server tick clock, independent of daylight/time commands. No catch-up damage queue. */
     public static final class Rhythm {
+        public enum PressResult { IGNORED, ACCEPTED, PENALIZED }
         private long target = GRACE + INTERVAL;
         private boolean accepted;
         public long target() { return target; }
         public boolean accepted() { return accepted; }
-        public boolean press(long age) {
-            if (accepted || age < target - WINDOW || age > target + WINDOW) return false;
+        public PressResult press(long age) {
+            if (age < GRACE) return PressResult.IGNORED;
+            if (accepted || age < target - WINDOW || age > target + WINDOW) return PressResult.PENALIZED;
             accepted = true;
-            return true;
+            return PressResult.ACCEPTED;
         }
         public boolean advance(long age) {
             if (age <= target + WINDOW) return false;
@@ -111,10 +114,18 @@ public final class HeartbeatChallenge extends Challenge {
         var sessions = SESSIONS.get(player.getServer());
         var s = sessions == null ? null : sessions.get(player.getUuid());
         if (s == null || !s.matches(player) || s.activation != payload.activation() || s.token != payload.session()) return;
-        if (s.rhythm.press(s.age())) {
+        var result = s.rhythm.press(s.age());
+        if (result == Rhythm.PressResult.ACCEPTED) {
             send(s);
             player.playSoundToPlayer(SoundEvents.ENTITY_WARDEN_HEARTBEAT, SoundCategory.PLAYERS, 0.65F, 1.0F);
+        } else if (result == Rhythm.PressResult.PENALIZED) {
+            penalize(player);
+            if (!active(player) || !s.matches(player)) forget(player);
         }
+    }
+    private static void penalize(ServerPlayerEntity player) {
+        var source = new DamageSource(player.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
+        player.damage(source, 2.0F);
     }
     /** Always registered, so disabled/removed IDs also release sessions and client feedback. */
     public static void tick(MinecraftServer server) {
@@ -132,8 +143,7 @@ public final class HeartbeatChallenge extends Challenge {
             s.lastTick = now;
             long previousTarget = s.rhythm.target();
             if (s.rhythm.advance(s.age())) {
-                var source = new DamageSource(player.getRegistryManager().get(RegistryKeys.DAMAGE_TYPE).entryOf(DAMAGE_TYPE));
-                player.damage(source, 2.0F);
+                penalize(player);
             }
             // Applied damage may kill or teleport this player through another challenge.
             if (!active(player) || !s.matches(player)) { forget(player); continue; }
