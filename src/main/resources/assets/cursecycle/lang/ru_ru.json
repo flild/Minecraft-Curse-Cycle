@@ -1,10 +1,10 @@
 {
   "text.cursecycle.blood_tribute.title": "Резня",
-  "text.cursecycle.blood_tribute.task": "Убей моба",
-  "text.cursecycle.blood_tribute.hud_overdue": "Убей моба: теряешь 1 сердце/с",
+  "text.cursecycle.blood_tribute.task": "Убей!",
+  "text.cursecycle.blood_tribute.hud_overdue": "Убей!!!!",
   "text.cursecycle.blood_tribute.seconds": "%s с",
   "text.cursecycle.blood_tribute.warning": "Резня: осталось %s с, чтобы убить моба",
-  "text.cursecycle.blood_tribute.overdue": "Время вышло! Убей моба, чтобы перестать терять здоровье",
+  "text.cursecycle.blood_tribute.overdue": "Время вышло! Убей, чтобы перестать терять здоровье",
   "text.cursecycle.blood_tribute.paid": "Убийство засчитано. До следующей жертвы — %s с",
   "death.attack.cursecycle.blood_tribute": "%1$s так и не нашёл жертву",
   "death.attack.cursecycle.blood_tribute.player": "%1$s так и не нашёл жертву, сражаясь с %2$s",
