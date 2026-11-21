@@ -20,7 +20,7 @@ import java.util.*;
 /** Server-observed actions; no C2S success packet or client clock. */
 public final class SimonSaysChallenge extends Challenge {
     public static final String ID = "simon_says";
-    public static final int MIN_INTERVAL = 1200, MAX_INTERVAL = 1800, WINDOW = 100, STOP_TICKS = 10;
+    public static final int MIN_INTERVAL = 150, MAX_INTERVAL = 600, WINDOW = 100, STOP_TICKS = 10;
     public static final RegistryKey<DamageType> DAMAGE_TYPE = RegistryKey.of(RegistryKeys.DAMAGE_TYPE,
             Identifier.of("cursecycle", ID));
     private static final Map<MinecraftServer, Map<UUID, Session>> SESSIONS = new HashMap<>();
@@ -30,9 +30,8 @@ public final class SimonSaysChallenge extends Challenge {
 
     public SimonSaysChallenge() {
         super(ID, "Саймон говорит",
-                "Выполни команду за 5 секунд.",
-                "Каждую минуту-полторы появляется команда: движение, взгляд, взмах руки или сообщение в чат. "
-                        + "Выполни её за пять секунд, иначе получишь урон. Задание и таймер видны на экране.",
+                "Делай что говорят",
+                "Выполняй то что говорит саймон, иначе будет больно.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

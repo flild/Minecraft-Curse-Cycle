@@ -34,9 +34,9 @@ class SunlightBurnChallengeTest {
         assertInstanceOf(SunlightBurnChallenge.class, challenge);
         assertFalse(challenge.getName().isBlank());
         assertFalse(challenge.getShortDescription().isBlank());
-        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
+        assertEquals(ChallengeDifficulty.EASY, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(challenge));
         assertEquals(List.of("sunlight_burn", "no_sprint"),
                 ChallengeUtils.resolveToActiveIds("double_challenge:sunlight_burn,no_sprint"));
     }

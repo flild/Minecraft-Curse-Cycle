@@ -18,12 +18,12 @@ class LockedContainersChallengeTest {
         assertInstanceOf(LockedContainersChallenge.class, c);
         assertFalse(c.getName().isBlank());
         assertFalse(c.getShortDescription().isBlank());
-        assertEquals(ChallengeDifficulty.MEDIUM, c.getDifficulty());
+        assertEquals(ChallengeDifficulty.EASY, c.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, c.getScope());
         assertEquals(1, ChallengeRegistry.getAll().stream().filter(x -> x.getId().equals(c.getId())).count());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(c));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(c));
         c.setEnabled(false);
-        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(c));
+        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.EASY).contains(c));
     }
 
     @Test void globalPersonalAndDoubleActivationPersistWithoutStorageSnapshots() {

@@ -15,20 +15,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ForcedThirdPersonFrontChallengeTest {
     @Test
-    void registeredOnceAsSelectableMediumGlobalChallenge() {
+    void registeredOnceAsSelectableHardGlobalChallenge() {
         ChallengeRegistry.clear();
         ModChallenges.registerAll();
         var challenge = ChallengeRegistry.get(ForcedThirdPersonFrontChallenge.ID);
         assertInstanceOf(ForcedThirdPersonFrontChallenge.class, challenge);
         assertFalse(challenge.getName().isBlank());
         assertFalse(challenge.getShortDescription().isBlank());
-        assertEquals(ChallengeDifficulty.MEDIUM, challenge.getDifficulty());
+        assertEquals(ChallengeDifficulty.HARD, challenge.getDifficulty());
         assertEquals(ChallengeScope.GLOBAL, challenge.getScope());
         assertEquals(1L, ChallengeRegistry.getAll().stream()
                 .filter(c -> c.getId().equals(ForcedThirdPersonFrontChallenge.ID)).count());
-        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertTrue(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));
         challenge.setEnabled(false);
-        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.MEDIUM).contains(challenge));
+        assertFalse(ChallengeRegistry.getEnabledByDifficulty(ChallengeDifficulty.HARD).contains(challenge));
     }
 
     @Test
