@@ -97,7 +97,6 @@ public final class CurseStyle {
             case "tiny_fov" -> Items.SPYGLASS;
             case "offset_crosshair" -> Items.TARGET;
             case "silent_world" -> Items.SCULK_SENSOR;
-            case "endless_raid" -> Items.OMINOUS_BOTTLE;
             case "double_challenge" -> Items.ENCHANTED_BOOK;
             case "hotbar_shuffle" -> Items.HOPPER;
             case "inverted_keyboard" -> Items.COMPASS;

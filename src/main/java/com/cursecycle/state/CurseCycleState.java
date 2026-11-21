@@ -20,6 +20,14 @@ public class CurseCycleState extends PersistentState {
 
     private long activationSerial = 0;
     private NbtCompound challengeData = new NbtCompound();
+    // Continuous GLOBAL netherite interval; survives companion/same-ID activations and restarts.
+    private String netheriteMobsSession = "";
+
+    public String getNetheriteMobsSession() { return netheriteMobsSession; }
+    public void setNetheriteMobsSession(String session) {
+        netheriteMobsSession = session;
+        markDirty();
+    }
 
     public long getActivationSerial() { return activationSerial; }
     public void beginActivation() {
@@ -115,6 +123,7 @@ public class CurseCycleState extends PersistentState {
     public static CurseCycleState createFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         CurseCycleState state = new CurseCycleState();
         state.activationSerial = tag.getLong("activationSerial");
+        state.netheriteMobsSession = tag.getString("netheriteMobsSession");
         state.challengeData = tag.getCompound("challengeData").copy();
         state.totalInGameTicks = tag.getLong("totalInGameTicks");
         state.cycleOriginTicks = Math.max(0, tag.getLong("cycleOriginTicks"));
@@ -184,6 +193,7 @@ public class CurseCycleState extends PersistentState {
     @Override
     public NbtCompound writeNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         tag.putLong("activationSerial", activationSerial);
+        tag.putString("netheriteMobsSession", netheriteMobsSession);
         tag.put("challengeData", challengeData.copy());
         tag.putLong("totalInGameTicks", totalInGameTicks);
         tag.putLong("cycleOriginTicks", cycleOriginTicks);

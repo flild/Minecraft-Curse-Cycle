@@ -17,7 +17,6 @@
       "com.cursecycle.MeteorShowerGameTest",
       "com.cursecycle.StuckThrottleGameTest",
       "com.cursecycle.FoundationGameTest",
-      "com.cursecycle.EndlessRaidGameTest",
       "com.cursecycle.NetheriteMobsGameTest",
       "com.cursecycle.HeartbeatGameTest",
       "com.cursecycle.SimonSaysGameTest",

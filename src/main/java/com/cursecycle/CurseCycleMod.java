@@ -84,6 +84,11 @@ public class CurseCycleMod implements ModInitializer {
         });
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(
                 com.cursecycle.challenge.impl.SkeletonHunterChallenge::loaded);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (entity instanceof net.minecraft.entity.mob.MobEntity mob)
+                com.cursecycle.challenge.impl.NetheriteMobsChallenge.removeExpiredArmor(mob,
+                        com.cursecycle.challenge.impl.NetheriteMobsChallenge.currentSession(world));
+        });
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register(
                 com.cursecycle.challenge.impl.SkeletonHunterChallenge::unloaded);
         net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
@@ -214,6 +219,5 @@ public class CurseCycleMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeavyBodyChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.HeartbeatChallenge::tick);
         ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.SimonSaysChallenge::tick);
-        ServerTickEvents.END_SERVER_TICK.register(com.cursecycle.challenge.impl.EndlessRaidChallenge::tick);
     }
 }

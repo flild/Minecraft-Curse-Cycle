@@ -12,7 +12,8 @@ import java.util.List;
 public class AllDebuffsChallenge extends Challenge {
     public static final String ID = "all_debuffs";
     // Технические нюансы; не включать в описание для игрока.
-    // Используются ванильные эффекты категории HARMFUL I уровня, кроме иссушения и мгновенного урона.
+    // Используются ванильные эффекты категории HARMFUL I уровня, кроме иссушения, мгновенного урона,
+    // левитации и отравления.
     // Продолжительные эффекты поддерживаются постоянно и после молока возвращаются на следующем серверном
     // тике.
     public AllDebuffsChallenge() {
@@ -25,7 +26,9 @@ public class AllDebuffsChallenge extends Challenge {
             var key = entry.registryKey().getValue();
             return key.getNamespace().equals("minecraft") && entry.value().getCategory() == StatusEffectCategory.HARMFUL
                     && !entry.matchesKey(StatusEffects.INSTANT_DAMAGE.getKey().orElseThrow())
-                    && !entry.matchesKey(StatusEffects.WITHER.getKey().orElseThrow());
+                    && !entry.matchesKey(StatusEffects.WITHER.getKey().orElseThrow())
+                    && !entry.matchesKey(StatusEffects.LEVITATION.getKey().orElseThrow())
+                    && !entry.matchesKey(StatusEffects.POISON.getKey().orElseThrow());
         }).toList();
     }
     @Override public void onStart(MinecraftServer server, ServerPlayerEntity player) { onTick(server, player); }

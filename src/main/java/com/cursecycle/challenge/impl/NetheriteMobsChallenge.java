@@ -6,32 +6,32 @@ import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeScope;
 import com.cursecycle.state.CurseCycleState;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.component.type.NbtComponent;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
+
+import java.util.UUID;
 
 public final class NetheriteMobsChallenge extends Challenge {
     public static final String ID = "netherite_mobs";
     public static final String ITEM_MARKER = "cursecycle:netherite_mobs";
+    public static final String SESSION_MARKER = "cursecycle:netherite_mobs_session";
 
     // Технические нюансы; не включать в описание для игрока.
-    // Новые мобы во всех измерениях получают полный комплект с максимальными совместимыми ванильными чарами
-    // выбранного набора. Включены враждебные, нейтральные, мирные мобы и боссы, даже без отображения брони.
-    // Броня не выпадает. Существующие мобы не переодеваются; после завершения выданные комплекты остаются,
-    // новые не выдаются.
+    // Новые мобы во всех измерениях получают полный комплект без чар, включая мирных мобов и боссов.
+    // Броня не выпадает и удаляется после завершения; выгруженная — при загрузке, даже в следующем испытании.
+    // Существующие мобы не переодеваются; обычная экипировка не удаляется.
     public NetheriteMobsChallenge() {
         super(ID, "Незеритовая вечеринка",
-                "Новые мобы появляются в зачарованной незеритовой броне.",
-                "Всех новых мобов снарядили полным комплектом зачарованного незерита. Даже тех, от кого такого совсем не ждёшь.",
+                "Новые мобы появляются в незеритовой броне без чар.",
+                "Все новые мобы получают полный комплект незеритовой брони без чар. После завершения испытания выданная броня исчезает.",
                 ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
@@ -47,41 +47,69 @@ public final class NetheriteMobsChallenge extends Challenge {
                 .copyNbt().getBoolean(ITEM_MARKER);
     }
 
-    public static void equip(MobEntity mob) {
-        if (!(mob.getWorld() instanceof ServerWorld world)) return;
-        equip(mob, world, EquipmentSlot.HEAD, Items.NETHERITE_HELMET);
-        equip(mob, world, EquipmentSlot.CHEST, Items.NETHERITE_CHESTPLATE);
-        equip(mob, world, EquipmentSlot.LEGS, Items.NETHERITE_LEGGINGS);
-        equip(mob, world, EquipmentSlot.FEET, Items.NETHERITE_BOOTS);
+    /** Called after GLOBAL changes and each schedule tick, including on an empty server. */
+    public static void reconcile(MinecraftServer server) {
+        var state = CurseCycleState.getServerState(server);
+        if (active(server.getOverworld())) {
+            if (state.getNetheriteMobsSession().isEmpty())
+                state.setNetheriteMobsSession(UUID.randomUUID().toString());
+        } else if (!state.getNetheriteMobsSession().isEmpty()) {
+            state.setNetheriteMobsSession("");
+            for (var world : server.getWorlds())
+                for (var entity : world.iterateEntities())
+                    if (entity instanceof MobEntity mob) {
+                        removeExpiredArmor(mob, "");
+                        ((NetheriteMobSpawn) mob).cursecycle$finishBirth();
+                    }
+        }
     }
 
-    private static void equip(MobEntity mob, ServerWorld world, EquipmentSlot slot, Item item) {
+    public static String currentSession(ServerWorld world) {
+        if (!active(world)) return "";
+        var state = CurseCycleState.getServerState(world.getServer());
+        if (state.getNetheriteMobsSession().isEmpty()) reconcile(world.getServer());
+        return state.getNetheriteMobsSession();
+    }
+
+    /** Legacy marked armor loses its old enchantments when loaded during an active interval. */
+    public static boolean removeExpiredArmor(MobEntity mob, String session) {
+        boolean retained = false;
+        for (var slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            var stack = mob.getEquippedStack(slot);
+            if (!isIssued(stack)) continue;
+            var data = stack.getOrDefault(DataComponentTypes.CUSTOM_DATA, NbtComponent.DEFAULT).copyNbt();
+            String issuedSession = data.getString(SESSION_MARKER);
+            if (session.isEmpty() || (!issuedSession.isEmpty() && !issuedSession.equals(session))) {
+                mob.equipStack(slot, ItemStack.EMPTY);
+            } else {
+                if (issuedSession.isEmpty()) {
+                    data.putString(SESSION_MARKER, session);
+                    stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(data));
+                }
+                if (stack.hasEnchantments()) stack.set(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
+                retained = true;
+            }
+        }
+        return retained;
+    }
+
+    public static void equip(MobEntity mob) {
+        if (!(mob.getWorld() instanceof ServerWorld world)) return;
+        String session = currentSession(world);
+        if (session.isEmpty()) return;
+        equip(mob, session, EquipmentSlot.HEAD, Items.NETHERITE_HELMET);
+        equip(mob, session, EquipmentSlot.CHEST, Items.NETHERITE_CHESTPLATE);
+        equip(mob, session, EquipmentSlot.LEGS, Items.NETHERITE_LEGGINGS);
+        equip(mob, session, EquipmentSlot.FEET, Items.NETHERITE_BOOTS);
+    }
+
+    private static void equip(MobEntity mob, String session, EquipmentSlot slot, Item item) {
         var stack = new ItemStack(item);
         var origin = new NbtCompound();
         origin.putBoolean(ITEM_MARKER, true);
+        origin.putString(SESSION_MARKER, session);
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(origin));
-        enchant(stack, world, Enchantments.PROTECTION, 4);
-        enchant(stack, world, Enchantments.UNBREAKING, 3);
-        enchant(stack, world, Enchantments.MENDING, 1);
-        enchant(stack, world, Enchantments.THORNS, 3);
-        switch (slot) {
-            case HEAD -> {
-                enchant(stack, world, Enchantments.RESPIRATION, 3);
-                enchant(stack, world, Enchantments.AQUA_AFFINITY, 1);
-            }
-            case LEGS -> enchant(stack, world, Enchantments.SWIFT_SNEAK, 3);
-            case FEET -> {
-                enchant(stack, world, Enchantments.FEATHER_FALLING, 4);
-                enchant(stack, world, Enchantments.DEPTH_STRIDER, 3);
-                enchant(stack, world, Enchantments.SOUL_SPEED, 3);
-            }
-            default -> { }
-        }
         mob.equipStack(slot, stack);
         mob.setEquipmentDropChance(slot, 0);
-    }
-
-    private static void enchant(ItemStack stack, ServerWorld world, RegistryKey<Enchantment> key, int level) {
-        stack.addEnchantment(world.getRegistryManager().get(RegistryKeys.ENCHANTMENT).getEntry(key).orElseThrow(), level);
     }
 }

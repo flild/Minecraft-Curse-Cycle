@@ -37,7 +37,7 @@ public final class SunlightBurnChallenge extends Challenge {
         super(ID, "Стоило купить крем от солнца",
                 "На дневном солнце ты загораешься.",
                 "Солнце больше не греет, а поджигает.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
     static final class Clock {

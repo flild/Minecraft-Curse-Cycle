@@ -49,7 +49,6 @@ public class ModChallenges {
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SkeletonHunterChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SimonSaysChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.PacifistChallenge());
-        ChallengeRegistry.register(new com.cursecycle.challenge.impl.EndlessRaidChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.NetheriteMobsChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.HeartbeatChallenge());
         ChallengeRegistry.register(new com.cursecycle.challenge.impl.SilentWorldChallenge());

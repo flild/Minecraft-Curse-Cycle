@@ -107,12 +107,12 @@ public class RandomPotionGameTest implements FabricGameTest {
             s.activate("double_challenge:random_potion,all_debuffs");
             s.state.getActiveChallengeIds().remove(ID);
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && p.hasStatusEffect(StatusEffects.POISON), "Other owner survives random cleanup");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && p.hasStatusEffect(StatusEffects.BLINDNESS), "Other owner survives random cleanup");
             choose(p, 1);
             s.activate("double_challenge:random_potion,all_debuffs");
             s.state.getActiveChallengeIds().remove("all_debuffs");
             ChallengeRegistry.get("all_debuffs").onStop(p.getServer(), p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && !p.hasStatusEffect(StatusEffects.POISON), "Random owner survives other cleanup");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && !p.hasStatusEffect(StatusEffects.BLINDNESS), "Random owner survives other cleanup");
             choose(p, 0);
             s.activate("double_challenge:random_potion,no_block_breaking");
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
@@ -331,7 +331,7 @@ public class RandomPotionGameTest implements FabricGameTest {
             scenario.activate("double_challenge:random_potion,all_debuffs");
             challenge.onStop(player.getServer(), player);
             context.assertEquals(2, player.getStatusEffect(StatusEffects.SPEED).getAmplifier(), "Foreign speed survives owned cleanup");
-            context.assertTrue(player.hasStatusEffect(StatusEffects.POISON), "Other challenge contributions remain");
+            context.assertTrue(player.hasStatusEffect(StatusEffects.BLINDNESS), "Other challenge contributions remain");
         }
         context.complete();
     }

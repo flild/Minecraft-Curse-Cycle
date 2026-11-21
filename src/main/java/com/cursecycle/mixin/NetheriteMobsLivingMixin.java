@@ -23,7 +23,7 @@ public abstract class NetheriteMobsLivingMixin {
     }
 
     // Vanilla LivingEntity.damageArmor is empty for mobs. Use the vanilla durability helper
-    // only for our items, so their explicitly required wear/Unbreaking/break behavior works.
+    // only for our items, so normal durability wear and break behavior works.
     @Inject(method = "applyArmorToDamage", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/entity/LivingEntity;damageArmor(Lnet/minecraft/entity/damage/DamageSource;F)V"))
     private void cursecycle$wearIssuedArmor(DamageSource source, float amount, CallbackInfoReturnable<Float> cir) {

@@ -27,7 +27,7 @@ public final class LockedContainersChallenge extends Challenge {
         super(ID, "Не трогай чужое",
                 "Сундуки, шалкеры и эндер-сундуки недоступны.",
                 "Сундуки, шалкеровые ящики и эндер-сундуки больше не открываются.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.EASY, ChallengeScope.GLOBAL);
     }
 
     private static boolean forbidden(Inventory inventory) {

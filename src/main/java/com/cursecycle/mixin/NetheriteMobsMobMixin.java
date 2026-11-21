@@ -7,6 +7,7 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.world.ServerWorld;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,29 +19,50 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class NetheriteMobsMobMixin implements NetheriteMobSpawn {
     @Unique private boolean cursecycle$birthRecorded;
     @Unique private boolean cursecycle$armorPending;
+    @Unique private boolean cursecycle$armorTracked;
+    @Unique private String cursecycle$birthSession = "";
 
     @Override public void cursecycle$recordBirth(boolean eligible) {
         if (cursecycle$birthRecorded) return;
         cursecycle$birthRecorded = true;
         cursecycle$armorPending = eligible;
+        if (eligible && ((MobEntity) (Object) this).getWorld() instanceof ServerWorld world)
+            cursecycle$birthSession = NetheriteMobsChallenge.currentSession(world);
     }
 
     @Override public void cursecycle$finishBirth() {
+        if (!cursecycle$armorPending && !cursecycle$armorTracked) return;
+        var mob = (MobEntity) (Object) this;
+        if (!(mob.getWorld() instanceof ServerWorld world)) return;
+        String session = NetheriteMobsChallenge.currentSession(world);
+        if (cursecycle$armorTracked && !session.equals(cursecycle$birthSession))
+            cursecycle$armorTracked = NetheriteMobsChallenge.removeExpiredArmor(mob, session);
         if (!cursecycle$armorPending) return;
         cursecycle$armorPending = false;
-        NetheriteMobsChallenge.equip((MobEntity) (Object) this);
+        if (!session.isEmpty() && session.equals(cursecycle$birthSession)) {
+            NetheriteMobsChallenge.equip(mob);
+            cursecycle$armorTracked = true;
+        }
     }
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     private void cursecycle$save(NbtCompound nbt, CallbackInfo ci) {
         nbt.putBoolean("cursecycle:mob_birth_recorded", cursecycle$birthRecorded);
         nbt.putBoolean("cursecycle:netherite_armor_pending", cursecycle$armorPending);
+        nbt.putString("cursecycle:netherite_birth_session", cursecycle$birthSession);
     }
 
     @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
     private void cursecycle$load(NbtCompound nbt, CallbackInfo ci) {
         cursecycle$birthRecorded = nbt.getBoolean("cursecycle:mob_birth_recorded");
         cursecycle$armorPending = nbt.getBoolean("cursecycle:netherite_armor_pending");
+        cursecycle$birthSession = nbt.getString("cursecycle:netherite_birth_session");
+        var mob = (MobEntity) (Object) this;
+        if (mob.getWorld() instanceof ServerWorld world) {
+            String session = NetheriteMobsChallenge.currentSession(world);
+            cursecycle$armorTracked = NetheriteMobsChallenge.removeExpiredArmor(mob, session);
+            if (cursecycle$armorTracked && !cursecycle$armorPending) cursecycle$birthSession = session;
+        }
     }
 
     @Inject(method = "tryEquip", at = @At("HEAD"), cancellable = true)
@@ -70,7 +92,7 @@ public abstract class NetheriteMobsMobMixin implements NetheriteMobSpawn {
         if (result == null || keepEquipment) return;
         var source = (MobEntity) (Object) this;
         // Curing and some other conversions normally discard equipment or try to drop it.
-        // Move only our permanent consequence; vanilla still handles every ordinary item.
+        // Move only our issued armor; vanilla still handles every ordinary item.
         for (var slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
             var stack = source.getEquippedStack(slot);
             if (NetheriteMobsChallenge.isIssued(stack)) {

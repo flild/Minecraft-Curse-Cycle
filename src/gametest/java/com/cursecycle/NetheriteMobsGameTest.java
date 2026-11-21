@@ -7,15 +7,13 @@ import com.cursecycle.state.CycleManager;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.SharedConstants;
 import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.ItemEnchantmentsComponent;
-import net.minecraft.enchantment.Enchantment;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.*;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.test.GameTest;
@@ -62,7 +60,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
                 finish(w, mob);
                 c.assertTrue(helmet == mob.getEquippedStack(EquipmentSlot.HEAD), "Idempotent birth");
                 c.assertEquals(13, helmet.getDamage(), "No durability refill");
-                // Do not leave armed targets (especially villagers/Thorns) for later birth cases.
+                // Do not leave armed targets for later birth cases.
                 mob.discard();
             }
             c.assertTrue(old.getEquippedStack(EquipmentSlot.HEAD).isOf(Items.GOLDEN_HELMET), "Old mob untouched");
@@ -133,12 +131,10 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             c.assertTrue(mob.tryEquip(new ItemStack(Items.NETHERITE_HELMET)).isEmpty(), "Pickup cannot replace marked armor");
             c.assertTrue(mob.getEquippedStack(EquipmentSlot.HEAD) == helmet, "Worn armor retained");
             c.assertFalse(mob.tryEquip(new ItemStack(Items.DIAMOND_SWORD)).isEmpty(), "Ordinary weapon pickup works");
-            // Remove Unbreaking only in fixture to make real vanilla break deterministic.
-            helmet.set(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
             mob.timeUntilRegen = 0;
             mob.damage(w.getDamageSources().playerAttack(player), 8);
             c.assertTrue(mob.getEquippedStack(EquipmentSlot.HEAD).isEmpty(), "Actual armor break");
-            c.assertTrue(mob.getHealth() > 12, "Issued armor and protection really reduce damage");
+            c.assertTrue(mob.getHealth() > 12, "Plain netherite armor really reduces damage");
             finish(w, mob);
             c.assertTrue(mob.getEquippedStack(EquipmentSlot.HEAD).isEmpty(), "Broken armor never regenerates");
             c.assertFalse(mob.tryEquip(new ItemStack(Items.IRON_HELMET)).isEmpty(), "Empty slot takes normal armor");
@@ -153,11 +149,10 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             c.assertEquals(uuid, loaded.getUuid(), "Same UUID");
             c.assertTrue(loaded.getEquippedStack(EquipmentSlot.HEAD).isOf(Items.IRON_HELMET), "Load never grants fresh kit");
             c.assertTrue(NetheriteMobsChallenge.isIssued(loaded.getEquippedStack(EquipmentSlot.CHEST)), "Origin survives entity NBT");
-            s.activate("no_sprint");
             var converted = loaded.convertTo(EntityType.DROWNED, true);
             cleanup.add(converted);
             finish(w, converted);
-            c.assertTrue(NetheriteMobsChallenge.isIssued(converted.getEquippedStack(EquipmentSlot.CHEST)), "Conversion retains origin after ending");
+            c.assertTrue(NetheriteMobsChallenge.isIssued(converted.getEquippedStack(EquipmentSlot.CHEST)), "Conversion retains origin while active");
             c.assertTrue(converted.dropStack(converted.getEquippedStack(EquipmentSlot.CHEST).copy()) == null, "Marked replacement drop denied");
             var ordinary = converted.dropStack(new ItemStack(Items.ROTTEN_FLESH));
             cleanup.add(ordinary);
@@ -174,11 +169,12 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             cleanup.addAll(drops);
             c.assertTrue(drops.stream().noneMatch(e -> NetheriteMobsChallenge.isIssued(e.getStack())), "No marked death loot");
             c.assertTrue(drops.stream().anyMatch(e -> e.getStack().isOf(Items.DIAMOND_SWORD)), "Normal guaranteed weapon drops");
+            s.activate("no_sprint");
             var fresh = spawn(c, w, EntityType.COW, cleanup);
             finish(w, fresh);
             c.assertTrue(fresh.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "No grants after ending");
             s.activate(ID);
-            // A birth saved before its first tick must not be lost or reevaluated on restart.
+            // A saved pending birth cannot issue armor after its challenge has ended.
             var pending = spawn(c, w, EntityType.COW, cleanup);
             var pendingNbt = new NbtCompound();
             pending.saveNbt(pendingNbt);
@@ -188,7 +184,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             cleanup.add(pendingLoaded);
             c.assertTrue(w.tryLoadEntity(pendingLoaded), "Load unfinished birth");
             finish(w, pendingLoaded);
-            kit(c, pendingLoaded);
+            noIssuedArmor(c, pendingLoaded);
             // Existing mobs from saves predating this mod have no birth marker either.
             var legacy = EntityType.COW.create(w);
             var legacyNbt = new NbtCompound();
@@ -204,7 +200,6 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             var curing = spawn(c, w, EntityType.ZOMBIE_VILLAGER, cleanup);
             finish(w, curing);
             curing.setCustomName(net.minecraft.text.Text.literal("netherite-cure-test"));
-            s.activate("no_sprint");
             var cure = net.minecraft.entity.mob.ZombieVillagerEntity.class.getDeclaredMethod("finishConversion", ServerWorld.class);
             cure.setAccessible(true);
             cure.invoke(curing, w);
@@ -214,6 +209,8 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             cleanup.addAll(cured);
             finish(w, cured.getFirst());
             kit(c, cured.getFirst());
+            s.activate("no_sprint");
+            noIssuedArmor(c, cured.getFirst());
             s.activate(ID);
             var slime = spawn(c, w, EntityType.SLIME, cleanup);
             slime.setSize(4, true);
@@ -274,7 +271,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             restored = CurseCycleState.createFromNbt(disk.getCompound("data"), w.getRegistryManager());
             persistence.set(CurseCycleState.STATE_KEY, restored);
             c.assertFalse(NetheriteMobsChallenge.active(w), "Offline ending persists");
-            c.assertTrue(NetheriteMobsChallenge.isIssued(mob.getEquippedStack(EquipmentSlot.CHEST)), "Old kit remains");
+            noIssuedArmor(c, mob);
             restored.getPersonalActiveChallenges().put(player.getUuid(), new ArrayList<>(List.of(ID)));
             c.assertFalse(NetheriteMobsChallenge.active(w), "PERSONAL ID cannot enable GLOBAL world rule");
             for (var command : List.of("fdc list", "fdc activate netherite_mobs", "fdc active"))
@@ -291,7 +288,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
-    public void repeatedActivationsKeepOnlyBirthConsequences(TestContext c) {
+    public void repeatedActivationsRemoveArmorWhenRuleEnds(TestContext c) {
         var cleanup = new ArrayList<Entity>();
         try (var s = new ChallengeScenario(c)) {
             var w = c.getWorld();
@@ -304,7 +301,7 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             var pending = spawn(c, w, EntityType.COW, cleanup);
             s.activate("no_sprint");
             finish(w, pending);
-            kit(c, pending);
+            noIssuedArmor(c, pending);
             pending.discard(); before.discard();
             var first = s.player();
             var second = s.player();
@@ -332,7 +329,8 @@ public class NetheriteMobsGameTest implements FabricGameTest {
                 }
                 s.activate("no_sprint");
                 finish(w, mob);
-                c.assertTrue(mob.getEquippedStack(EquipmentSlot.CHEST) == chest, "Ending preserves permanent gear");
+                noIssuedArmor(c, mob);
+                c.assertTrue(mob.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Ending removes issued gear");
                 c.assertTrue(mob.dropStack(chest.copy()) == null, "Ending preserves no-drop");
                 var fresh = spawn(c, w, EntityType.COW, cleanup);
                 finish(w, fresh);
@@ -400,16 +398,14 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             var converted = source.convertTo(EntityType.DROWNED, true);
             cleanup.add(converted);
             finish(w, converted);
-            kit(c, converted);
+            noIssuedArmor(c, converted);
             c.assertTrue(source.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "Conversion moves, never clones");
-            var originalChest = converted.getEquippedStack(EquipmentSlot.CHEST);
-            originalChest.setDamage(23);
+            noIssuedArmor(c, issued);
             var next = converted.convertTo(EntityType.ZOMBIE, false);
             cleanup.add(next);
             finish(w, next);
             c.assertTrue(converted.getEquippedStack(EquipmentSlot.CHEST).isEmpty(), "False conversion clears source too");
-            c.assertEquals(23, next.getEquippedStack(EquipmentSlot.CHEST).getDamage(), "False conversion preserves wear");
-            c.assertTrue(next.dropStack(next.getEquippedStack(EquipmentSlot.CHEST).copy()) == null, "Converted gear stays no-drop");
+            noIssuedArmor(c, next);
             s.activate(ID);
             var stand = new net.minecraft.entity.decoration.ArmorStandEntity(w, 2, 80, 2);
             cleanup.add(stand);
@@ -438,8 +434,8 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             w.getServer().setDifficulty(net.minecraft.world.Difficulty.NORMAL, true);
             w.getGameRules().get(net.minecraft.world.GameRules.DISABLE_RAIDS).set(false, w.getServer());
             var player = s.player();
-            s.activate("double_challenge:netherite_mobs,endless_raid");
-            c.assertTrue(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Raid companion actually applies omen");
+            s.activate("double_challenge:netherite_mobs,no_block_breaking");
+            c.assertTrue(player.hasStatusEffect(StatusEffects.MINING_FATIGUE), "Companion actually applies fatigue");
             var wave = Raid.class.getDeclaredMethod("spawnNextWave", BlockPos.class);
             wave.setAccessible(true);
             // Invoke the real wave builder without waiting for village search/countdown.
@@ -459,13 +455,13 @@ public class NetheriteMobsGameTest implements FabricGameTest {
                     } else kit(c, raider);
                 }
                 if (phase == 0) {
-                    s.activate("endless_raid");
-                    c.assertTrue(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Raid companion survives netherite ending");
-                    for (var raider : raid.getAllRaiders()) kit(c, raider);
+                    s.activate("no_block_breaking");
+                    c.assertTrue(player.hasStatusEffect(StatusEffects.MINING_FATIGUE), "Companion survives netherite ending");
+                    for (var raider : raid.getAllRaiders()) noIssuedArmor(c, raider);
                 } else if (phase == 1) {
-                    s.activate("double_challenge:netherite_mobs,endless_raid");
+                    s.activate("double_challenge:netherite_mobs,no_block_breaking");
                     s.activate(ID);
-                    c.assertFalse(player.hasStatusEffect(StatusEffects.BAD_OMEN), "Ending companion removes its omen");
+                    c.assertFalse(player.hasStatusEffect(StatusEffects.MINING_FATIGUE), "Ending companion removes its fatigue");
                     c.assertTrue(NetheriteMobsChallenge.active(w), "Netherite remains active");
                 }
             }
@@ -476,13 +472,118 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             finish(w, cow);
             kit(c, cow);
             c.assertTrue(cow.getArmor() > 0, "Player armor challenge never disables mob armor");
-            c.assertFalse(cow.hasStatusEffect(StatusEffects.BAD_OMEN), "Player effect not copied to mob");
+            c.assertFalse(cow.hasStatusEffect(StatusEffects.MINING_FATIGUE), "Player effect not copied to mob");
         } finally {
             raids.forEach(Raid::invalidate);
             cleanup.forEach(Entity::discard);
             w.getServer().setDifficulty(difficulty, true);
             w.getGameRules().get(net.minecraft.world.GameRules.DISABLE_RAIDS).set(disabled, w.getServer());
         }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
+    public void endingCleansAllWorldsAndPreservesForeignEquipment(TestContext c) {
+        var cleanup = new ArrayList<Entity>();
+        try (var s = new ChallengeScenario(c)) {
+            s.activate(ID);
+            c.assertTrue(c.getWorld().getServer().getPlayerManager().getPlayerList().isEmpty(), "Empty server");
+            var mobs = new ArrayList<MobEntity>();
+            for (var world : c.getWorld().getServer().getWorlds()) {
+                var mob = spawn(c, world, EntityType.COW, cleanup);
+                finish(world, mob);
+                kit(c, mob);
+                mob.equipStack(EquipmentSlot.HEAD, new ItemStack(Items.DIAMOND_HELMET));
+                mob.equipStack(EquipmentSlot.MAINHAND, new ItemStack(Items.DIAMOND_SWORD));
+                mobs.add(mob);
+            }
+            // A passenger with pending equipment must also be cancelled without waiting for a tick.
+            var pending = spawn(c, c.getWorld(), EntityType.COW, cleanup);
+            pending.startRiding(mobs.getFirst(), true);
+            s.activate("no_sprint");
+            for (var mob : mobs) {
+                // Vanilla's entity lookup excludes births in chunks not yet tracked in other dimensions.
+                var world = (ServerWorld) mob.getWorld();
+                if (world == c.getWorld()) noIssuedArmor(c, mob);
+                finish(world, mob);
+                noIssuedArmor(c, mob);
+                c.assertTrue(mob.getEquippedStack(EquipmentSlot.HEAD).isOf(Items.DIAMOND_HELMET), "Foreign armor survives");
+                c.assertTrue(mob.getMainHandStack().isOf(Items.DIAMOND_SWORD), "Weapon survives");
+            }
+            s.activate(ID);
+            finish(c.getWorld(), pending);
+            noIssuedArmor(c, pending);
+            // Disabling via config uses the schedule reconciliation even without online players.
+            var disabled = spawn(c, c.getWorld(), EntityType.COW, cleanup);
+            finish(c.getWorld(), disabled);
+            var challenge = ChallengeRegistry.get(ID);
+            try {
+                challenge.setEnabled(false);
+                CycleManager.updateSchedule(c.getWorld().getServer(), CurseCycleMod.getConfig());
+                noIssuedArmor(c, disabled);
+            } finally { challenge.setEnabled(true); }
+        } finally { cleanup.forEach(Entity::discard); }
+        c.complete();
+    }
+
+    @GameTest(templateName = EMPTY_STRUCTURE, batchId = "netherite_mobs")
+    public void savedArmorExpiresAcrossEndingAndReactivation(TestContext c) {
+        var cleanup = new ArrayList<Entity>();
+        try (var s = new ChallengeScenario(c)) {
+            var w = c.getWorld();
+            s.activate(ID);
+            var mob = spawn(c, w, EntityType.COW, cleanup);
+            finish(w, mob);
+            // Upgrade a marked enchanted helmet from a save made by the previous implementation.
+            var legacyHelmet = mob.getEquippedStack(EquipmentSlot.HEAD);
+            var legacyData = new NbtCompound();
+            legacyData.putBoolean(NetheriteMobsChallenge.ITEM_MARKER, true);
+            legacyHelmet.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(legacyData));
+            legacyHelmet.addEnchantment(w.getRegistryManager().get(RegistryKeys.ENCHANTMENT)
+                    .getEntry(Enchantments.PROTECTION).orElseThrow(), 4);
+            var saved = new NbtCompound();
+            mob.saveNbt(saved);
+            mob.discard();
+            // Simulate disk roundtrip of both world state and entity NBT while still active.
+            var persistence = w.getPersistentStateManager();
+            var stateNbt = s.state.writeNbt(new NbtCompound(), w.getRegistryManager());
+            var restored = CurseCycleState.createFromNbt(stateNbt, w.getRegistryManager());
+            persistence.set(CurseCycleState.STATE_KEY, restored);
+            var sameSession = (MobEntity) EntityType.loadEntityWithPassengers(saved, w, e -> e);
+            cleanup.add(sameSession);
+            c.assertTrue(w.tryLoadEntity(sameSession), "Reload active entity");
+            finish(w, sameSession);
+            kit(c, sameSession);
+            sameSession.saveNbt(saved); // Persist the migrated legacy helmet's interval marker.
+            sameSession.discard();
+            CycleManager.activateChallenge(w.getServer(), restored, "no_sprint");
+            var ended = (MobEntity) EntityType.loadEntityWithPassengers(saved, w, e -> e);
+            cleanup.add(ended);
+            c.assertTrue(w.tryLoadEntity(ended), "Reload after ending");
+            noIssuedArmor(c, ended); // Removed during NBT load, before the first tick.
+            ended.discard();
+            CycleManager.activateChallenge(w.getServer(), restored, ID);
+            var nextSession = (MobEntity) EntityType.loadEntityWithPassengers(saved, w, e -> e);
+            cleanup.add(nextSession);
+            c.assertTrue(w.tryLoadEntity(nextSession), "Reload during next netherite interval");
+            finish(w, nextSession);
+            noIssuedArmor(c, nextSession);
+            // Pending equipment from a previous interval must not reappear either.
+            var pending = spawn(c, w, EntityType.COW, cleanup);
+            var pendingNbt = new NbtCompound();
+            pending.saveNbt(pendingNbt);
+            pending.discard();
+            CycleManager.activateChallenge(w.getServer(), restored, "no_sprint");
+            CycleManager.activateChallenge(w.getServer(), restored, ID);
+            var oldPending = (MobEntity) EntityType.loadEntityWithPassengers(pendingNbt, w, e -> e);
+            cleanup.add(oldPending);
+            c.assertTrue(w.tryLoadEntity(oldPending), "Reload expired pending birth");
+            finish(w, oldPending);
+            noIssuedArmor(c, oldPending);
+            var fresh = spawn(c, w, EntityType.COW, cleanup);
+            finish(w, fresh);
+            kit(c, fresh);
+        } finally { cleanup.forEach(Entity::discard); }
         c.complete();
     }
 
@@ -508,15 +609,12 @@ public class NetheriteMobsGameTest implements FabricGameTest {
             c.assertTrue(stack.isOf(items.get(i)), "Netherite " + slot + " on " + mob.getType());
             c.assertTrue(NetheriteMobsChallenge.isIssued(stack), "Origin " + slot);
             c.assertEquals(0, stack.getDamage(), "Full initial durability " + slot + " on " + mob.getType());
-            Map<RegistryKey<Enchantment>, Integer> expected = new HashMap<>(Map.of(Enchantments.PROTECTION, 4,
-                    Enchantments.UNBREAKING, 3, Enchantments.MENDING, 1, Enchantments.THORNS, 3));
-            if (slot == EquipmentSlot.HEAD) expected.putAll(Map.of(Enchantments.RESPIRATION, 3, Enchantments.AQUA_AFFINITY, 1));
-            if (slot == EquipmentSlot.LEGS) expected.put(Enchantments.SWIFT_SNEAK, 3);
-            if (slot == EquipmentSlot.FEET) expected.putAll(Map.of(Enchantments.FEATHER_FALLING, 4, Enchantments.DEPTH_STRIDER, 3, Enchantments.SOUL_SPEED, 3));
-            var actual = stack.get(DataComponentTypes.ENCHANTMENTS);
-            c.assertEquals(expected.size(), actual.getEnchantments().size(), "Exact enchantment count " + slot);
-            for (var entry : expected.entrySet())
-                c.assertEquals(entry.getValue(), actual.getLevel(mob.getRegistryManager().get(RegistryKeys.ENCHANTMENT).getEntry(entry.getKey()).orElseThrow()), "Exact enchantment " + entry.getKey());
+            c.assertFalse(stack.hasEnchantments(), "No enchantments " + slot);
         }
+    }
+
+    private static void noIssuedArmor(TestContext c, MobEntity mob) {
+        for (var slot : ARMOR)
+            c.assertFalse(NetheriteMobsChallenge.isIssued(mob.getEquippedStack(slot)), "No issued armor in " + slot);
     }
 }

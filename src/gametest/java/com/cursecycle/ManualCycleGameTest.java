@@ -346,7 +346,7 @@ public class ManualCycleGameTest implements FabricGameTest {
             var source = server.getCommandSource().withLevel(2);
             server.getOverworld().setTimeOfDay(119_999);
             c.assertEquals(1, dispatcher.execute("fdc activate all_debuffs", source), "Set up previous challenge");
-            c.assertTrue(player.hasStatusEffect(StatusEffects.POISON), "Previous challenge actually applied effects");
+            c.assertTrue(player.hasStatusEffect(StatusEffects.BLINDNESS), "Previous challenge actually applied effects");
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 600, 1));
             c.assertEquals(1, dispatcher.execute("fdc trigger_spin", source), "Actual wheel command");
             String promised = s.state.getNextChallengeId();
@@ -394,7 +394,7 @@ public class ManualCycleGameTest implements FabricGameTest {
                     List.of("test_easy", "test_easy", "all_debuffs"));
             s.state.getPersonalActiveChallengeIds(UUID.randomUUID()).add("all_debuffs");
             ChallengeRegistry.get("all_debuffs").onStart(first.getServer(), first);
-            c.assertTrue(first.hasStatusEffect(StatusEffects.POISON), "Personal effect really active");
+            c.assertTrue(first.hasStatusEffect(StatusEffects.BLINDNESS), "Personal effect really active");
             s.state.setNextChallengeId("double_challenge:no_sprint,no_jumping");
             c.assertEquals(1, first.getServer().getCommandManager().getDispatcher().execute(
                     "cursecycle activate_next", first.getServer().getCommandSource().withLevel(2)), "Long alias works");
@@ -402,7 +402,7 @@ public class ManualCycleGameTest implements FabricGameTest {
             c.assertEquals(1, probe.stops.get(second.getUuid()), "Global challenge stops on every player");
             c.assertEquals(List.of("no_sprint", "no_jumping"), s.state.getActiveChallengeIds(), "Both children started");
             c.assertTrue(s.state.getPersonalActiveChallenges().isEmpty(), "Offline and online personal assignments cleared");
-            c.assertFalse(first.hasStatusEffect(StatusEffects.POISON), "Personal effects removed");
+            c.assertFalse(first.hasStatusEffect(StatusEffects.BLINDNESS), "Personal effects removed");
         } finally {
             ChallengeRegistry.register(oldChallenge);
         }

@@ -5,7 +5,7 @@ import com.cursecycle.state.CurseCycleState;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.server.world.ServerWorld;
 
@@ -16,13 +16,13 @@ public final class BuddingChallenge extends Challenge {
     public BuddingChallenge() {
         super(ID, "Акция 1+2",
                 "Убив одного, получаешь ещё двоих в подарок.",
-                "На месте погибшего враждебного моба появляются два маленьких зомби. Из них новые зомби уже не вылезут.",
+                "На месте погибшего моба, в том числе мирного, появляются два маленьких зомби. Из них новые зомби уже не вылезут.",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 
     /** A GLOBAL world consequence, independent of killer, player count and player game mode. */
     public static void died(LivingEntity entity) {
-        if (!(entity instanceof HostileEntity) || entity.isAlive()
+        if (!(entity instanceof MobEntity) || entity.isAlive()
                 || !(entity.getWorld() instanceof ServerWorld world)) return;
         var challenge = ChallengeRegistry.get(ID);
         if (challenge == null || !challenge.isEnabled()

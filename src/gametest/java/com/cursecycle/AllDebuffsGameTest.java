@@ -97,13 +97,13 @@ public class AllDebuffsGameTest implements FabricGameTest {
             var p = s.player();
             s.activate(ID);
             var late = s.player();
-            c.assertTrue(late.hasStatusEffect(StatusEffects.POISON), "Actual JOIN applies active rules");
+            c.assertTrue(late.hasStatusEffect(StatusEffects.BLINDNESS), "Actual JOIN applies active rules");
             late.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 300, 3));
             for (var mode : new GameMode[]{GameMode.CREATIVE, GameMode.SPECTATOR, GameMode.ADVENTURE, GameMode.SURVIVAL}) {
                 p.changeGameMode(mode);
                 tick(p);
                 boolean eligible = mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE;
-                c.assertTrue(p.hasStatusEffect(StatusEffects.POISON) == eligible, "Mode eligibility " + mode);
+                c.assertTrue(p.hasStatusEffect(StatusEffects.BLINDNESS) == eligible, "Mode eligibility " + mode);
                 c.assertEquals(3, late.getStatusEffect(StatusEffects.SLOWNESS).getAmplifier(), "Independent second player");
             }
             challenge.setEnabled(false);
@@ -113,16 +113,16 @@ public class AllDebuffsGameTest implements FabricGameTest {
             tick(p);
             p.setHealth(0);
             p.playerTick();
-            c.assertTrue(!p.hasStatusEffect(StatusEffects.POISON), "Dead object loses own effects");
+            c.assertTrue(!p.hasStatusEffect(StatusEffects.BLINDNESS), "Dead object loses own effects");
             p = s.respawn(p, false);
             tick(p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON), "New object after death receives active rules");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.BLINDNESS), "New object after death receives active rules");
             var origin = p.getServerWorld();
             var originPos = p.getPos();
             p.teleport(server.getWorld(net.minecraft.world.World.NETHER), .5, 80, .5, 0, 0);
             p.onTeleportationDone();
             tick(p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON), "Nether retains rules");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.BLINDNESS), "Nether retains rules");
             p.teleport(origin, originPos.x, originPos.y, originPos.z, 0, 0);
             p.onTeleportationDone();
             p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 200, 2));
@@ -131,7 +131,7 @@ public class AllDebuffsGameTest implements FabricGameTest {
             var active = saved(p);
             p.readCustomDataFromNbt(active);
             EffectLedger.of(p).reconcile();
-            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON), "Active NBT restores contributions");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.BLINDNESS), "Active NBT restores contributions");
             var persistence = server.getOverworld().getPersistentStateManager();
             s.state.markDirty();
             persistence.save();
@@ -141,20 +141,20 @@ public class AllDebuffsGameTest implements FabricGameTest {
             s.activate("no_sprint");
             p.readCustomDataFromNbt(active);
             EffectLedger.of(p).reconcile();
-            c.assertTrue(!p.hasStatusEffect(StatusEffects.POISON), "Stale offline NBT cleaned without onStop");
+            c.assertTrue(!p.hasStatusEffect(StatusEffects.BLINDNESS), "Stale offline NBT cleaned without onStop");
             c.assertEquals(2, p.getStatusEffect(StatusEffects.SLOWNESS).getAmplifier(), "Live object transfer and stale cleanup retain external effect");
             c.assertEquals(199, p.getStatusEffect(StatusEffects.SLOWNESS).getDuration(), "External time remains exact across transfer");
             s.state.getPersonalActiveChallengeIds(p.getUuid()).add(ID);
             s.state.markDirty();
             tick(p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.POISON) && !late.hasStatusEffect(StatusEffects.POISON), "PERSONAL does not bleed to another player");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.BLINDNESS) && !late.hasStatusEffect(StatusEffects.BLINDNESS), "PERSONAL does not bleed to another player");
             ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(p.networkHandler, server);
-            c.assertTrue(!p.hasStatusEffect(StatusEffects.POISON), "Actual DISCONNECT cleans own contribution");
+            c.assertTrue(!p.hasStatusEffect(StatusEffects.BLINDNESS), "Actual DISCONNECT cleans own contribution");
             server.getPlayerManager().remove(p);
             s.state.getPersonalActiveChallengeIds(p.getUuid()).clear();
             s.state.markDirty();
             var returned = s.player(p.getUuid());
-            c.assertTrue(!returned.hasStatusEffect(StatusEffects.POISON), "Reconnect after end never restores stale rules");
+            c.assertTrue(!returned.hasStatusEffect(StatusEffects.BLINDNESS), "Reconnect after end never restores stale rules");
         } finally {
             challenge.setEnabled(true);
             server.setDefaultGameMode(originalMode);
@@ -168,10 +168,10 @@ public class AllDebuffsGameTest implements FabricGameTest {
             var p = s.player();
             s.activate("double_challenge:all_debuffs,no_sprint");
             p.setSprinting(true);
-            c.assertTrue(!p.isSprinting() && p.hasStatusEffect(StatusEffects.POISON), "Both mechanics operate");
+            c.assertTrue(!p.isSprinting() && p.hasStatusEffect(StatusEffects.BLINDNESS), "Both mechanics operate");
             s.activate("no_sprint");
             p.setSprinting(true);
-            c.assertTrue(!p.isSprinting() && !p.hasStatusEffect(StatusEffects.POISON), "Stop retains no_sprint");
+            c.assertTrue(!p.isSprinting() && !p.hasStatusEffect(StatusEffects.BLINDNESS), "Stop retains no_sprint");
             s.activate("double_challenge:all_debuffs,no_block_breaking");
             s.state.getActiveChallengeIds().remove(ID);
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
@@ -183,12 +183,12 @@ public class AllDebuffsGameTest implements FabricGameTest {
             c.assertTrue(EffectLedger.of(p).owns("random_potion", StatusEffects.SLOWNESS), "Random potion selects overlapping slowness");
             s.state.getActiveChallengeIds().remove("random_potion");
             ChallengeRegistry.get("random_potion").onStop(p.getServer(), p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && p.hasStatusEffect(StatusEffects.POISON), "Removing random owner preserves all_debuffs");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && p.hasStatusEffect(StatusEffects.BLINDNESS), "Removing random owner preserves all_debuffs");
             p.getRandom().setSeed(seed);
             s.activate("double_challenge:all_debuffs,random_potion");
             s.state.getActiveChallengeIds().remove(ID);
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
-            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && !p.hasStatusEffect(StatusEffects.POISON), "Removing all_debuffs preserves random owner");
+            c.assertTrue(p.hasStatusEffect(StatusEffects.SLOWNESS) && !p.hasStatusEffect(StatusEffects.BLINDNESS), "Removing all_debuffs preserves random owner");
             s.activate("no_sprint");
             p.setHealth(10);
             p.heal(2);
@@ -200,7 +200,7 @@ public class AllDebuffsGameTest implements FabricGameTest {
             ChallengeRegistry.get(ID).onStop(p.getServer(), p);
             p.heal(2);
             c.assertEquals(12F, p.getHealth(), "No healing remains after all_debuffs removal");
-            c.assertTrue(!p.hasStatusEffect(StatusEffects.POISON), "Only harmful owner removed");
+            c.assertTrue(!p.hasStatusEffect(StatusEffects.BLINDNESS), "Only harmful owner removed");
         }
         c.complete();
     }
@@ -252,29 +252,39 @@ public class AllDebuffsGameTest implements FabricGameTest {
             for (var effect : Registries.STATUS_EFFECT.streamEntries().toList()) {
                 boolean expected = effect.registryKey().getValue().getNamespace().equals("minecraft")
                         && effect.value().getCategory() == StatusEffectCategory.HARMFUL
-                        && !effect.equals(StatusEffects.INSTANT_DAMAGE) && !effect.equals(StatusEffects.WITHER);
+                        && !effect.equals(StatusEffects.INSTANT_DAMAGE) && !effect.equals(StatusEffects.WITHER)
+                        && !effect.equals(StatusEffects.LEVITATION) && !effect.equals(StatusEffects.POISON);
                 context.assertTrue(player.hasStatusEffect(effect) == expected,
                         "Exact registry membership: " + effect.registryKey());
                 if (expected) context.assertEquals(0, player.getStatusEffect(effect).getAmplifier(), "Level I");
             }
             var late = scenario.player();
             ChallengeRegistry.get("all_debuffs").onTick(late.getServer(), late);
-            context.assertTrue(late.hasStatusEffect(StatusEffects.POISON), "Late join receives the shared activation on the first Survival tick");
+            context.assertTrue(late.hasStatusEffect(StatusEffects.BLINDNESS), "Late join receives the shared activation on the first Survival tick");
             context.assertTrue(!player.hasStatusEffect(StatusEffects.WITHER), "No owned wither at activation");
             context.assertTrue(!player.hasStatusEffect(StatusEffects.INSTANT_DAMAGE), "No owned instant damage");
             context.assertEquals(20F, player.getHealth(), "No activation damage pulse");
             player.clearStatusEffects();
             ChallengeRegistry.get("all_debuffs").onTick(player.getServer(), player);
             for (var effect : AllDebuffsChallenge.effects()) context.assertTrue(player.hasStatusEffect(effect), "Next tick restores milk-cleared effects");
+            context.assertTrue(!player.hasStatusEffect(StatusEffects.LEVITATION), "Milk does not cause excluded levitation to return");
+            context.assertTrue(!player.hasStatusEffect(StatusEffects.POISON), "Milk does not cause excluded poison to return");
             player.removeStatusEffect(StatusEffects.INFESTED); // Isolate HP assertion from random silverfish spawns.
             player.timeUntilRegen = 0;
             StatusEffects.INSTANT_DAMAGE.value().applyInstantEffect(null, null, player, 0, 1.0);
             context.assertEquals(14F, player.getHealth(), "Excluded instant damage from an external source remains allowed");
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 400));
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.LEVITATION, 400));
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 400));
+            ChallengeRegistry.get("all_debuffs").onTick(player.getServer(), player);
+            context.assertEquals(400, player.getStatusEffect(StatusEffects.LEVITATION).getDuration(), "External levitation remains unchanged while active");
+            context.assertEquals(400, player.getStatusEffect(StatusEffects.POISON).getDuration(), "External poison remains unchanged while active");
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 400, 1));
             scenario.activate("no_sprint");
             context.assertEquals(14F, player.getHealth(), "Cleanup never rolls back external damage");
             context.assertTrue(player.hasStatusEffect(StatusEffects.WITHER), "External wither survives cleanup");
+            context.assertTrue(player.hasStatusEffect(StatusEffects.LEVITATION), "External levitation survives cleanup");
+            context.assertTrue(player.hasStatusEffect(StatusEffects.POISON), "External poison survives cleanup");
             context.assertTrue(player.hasStatusEffect(StatusEffects.SPEED), "Beneficial effect survives cleanup");
             for (var effect : AllDebuffsChallenge.effects()) context.assertTrue(!player.hasStatusEffect(effect), "Owned harmful effect removed");
             scenario.activate("double_challenge:all_debuffs,no_block_breaking");

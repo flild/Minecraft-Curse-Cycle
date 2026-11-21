@@ -29,11 +29,10 @@ public final class WarrantyExpiredChallenge extends Challenge {
     private final Map<ServerPlayerEntity, Session> sessions = new WeakHashMap<>();
 
     public WarrantyExpiredChallenge() {
-        super(ID, "Гарантия закончилась",
-                "Не пользуешься — убери.",
-                "Надетая броня и предметы в руках теряют прочность сами по себе. "
-                        + "Убрал инструмент, снял броню — сохранил прочность. "
-                        + "После взятия предмета в руку есть две секунды до начала износа.",
+        super(ID, "Тает на глазах",
+                "Броня и предметы в руках постепенно теряют прочность.",
+                "Надетая броня и предметы в обеих руках постепенно теряют прочность. "
+                        + "Для предметов в руках износ начинается через две секунды. ",
                 ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
     }
 

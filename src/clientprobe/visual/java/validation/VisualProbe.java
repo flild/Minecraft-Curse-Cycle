@@ -44,7 +44,7 @@ public final class VisualProbe implements ClientModInitializer {
                     GLFW.glfwHideWindow(client.getWindow().getHandle());
                     CurseCycleMod.getConfig().enableWheelAnimation = true;
                     ClientDataHolder.updateState(26, 7600, List.of("heartbeat", "blocked_direction"),
-                            DOUBLE, List.of("no_sprint", DOUBLE, "gills", "endless_raid"), "forward");
+                            DOUBLE, List.of("no_sprint", DOUBLE, "gills", "netherite_mobs"), "forward");
                     client.setScreen(new WheelScreen(CANDIDATES, "the_floor_is_lava"));
                 }
                 ticks++;

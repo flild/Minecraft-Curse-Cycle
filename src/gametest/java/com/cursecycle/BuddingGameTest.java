@@ -69,8 +69,9 @@ public class BuddingGameTest implements FabricGameTest {
         }
         List<? extends ZombieEntity> children() { return children(c.getWorld()); }
         void kill(LivingEntity mob) {
-            c.assertTrue(mob.damage(mob.getWorld().getDamageSources().genericKill(), Float.MAX_VALUE), "Lethal damage accepted");
-            c.assertFalse(mob.isAlive(), "Confirmed vanilla death");
+            // SquidEntity.damage can return false even after a fatal hit without an attacker.
+            mob.damage(mob.getWorld().getDamageSources().genericKill(), Float.MAX_VALUE);
+            c.assertFalse(mob.isAlive(), "Confirmed vanilla death: " + mob.getType());
         }
         void clearChildren() { children().forEach(Entity::discard); }
         @Override public void close() {
@@ -133,7 +134,7 @@ public class BuddingGameTest implements FabricGameTest {
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "budding")
     public void nonfatalDamageTotemAndDiscardDoNotBud(TestContext c) {
         try (var a = new Arena(c)) {
-            var source = a.spawn(EntityType.SKELETON);
+            var source = a.spawn(EntityType.COW);
             BuddingChallenge.died(source);
             source.damage(c.getWorld().getDamageSources().generic(), 1);
             c.assertEquals(0, a.children().size(), "Alive source does not trigger");
@@ -151,30 +152,35 @@ public class BuddingGameTest implements FabricGameTest {
     }
 
     @GameTest(templateName = EMPTY_STRUCTURE, batchId = "budding")
-    public void peacefulAndHostileBoundaryTypes(TestContext c) {
+    public void peacefulAndHostileMobsQualifyButArmorStandsDoNot(TestContext c) {
         try (var a = new Arena(c)) {
-            // Contract deliberately uses the actual class hierarchy rather than Monster/spawn group/anger.
-            for (var type : List.of(EntityType.COW, EntityType.WOLF, EntityType.VILLAGER, EntityType.IRON_GOLEM,
+            // All MobEntity subclasses qualify, regardless of spawn group or anger.
+            for (var type : List.of(EntityType.COW, EntityType.PIG, EntityType.SHEEP, EntityType.CHICKEN,
+                    EntityType.WOLF, EntityType.CAT, EntityType.VILLAGER, EntityType.IRON_GOLEM,
+                    EntityType.BAT, EntityType.COD, EntityType.SQUID, EntityType.AXOLOTL, EntityType.ALLAY,
                     EntityType.SLIME, EntityType.MAGMA_CUBE, EntityType.GHAST, EntityType.PHANTOM,
-                    EntityType.SHULKER, EntityType.HOGLIN, EntityType.ENDER_DRAGON)) {
-                var source = a.spawn(type);
-                c.assertFalse(source instanceof HostileEntity, "Excluded hierarchy " + type);
-                // Dragon has a multipart damage/death sequence: only class membership is tested here.
-                if (type != EntityType.ENDER_DRAGON) a.kill(source);
-                else source.discard();
-                c.assertEquals(0, a.children().size(), "No births for " + type);
-                source.discard();
-            }
-            for (var type : List.of(EntityType.ZOMBIE, EntityType.CREEPER, EntityType.SPIDER,
+                    EntityType.SHULKER, EntityType.HOGLIN, EntityType.ZOMBIE, EntityType.CREEPER, EntityType.SPIDER,
                     EntityType.ENDERMAN, EntityType.PIGLIN, EntityType.ZOMBIFIED_PIGLIN,
                     EntityType.ZOGLIN, EntityType.WITHER)) {
                 var source = a.spawn(type);
-                c.assertTrue(source instanceof HostileEntity, "Included hierarchy " + type);
                 a.kill(source);
                 c.assertEquals(2, a.children().size(), "Two births for " + type);
+                for (var child : a.children()) {
+                    c.assertTrue(child.isBaby(), "Baby from " + type);
+                    c.assertEquals(source.getPos(), child.getPos(), "Death position for " + type);
+                }
+                BuddingChallenge.died(source);
+                c.assertEquals(2, a.children().size(), "No duplicate births for " + type);
+                a.children().forEach(a::kill);
+                c.assertEquals(0, a.children().size(), "Children from " + type + " cannot chain");
                 source.discard();
-                a.clearChildren();
             }
+            var stand = EntityType.ARMOR_STAND.create(c.getWorld());
+            stand.refreshPositionAndAngles(c.getAbsolutePos(new BlockPos(2, 3, 2)), 0, 0);
+            a.entities.add(stand);
+            c.assertTrue(c.getWorld().spawnEntity(stand), "Armor stand fixture spawned");
+            a.kill(stand);
+            c.assertEquals(0, a.children().size(), "Armor stand is not a mob");
         }
         c.complete();
     }
@@ -245,19 +251,22 @@ public class BuddingGameTest implements FabricGameTest {
         try (var a = new Arena(c)) {
             a.s.activate("test_easy");
             a.kill(a.spawn(EntityType.SKELETON));
+            a.kill(a.spawn(EntityType.COW));
             c.assertEquals(0, a.children().size(), "No births after stop");
             a.s.activate(ID);
             challenge.setEnabled(false);
             a.kill(a.spawn(EntityType.SKELETON));
+            a.kill(a.spawn(EntityType.COW));
             c.assertEquals(0, a.children().size(), "Disabled means no births");
             challenge.setEnabled(true);
             a.s.activate("double_challenge:budding,budding");
-            a.kill(a.spawn(EntityType.SKELETON));
+            a.kill(a.spawn(EntityType.COW));
             c.assertEquals(2, a.children().size(), "Duplicate effective ID still only two");
             a.clearChildren();
             var source = c.getWorld().getServer().getCommandSource().withLevel(2);
             c.assertTrue(c.getWorld().getServer().getCommandManager().getDispatcher().execute("fdc reset", source) > 0, "Real reset");
             a.kill(a.spawn(EntityType.SKELETON));
+            a.kill(a.spawn(EntityType.COW));
             c.assertEquals(0, a.children().size(), "No births after reset");
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
             throw new AssertionError(e);

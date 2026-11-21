@@ -5,6 +5,7 @@ import com.cursecycle.challenge.Challenge;
 import com.cursecycle.challenge.ChallengeRegistry;
 import com.cursecycle.challenge.ChallengeUtils;
 import com.cursecycle.challenge.impl.BlockedDirectionChallenge;
+import com.cursecycle.challenge.impl.NetheriteMobsChallenge;
 import com.cursecycle.config.CurseCycleConfig;
 import com.cursecycle.network.NetworkHandler;
 import com.cursecycle.roulette.RouletteSelector;
@@ -80,6 +81,7 @@ public class CycleManager {
             updateCycle(state, config, timeOfDay, activate, announce);
         }
         BlockedDirectionChallenge.reconcile(server);
+        NetheriteMobsChallenge.reconcile(server);
     }
 
     /** Preparation uses online server ticks, independent of sleep and commands changing the world day. */
@@ -287,6 +289,7 @@ public class CycleManager {
 
         state.getActiveChallengeIds().addAll(toActivate);
         BlockedDirectionChallenge.reconcile(server);
+        NetheriteMobsChallenge.reconcile(server);
         state.addHistory(historyEntryId, state.getCurrentDay());
 
         for (String id : toActivate) {

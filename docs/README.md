@@ -58,7 +58,6 @@
 - [Не трогай чужое](locked-containers-testing.md) — `locked_containers`.
 - [Ноги помнят](movement-memory-testing.md) — `movement_memory`.
 - [Почти как эндермен](damage-teleport-testing.md) — `damage_teleport`.
-- [Рейд без выходных](endless-raid-testing.md) — `endless_raid`.
 - [Смотри мне в глаза.](forced-third-person-front-testing.md) — `forced_third_person_front`.
 - [Стоило купить крем от солнца](sunlight-burn-testing.md) — `sunlight_burn`.
 - [Судебное решение](inventory-lockdown-testing.md) — `inventory_lockdown`.
@@ -74,7 +73,7 @@
 
 - [Метр с кепкой](tiny-player-testing.md) — `tiny_player`.
 - [В дверях застрял](giant-player-testing.md) — `giant_player`.
-- [Гарантия закончилась](warranty-expired-testing.md) — `warranty_expired`.
+- [Тает на глазах](warranty-expired-testing.md) — `warranty_expired`.
 - [После меня хоть пожар](fire-trail-testing.md) — `fire_trail`.
 - [Резня](blood-tribute-testing.md) — `blood_tribute`.
 - [Пацифист](pacifist-testing.md) — `pacifist`.

@@ -20,7 +20,7 @@ public class ForcedThirdPersonFrontChallenge extends Challenge {
         super(ID, "Смотри мне в глаза.",
                 "Впереди явно что-то интересное, но пока смотри назад.",
                 "Камера перед лицом. До конца испытания придётся смотреть на себя, а не куда идёшь.",
-                ChallengeDifficulty.MEDIUM, ChallengeScope.GLOBAL);
+                ChallengeDifficulty.HARD, ChallengeScope.GLOBAL);
     }
 
     public static boolean affectsGameMode(GameMode mode) {
